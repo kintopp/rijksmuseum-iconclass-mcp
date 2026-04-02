@@ -28,6 +28,26 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 
+# ─── German keyword fixups (upstream bug: iconclass/data#30) ─────────
+# CC0 dump has corrupted diacritics from a blanket ue→ü replacement.
+# 48 key keywords + 1 base keyword affected. Fix before inserting.
+DE_KEYWORD_FIXES = {
+    "Klaü": "Klaue",
+    "miaün": "miauen",
+    "schaün": "schauen",
+    "traürn": "trauern",
+    "Misstraün": "Misstrauen",
+    "Fraünkleider": "Frauenkleider",
+    "Stadtmaür": "Stadtmauer",
+    "Vogelbaür": "Vogelbauer",
+    "Saügetiere": "Säugetiere",
+}
+
+
+def fix_de_keyword(keyword: str) -> str:
+    return DE_KEYWORD_FIXES.get(keyword, keyword)
+
+
 # ─── Languages ───────────────────────────────────────────────────────
 
 # Languages supported by the iconclass Python library (text composition + keywords)
@@ -367,6 +387,8 @@ def build(data_dir: str, output_path: str, count_csvs: list[str]):
             try:
                 kws = ic.kw(code, lang)
                 for kw in kws:
+                    if lang == "de":
+                        kw = fix_de_keyword(kw)
                     kw_batch.append((code, lang, kw))
                     lang_count += 1
             except Exception:

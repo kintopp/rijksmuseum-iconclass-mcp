@@ -1,0 +1,37 @@
+{
+  "name": "rijksmuseum-iconclass-mcp",
+  "version": "0.1.0",
+  "description": "MCP server for Iconclass — a hierarchical art-subject classification system (1.3M notations, 13 languages, semantic search)",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "main": "dist/index.js",
+  "bin": {
+    "rijksmuseum-iconclass-mcp": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "serve": "node dist/index.js --http",
+    "lint": "eslint src/",
+    "test": "node scripts/tests/test-pure-functions.mjs"
+  },
+  "dependencies": {
+    "@huggingface/transformers": "3.8.1",
+    "@modelcontextprotocol/sdk": "^1.26.0",
+    "better-sqlite3": "^12.6.2",
+    "cors": "^2.8.5",
+    "express": "^5.1.0",
+    "sqlite-vec": "0.1.6",
+    "zod": "^3.25.0"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/cors": "^2.8.17",
+    "@types/express": "^5.0.0",
+    "@types/node": "^22.0.0",
+    "typescript": "^5.7.0"
+  }
+}

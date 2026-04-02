@@ -16,7 +16,9 @@
     "start": "node dist/index.js",
     "serve": "node dist/index.js --http",
     "lint": "eslint src/",
-    "test": "node scripts/tests/test-pure-functions.mjs"
+    "test": "node scripts/tests/test-pure-functions.mjs",
+    "test:tools": "node scripts/tests/test-tools.mjs",
+    "test:all": "node scripts/tests/test-pure-functions.mjs && node scripts/tests/test-tools.mjs"
   },
   "dependencies": {
     "@huggingface/transformers": "3.8.1",

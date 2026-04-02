@@ -63,7 +63,7 @@ const IconclassEntryShape = () => z.object({
 const SearchOutput = {
   query: z.string(),
   totalResults: z.number().int(),
-  results: z.array(IconclassEntryShape()),
+  results: z.array(IconclassEntryShape().extend({ similarity: z.number().optional() })),
   collections: z.array(CollectionInfoShape()),
   error: z.string().optional(),
 };
@@ -393,7 +393,7 @@ export function registerTools(
 
 // ─── Format helpers ─────────────────────────────────────────────────
 
-function formatCounts(counts: Record<string, number>): string {
+export function formatCounts(counts: Record<string, number>): string {
   const entries = Object.entries(counts).filter(([, c]) => c > 0);
   if (entries.length === 0) return "";
   if (entries.length === 1) return ` (${entries[0][1]} artworks)`;
@@ -401,7 +401,7 @@ function formatCounts(counts: Record<string, number>): string {
 }
 
 /** Format an entry as a compact one-liner for LLM content. */
-function formatEntryLine(e: { notation: string; text: string; collectionCounts: Record<string, number>; path: { notation: string }[] }, prefix?: string): string {
+export function formatEntryLine(e: { notation: string; text: string; collectionCounts: Record<string, number>; path: { notation: string }[] }, prefix?: string): string {
   const counts = formatCounts(e.collectionCounts);
   let line = prefix ? `${prefix}${e.notation}${counts} "${e.text}"` : `${e.notation}${counts} "${e.text}"`;
   if (e.path.length > 0) line += ` [${e.path.map(p => p.notation).join(" > ")}]`;

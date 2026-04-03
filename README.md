@@ -133,7 +133,7 @@ The database is built from the [Iconclass CC0 data dump](https://github.com/icon
 git clone https://github.com/iconclass/data /tmp/iconclass-data
 
 # Install Python dependencies
-pip install iconclass
+uv pip install iconclass
 
 # Build the main DB (takes ~6 minutes)
 python scripts/build-iconclass-db.py \
@@ -150,7 +150,7 @@ python scripts/build-counts-db.py \
 Embeddings enable the `semanticQuery` parameter. Generation uses [Modal](https://modal.com) for cloud GPU access (free tier works).
 
 ```bash
-pip install modal sqlite-vec numpy
+uv pip install modal sqlite-vec numpy
 modal setup  # one-time auth
 
 modal run scripts/generate-embeddings-modal.py

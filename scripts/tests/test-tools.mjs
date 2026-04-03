@@ -214,15 +214,25 @@ assertEq(s4.subtree.length, 9, "9 children (73D1–73D9)");
 assertEq(s4.subtree[0].notation, "73D1", "first child is 73D1");
 assertEq(s4.subtree[8].notation, "73D9", "last child is 73D9");
 
-// Browse with includeKeys
+// Browse with includeKeys (default page size 25)
 const r4b = await client.callTool({
   name: "browse",
   arguments: { notation: "25F23", includeKeys: true },
 });
 const s4b = sc(r4b);
-assert(s4b.keyVariants.length > 100, `key variants > 100 (got ${s4b.keyVariants.length})`);
+assertEq(s4b.keyVariants.length, 25, "key variants paginated to default 25");
+assert(s4b.totalKeyVariants > 100, `totalKeyVariants > 100 (got ${s4b.totalKeyVariants})`);
 assert(s4b.keyVariants[0].notation.includes("(+"), "key variants have (+) format");
 assert(s4b.keyVariants[0].isKeyExpanded === true, "key variants marked as key-expanded");
+
+// Browse with includeKeys + pagination
+const r4b2 = await client.callTool({
+  name: "browse",
+  arguments: { notation: "25F23", includeKeys: true, maxKeyVariants: 5, keyOffset: 10 },
+});
+const s4b2 = sc(r4b2);
+assertEq(s4b2.keyVariants.length, 5, "key variants page size respected");
+assert(s4b2.keyVariants[0].notation !== s4b.keyVariants[0].notation, "keyOffset produces different first variant");
 
 // Browse nonexistent
 const r4c = await client.callTool({
@@ -283,7 +293,18 @@ assert(!r6.isError, "no error");
 const s6 = sc(r6);
 assertEq(s6.notation, "25F23", "notation echoed");
 assertEq(s6.baseEntry.notation, "25F23", "base entry present");
-assert(s6.keyVariants.length > 100, `key variants > 100 (got ${s6.keyVariants.length})`);
+assertEq(s6.keyVariants.length, 25, "key variants paginated to default 25");
+assert(s6.totalKeyVariants > 100, `totalKeyVariants > 100 (got ${s6.totalKeyVariants})`);
+
+// Pagination
+const r6p = await client.callTool({
+  name: "expand_keys",
+  arguments: { notation: "25F23", maxResults: 5, offset: 50 },
+});
+const s6p = sc(r6p);
+assertEq(s6p.keyVariants.length, 5, "expand_keys page size respected");
+assert(s6p.keyVariants[0].notation !== s6.keyVariants[0].notation, "offset produces different first variant");
+assertEq(s6p.totalKeyVariants, s6.totalKeyVariants, "totalKeyVariants consistent across pages");
 
 // Verify key variants have correct structure
 const first = s6.keyVariants[0];

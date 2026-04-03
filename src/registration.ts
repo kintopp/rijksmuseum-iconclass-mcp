@@ -73,6 +73,7 @@ const BrowseOutput = {
   entry: IconclassEntryShape(),
   subtree: z.array(IconclassEntryShape()),
   keyVariants: z.array(IconclassEntryShape()),
+  totalKeyVariants: z.number().int().optional(),
   collections: z.array(CollectionInfoShape()),
   error: z.string().optional(),
 };
@@ -86,6 +87,7 @@ const ResolveOutput = {
 const ExpandKeysOutput = {
   notation: z.string(),
   baseEntry: IconclassEntryShape(),
+  totalKeyVariants: z.number().int(),
   keyVariants: z.array(IconclassEntryShape()),
   collections: z.array(CollectionInfoShape()),
   error: z.string().optional(),
@@ -231,6 +233,10 @@ export function registerTools(
         lang: z.string().default("en").describe(LANG_DESC),
         includeKeys: z.boolean().default(false).optional()
           .describe("Include key-expanded variants (e.g. 25F23(+46)). Only applies to base notations."),
+        maxKeyVariants: z.number().int().min(1).max(200).default(25).optional()
+          .describe("Maximum key variants to return when includeKeys is true (1-200, default 25)."),
+        keyOffset: z.number().int().min(0).default(0).optional()
+          .describe("Skip this many key variants (for pagination)."),
       }).strict(),
       ...withOutputSchema(BrowseOutput),
     },
@@ -240,7 +246,10 @@ export function registerTools(
         return errorResponse(`Notation "${args.notation}" not found in Iconclass.`);
       }
 
-      const { entry, subtree, keyVariants } = result;
+      const { entry, subtree } = result;
+      const totalKeyVariants = result.keyVariants.length;
+      const keyOffset = args.keyOffset ?? 0;
+      const keyVariants = result.keyVariants.slice(keyOffset, keyOffset + (args.maxKeyVariants ?? 25));
       const pathStr = entry.path.length > 0
         ? entry.path.map(p => `${p.notation} "${p.text}"`).join(" > ") + " > "
         : "";
@@ -265,10 +274,14 @@ export function registerTools(
           const kc = formatCounts(k.collectionCounts);
           return `  ${k.notation}${kc} "${k.text}"`;
         });
-        sections.push(`Key variants (${keyLines.length}):`, ...keyLines);
+        const keyHeader = totalKeyVariants > keyVariants.length
+          ? `Key variants (${keyOffset + 1}–${keyOffset + keyVariants.length} of ${totalKeyVariants}):`
+          : `Key variants (${keyVariants.length}):`;
+        sections.push(keyHeader, ...keyLines);
       }
 
-      return structuredResponse(result, sections.join("\n"));
+      const data = { ...result, keyVariants, totalKeyVariants: totalKeyVariants || undefined };
+      return structuredResponse(data, sections.join("\n"));
     }
   );
 
@@ -326,6 +339,10 @@ export function registerTools(
       inputSchema: z.object({
         notation: z.string().min(1).describe("Base notation to expand (e.g. '25F23'). Must not contain parentheses."),
         lang: z.string().default("en").describe(LANG_DESC),
+        maxResults: z.number().int().min(1).max(200).default(25)
+          .describe("Maximum key variants to return (1-200, default 25)."),
+        offset: z.number().int().min(0).default(0).optional()
+          .describe("Skip this many key variants (for pagination)."),
       }).strict(),
       ...withOutputSchema(ExpandKeysOutput),
     },
@@ -338,14 +355,22 @@ export function registerTools(
         return errorResponse(`Notation "${args.notation}" not found in Iconclass.`);
       }
 
-      const { baseEntry, keyVariants } = result;
+      const { baseEntry } = result;
+      const totalKeyVariants = result.keyVariants.length;
+      const kvOffset = args.offset ?? 0;
+      const keyVariants = result.keyVariants.slice(kvOffset, kvOffset + args.maxResults);
+
       const counts = formatCounts(baseEntry.collectionCounts);
-      const header = `${baseEntry.notation} "${baseEntry.text}"${counts} — ${keyVariants.length} key variants`;
+      const rangeStr = totalKeyVariants > keyVariants.length
+        ? ` (${kvOffset + 1}–${kvOffset + keyVariants.length} of ${totalKeyVariants})`
+        : "";
+      const header = `${baseEntry.notation} "${baseEntry.text}"${counts} — ${totalKeyVariants} key variants${rangeStr}`;
       const lines = keyVariants.map(k => {
         const kc = formatCounts(k.collectionCounts);
         return `  ${k.notation} (${k.keyId})${kc} "${k.text}"`;
       });
-      return structuredResponse(result, [header, ...lines].join("\n"));
+      const data = { ...result, keyVariants, totalKeyVariants };
+      return structuredResponse(data, [header, ...lines].join("\n"));
     }
   );
 

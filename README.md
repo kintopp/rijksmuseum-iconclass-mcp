@@ -6,7 +6,19 @@ The database includes all 1.3 million Iconclass notations — both the 39,802 ba
 
 ## Quick start
 
-### From source
+Add the Iconclass server as a custom connector in [Claude Desktop](https://claude.com/download) or [claude.ai](https://claude.ai) using the URL below. This currently requires a paid ('Pro') or higher [subscription](https://claude.com/pricing) from Anthropic.
+
+```
+https://rijksmuseum-iconclass-mcp-production.up.railway.app/mcp
+```
+
+Go to _Settings_ → _Connectors_ → _Add custom connector_ → name it as you like and paste the URL into the _Remote MCP Server URL_ field. You can ignore the Authentication section. Once configured, optionally set the permissions for its tools (e.g. 'Always allow'). See Anthropic's [instructions](https://support.claude.com/en/articles/11175166-get-started-with-custom-connectors-using-remote-mcp) for more details.
+
+The server is based on the open [Model Context Protocol](https://modelcontextprotocol.io/docs/getting-started/intro) (MCP) standard and also works with other AI applications that support remote MCP servers.
+
+### Development setup
+
+For local development or self-hosting:
 
 ```bash
 git clone https://github.com/kintopp/rijksmuseum-iconclass-mcp.git
@@ -18,9 +30,7 @@ npm run serve      # HTTP mode on port 3000
 
 On first run, the server downloads `iconclass.db` (~1 GB compressed) to `data/` if `ICONCLASS_DB_URL` is set. Subsequent starts are fast.
 
-### Claude Desktop (stdio)
-
-Add to your `claude_desktop_config.json`:
+To use the local server with Claude Desktop (stdio), add to your `claude_desktop_config.json`:
 
 ```json
 {
@@ -31,14 +41,6 @@ Add to your `claude_desktop_config.json`:
     }
   }
 }
-```
-
-### HTTP mode
-
-```bash
-PORT=3000 node dist/index.js
-# MCP endpoint: POST http://localhost:3000/mcp
-# Health check: GET  http://localhost:3000/health
 ```
 
 ## Tools

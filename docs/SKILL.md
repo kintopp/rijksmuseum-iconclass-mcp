@@ -1,6 +1,6 @@
 ---
 name: iconclass-mcp
-version: "0.1.0"
+version: "0.2.0"
 last_updated: 2026-04-03
 description: >
   Research workflows for the Iconclass MCP server — a universal art-subject
@@ -23,7 +23,9 @@ DISCOVER  ->  NARROW  ->  RESOLVE  ->  HAND OFF
 (search)     (browse)    (resolve)    (collection server)
 ```
 
-Iconclass is a retrieval tool, not a descriptive language. A notation's meaning comes from its position in the hierarchy, not just its label. Complex artworks carry many codes (often 30+) across different branches. The goal is not to find *the one right code* but to identify the codes that carve out the search space you need.
+Iconclass is a retrieval tool, not a descriptive language. A notation's meaning comes from its position in the hierarchy, not just its label. Complex artworks carry many codes (often 30+) across different branches because a single image contains multiple subjects — a scene, its setting, its actors, their attributes, symbolic objects. The goal is not to find *the one right code* but to identify the set of codes that carve out the search space you need.
+
+Most of the ~40K base notations are "theoretical" — they exist in the taxonomy but no museum has tagged artworks with them. Always check `collectionCounts` before handing a code to a collection server: a code with 0 artworks returns nothing, and a code with 371 vs 2 signals very different curatorial depth.
 
 ---
 
@@ -43,17 +45,31 @@ Iconclass is a retrieval tool, not a descriptive language. A notation's meaning 
 
 ---
 
+## Notation Syntax
+
+Iconclass notations encode hierarchy left-to-right. Understanding the syntax helps you read results and construct queries.
+
+**Base notations** use alphanumeric codes: `7` (Bible) → `73` (New Testament) → `73D` (Passion) → `73D8` (instruments of the Passion) → `73D82` (road to Calvary).
+
+**Named notations** add a parenthesised qualifier for specific entities: `11H(FRANCIS)` (St. Francis), `25F44(SALAMANDER)` (salamander). The name is part of the notation — `11H(FRANCIS)` and `11H(JEROME)` are siblings under `11H(...)` (male saints). Named notations for female saints use `11HH(...)`.
+
+**Key-expanded notations** add modifiers in `(+N)` suffixes: `25F23(+46)` means "beasts of prey, sleeping." Key codes are standardised across the system — `(+46)` always means "sleeping" regardless of the base notation. But be careful: the `(+4...)` group concerns **artistic production and works of art as objects** (stages of creation, damage, restoration), not the depicted condition of things within a scene. `48C7323(+42)` means "lute as a work of art being damaged," not "a lute with a broken string in a painting." This is a common misclassification trap.
+
+When using `expand_keys`, pass the **base notation** — `25F23`, not `25F23(+46)`. Named notations like `25F44(SALAMANDER)` are not base notations; use `25F44` to expand keys for all turtles/tortoises including the salamander.
+
+---
+
 ## FTS Query Patterns
 
 The keyword search (`query`) uses FTS5 across labels and keywords in all 13 languages. Understanding its behaviour avoids wasted tool calls.
 
 **Inflected forms often work** because the Iconclass keyword data includes variants — "crucified" finds "crucifixion" (675 matches). But **spelling variants do not** — "odour" and "odor" are separate words and won't cross-match. When in doubt, try both spellings or fall back to `semanticQuery`.
 
-**Multi-word queries** try phrase match first (adjacent words), then fall back to AND-ed individual terms if the phrase returns zero results. So "Marriage at Cana" will find notations containing both "Marriage" and "Cana" even if they're not adjacent.
+**Multi-word queries** try phrase match first (adjacent words), then fall back to AND-ed individual terms if the phrase returns zero results. "Marriage at Cana" finds notations containing both "Marriage" and "Cana" even if they're not adjacent.
 
-**Single words are usually best.** Start with the most specific single word ("salamander", "crucifixion", "lute"). Multi-word queries are useful when a single word is too broad ("broken string" to distinguish from intact string instruments).
+**Single words are usually best.** FTS matches whole words against the Iconclass vocabulary, so a single specific word ("salamander", "crucifixion", "lute") has the highest recall. Multi-word queries are useful when a single word is too broad — "broken string" to distinguish from intact string instruments, or "Last Supper" to avoid matching other uses of "supper."
 
-**When FTS fails, switch to semantic search.** If the exact vocabulary term is unknown — or you're searching by concept rather than keyword — use `semanticQuery`. It finds notations by meaning: "domestic animals" finds dogs, cats, horses even though none contain that exact phrase. Semantic search is the entry point when you don't already know the Iconclass vocabulary.
+**When FTS fails, switch to semantic search.** If the exact vocabulary term is unknown — or you're searching by concept rather than keyword — use `semanticQuery`. It finds notations by meaning: "domestic animals" finds dogs, cats, horses even though none contain that exact phrase. Semantic search bridges the gap between your language and Iconclass's vocabulary.
 
 **Non-English queries work.** FTS covers all 13 languages. Dutch "kruisiging", German "Kreuzigung", and French "crucifixion" all find the same notation.
 
@@ -61,31 +77,21 @@ The keyword search (`query`) uses FTS5 across labels and keywords in all 13 lang
 
 ## Critical Parameter Distinctions
 
-### `query` vs `semanticQuery`
-
-These are mutually exclusive — provide exactly one.
-
-- `query`: exact word matching, fast, covers all 13 languages, supports `parentNotation` for scoped search. Best when you know the vocabulary term.
-- `semanticQuery`: embedding-based concept search, bridges the gap between your language and Iconclass's vocabulary. Best for discovery, broad concepts, and when keyword search returns nothing useful.
-
 ### `browse` vs `expand_keys` for key variants
 
 Both can show key-expanded variants (e.g. `25F23(+46)` "beasts of prey, sleeping"), but they serve different purposes:
 
-- `browse` with `includeKeys: true`: quick preview of key variants alongside the entry's children, path, and cross-refs. Use for orientation.
-- `expand_keys`: paginated list of all key variants with full metadata. Use when you need the complete inventory (some base notations have 200+ variants).
+- `browse` with `includeKeys: true`: quick preview of key variants alongside the entry's children, path, and cross-refs. Use for orientation — "what modifiers exist for this notation?"
+- `expand_keys`: paginated list of all key variants with full metadata. Use when you need the complete inventory — some base notations have 200+ variants and `browse` only shows the first 25.
 
 ### `search` with `parentNotation` vs `search_prefix`
 
-Both restrict to a subtree, but they work differently:
+Both restrict to a subtree, but they answer different questions:
 
-- `search(query=..., parentNotation="11F")`: keyword search within a subtree — "find notations about 'reading' under Virgin Mary". Combines text relevance with hierarchy.
-- `search_prefix(notation="11F")`: enumerate all notations starting with a prefix, ordered alphabetically. No text search — pure hierarchy traversal.
+- `search(query=..., parentNotation="11F")`: keyword search *within* a subtree — "find notations about 'reading' under Virgin Mary." Combines text relevance with hierarchical scoping.
+- `search_prefix(notation="11F")`: enumerate *all* notations starting with a prefix, ordered alphabetically. No text search — pure hierarchy traversal. Use when you want the full inventory of a branch.
 
-### `onlyWithArtworks` and `collectionId`
-
-- `onlyWithArtworks: true`: filter to notations that have artworks in any loaded collection. Works in both FTS and semantic modes. Essential for narrowing "theoretical" notations to ones with real artworks.
-- `collectionId`: filter to a specific collection (e.g. "rijksmuseum"). Results are ranked by count in that collection.
+If `parentNotation` returns zero results, the concept may exist in a different branch. Try removing the scope for a global search, or broadening to a parent prefix (e.g. `"11"` instead of `"11F"`).
 
 ---
 
@@ -93,7 +99,7 @@ Both restrict to a subtree, but they work differently:
 
 ### 1. Discover a Notation Code
 
-Start with keyword search. If the term is unknown, use semantic search.
+Start with keyword search. If the term is unknown or the concept is atmospheric/interpretive, use semantic search.
 
 ```
 # Known term
@@ -105,11 +111,9 @@ search(semanticQuery: "domestic animals")
 # -> 34B1 "pets, domestic animals" [3 > 34 > 34B]
 ```
 
-Check `collectionCounts` before proceeding — a code with 0 artworks returns nothing on the collection server. A code with 371 vs 2 signals curatorial depth.
-
 ### 2. Explore a Hierarchy Branch
 
-Use `browse` with `depth: 2` for narrative exploration — it returns the entry, its children, and their children in one call, avoiding the sequential browse-per-child pattern.
+Use `browse` with `depth: 2` for narrative exploration — it returns the entry, its children, and their children in one call, avoiding the sequential browse-per-child pattern that would cost 8+ tool calls on a branch like St. Francis.
 
 ```
 browse(notation: "73D8", depth: 2)
@@ -122,16 +126,16 @@ browse(notation: "73D8", depth: 2)
 #        ...
 ```
 
-Wide branches (e.g. saints by name under `11H`) are capped at 25 children per parent to protect your context window. The response indicates when truncation occurred so you can paginate or narrow.
+Wide branches (e.g. saints by name under `11H`, 183 children) are capped at 25 children per parent to protect your context window. The response shows `totalChildren` so you know when truncation occurred.
 
-Use `depth: 3` only on narrow branches. For wide branches like `11H`, browse at depth 1 first, then drill into specific children.
+Use `depth: 3` only on narrow branches where you can see the full structure. For wide branches like `11H`, browse at depth 1 first to see the top-level names, then drill into specific children at depth 2.
 
 ### 3. Cross-Branch Discovery
 
-The same concept can appear in multiple Iconclass branches. A dog might be:
-- `34B11` — pets, domestic animals: dog
-- `11A(DOG)` — the dog as symbol of fidelity
-- `25FF21(DOG)` — predatory animals: dog (wild/feral)
+The same concept can appear in multiple Iconclass branches because the system classifies by context, not just identity. A dog might be:
+- `34B11` — pets, domestic animals: dog (zoological classification)
+- `11A(DOG)` — the dog as symbol of fidelity (religious symbolism)
+- `25FF21(DOG)` — predatory animals: dog (wild/feral context)
 
 Use keyword or semantic search to discover all branches, then `resolve` to compare them side by side:
 
@@ -145,23 +149,23 @@ resolve(notation: ["34B11", "11A(DOG)", "25FF21(DOG)"])
 
 ### 4. Scoped Search Within a Subtree
 
-When you know the branch but need to find a specific concept within it, use `parentNotation`:
+When you know the branch but need to find a specific concept within it, use `parentNotation` to avoid drowning in global results:
 
 ```
-# "reading" within Virgin Mary (11F)
-search(query: "reading", parentNotation: "11F")
-# -> 11F42 "the education of the Virgin: reading and writing"
+# "reading" within New Testament (73)
+search(query: "reading", parentNotation: "73")
+# -> 73A51 "Mary alone reading", 73B732 "Mary teaches the Christ-child to read"
 
 # "crown" within saints (11H)
 search(query: "crown", parentNotation: "11H")
 # -> notations about crowned saints, martyrs' crowns, etc.
 ```
 
-This is far more efficient than a global search followed by mental filtering.
+If a scoped search returns zero results, the concept may live in a different branch than expected. "reading" under `11F` (Virgin Mary) returns nothing — those notations are under `73` (New Testament narrative). Remove the scope and search globally to find where the concept actually lives.
 
 ### 5. Multi-Code Assignment for Artworks
 
-Complex artworks need codes from multiple branches. A painting of St. Francis preaching to birds might need:
+Complex artworks need codes from multiple branches because a single image contains overlapping subjects: a scene, its actors, their attributes, symbolic objects, the setting. A painting of St. Francis preaching to birds might need:
 
 ```
 # Scene
@@ -177,7 +181,9 @@ browse(notation: "25H1", depth: 2)
 # -> landscape subcategories
 ```
 
-Codes from different branches AND-combine when passed to a collection server — this is how you express compound iconographic queries.
+Codes from different branches AND-combine when passed to a collection server — `iconclass: ["11H(FRANCIS)32", "25F3"]` finds artworks tagged with both codes. This is how you express compound iconographic queries.
+
+When no notation exactly captures a nuanced concept (e.g., a broken lute string as a vanitas symbol), assign the closest codes (`11R7` vanitas symbols + `48C7323` lute) and record the interpretive nuance in a catalogue note. Don't force-fit a key expansion — verify the key's actual meaning first (see Notation Syntax above).
 
 ### 6. Cross-Server Handoff
 
@@ -193,7 +199,7 @@ search_artwork(iconclass: ["41D2621"])
 # -> artworks depicting civic guard scenes
 ```
 
-Multiple codes AND-combine on the collection server. Check `collectionCounts` here first to predict result volume.
+Multiple codes AND-combine on the collection server. Check `collectionCounts` here first to predict result volume before making the handoff call.
 
 ---
 
@@ -203,8 +209,9 @@ Multiple codes AND-combine on the collection server. Check `collectionCounts` he
 |---|---|
 | British/American spelling — "odour" vs "odor" | Try both spellings. `semanticQuery` handles this automatically. |
 | Wide branches truncated at 25 per parent | Use `search_prefix` to enumerate all notations, or paginate with `offset`. |
-| Resolve batch limit of 25 | Use `search` for discovery (returns summary), `resolve` only for the 3-5 notations you need full metadata on. |
-| `expand_keys` / `browse` overlap | Use `browse(includeKeys: true)` for a quick preview alongside hierarchy context. Use `expand_keys` when you need the full paginated list. |
+| Resolve batch limit of 25 | Use `search` for discovery, `resolve` only for the 3–5 notations you need full metadata on. |
+| `parentNotation` returns 0 but concept exists | The concept may live in a different branch. Remove the scope and search globally. |
+| Key expansion labels can mislead | Always verify a key's meaning in context. The `(+4...)` group is about artistic production, not depicted object condition. See Notation Syntax. |
 
 ---
 

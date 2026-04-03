@@ -1,6 +1,6 @@
 import Database, { type Database as DatabaseType, type Statement } from "better-sqlite3";
 import { createRequire } from "node:module";
-import { escapeFts5, resolveDbPath } from "../utils/db.js";
+import { escapeFts5, escapeFts5Terms, resolveDbPath } from "../utils/db.js";
 
 const require = createRequire(import.meta.url);
 
@@ -33,10 +33,16 @@ export interface IconclassSearchResult {
   collections: CollectionInfo[];
 }
 
+export interface SubtreeEntry extends IconclassEntry {
+  depth: number;
+  totalChildren: number;
+  truncated: boolean;
+}
+
 export interface IconclassBrowseResult {
   notation: string;
   entry: IconclassEntry;
-  subtree: IconclassEntry[];
+  subtree: SubtreeEntry[];
   keyVariants: IconclassEntry[];
   totalKeyVariants: number;
   collections: CollectionInfo[];
@@ -230,24 +236,34 @@ export class IconclassDb {
 
   // ─── Search (FTS) ─────────────────────────────────────────────────
 
-  search(query: string, maxResults: number = 25, lang: string = "en", offset: number = 0, collectionId?: string): IconclassSearchResult {
+  search(query: string, maxResults: number = 25, lang: string = "en", offset: number = 0, collectionId?: string, onlyWithArtworks: boolean = false, parentNotation?: string): IconclassSearchResult {
     const empty: IconclassSearchResult = { query, totalResults: 0, results: [], collections: this._collections };
     if (!this.db) return empty;
 
     const ftsPhrase = escapeFts5(query);
     if (!ftsPhrase) return empty;
 
-    const textHits = this.stmtTextFts.all(ftsPhrase) as { notation: string }[];
-    const kwHits = this.stmtKwFts.all(ftsPhrase) as { notation: string }[];
+    const notationSet = this.runFtsQueries(ftsPhrase);
 
-    const notationSet = new Set<string>();
-    for (const r of textHits) notationSet.add(r.notation);
-    for (const r of kwHits) notationSet.add(r.notation);
+    // Auto-fallback: if phrase match returns 0, retry with individual AND-ed terms
+    if (notationSet.size === 0) {
+      const ftsTerms = escapeFts5Terms(query);
+      if (!ftsTerms) return empty;
+      for (const n of this.runFtsQueries(ftsTerms)) notationSet.add(n);
+    }
 
     if (notationSet.size === 0) return empty;
 
+    // Post-filter: restrict to subtree if parentNotation specified
+    if (parentNotation) {
+      for (const n of notationSet) {
+        if (!n.startsWith(parentNotation)) notationSet.delete(n);
+      }
+      if (notationSet.size === 0) return empty;
+    }
+
     const countsCache = new Map<string, Record<string, number>>();
-    const countedNotations = this.fetchCountsForSort([...notationSet], countsCache, collectionId);
+    const countedNotations = this.fetchCountsForSort([...notationSet], countsCache, collectionId, onlyWithArtworks);
 
     countedNotations.sort((a, b) => {
       if (b.total !== a.total) return b.total - a.total;
@@ -267,12 +283,16 @@ export class IconclassDb {
 
   // ─── Browse ───────────────────────────────────────────────────────
 
+  private static readonly MAX_CHILDREN_PER_PARENT = 25;
+  private static readonly MAX_SUBTREE_ENTRIES = 250;
+
   browse(
     notation: string,
     lang: string = "en",
     includeKeys: boolean = false,
     maxKeyVariants: number = 25,
     keyOffset: number = 0,
+    depth: number = 1,
   ): IconclassBrowseResult | null {
     if (!this.db) return null;
 
@@ -280,9 +300,8 @@ export class IconclassDb {
     const entry = this.resolveEntry(notation, lang, textCache);
     if (!entry) return null;
 
-    const subtree = entry.children
-      .map((n) => this.resolveEntry(n, lang, textCache))
-      .filter((e): e is IconclassEntry => e !== null);
+    const subtree: SubtreeEntry[] = [];
+    this.collectSubtree(entry.children, lang, 1, depth, textCache, subtree);
 
     let keyVariants: IconclassEntry[] = [];
     let totalKeyVariants = 0;
@@ -292,6 +311,39 @@ export class IconclassDb {
     }
 
     return { notation, entry, subtree, keyVariants, totalKeyVariants, collections: this._collections };
+  }
+
+  private collectSubtree(
+    childNotations: string[],
+    lang: string,
+    currentDepth: number,
+    maxDepth: number,
+    textCache: Map<string, string | null>,
+    out: SubtreeEntry[],
+  ): void {
+    const cap = IconclassDb.MAX_CHILDREN_PER_PARENT;
+    const truncated = childNotations.length > cap;
+    const visibleChildren = truncated ? childNotations.slice(0, cap) : childNotations;
+
+    for (const n of visibleChildren) {
+      if (out.length >= IconclassDb.MAX_SUBTREE_ENTRIES) return;
+
+      const resolved = this.resolveEntry(n, lang, textCache);
+      if (!resolved) continue;
+
+      const totalChildren = resolved.children.length;
+
+      out.push({
+        ...resolved,
+        depth: currentDepth,
+        totalChildren,
+        truncated: currentDepth < maxDepth && totalChildren > cap,
+      });
+
+      if (currentDepth < maxDepth && totalChildren > 0 && out.length < IconclassDb.MAX_SUBTREE_ENTRIES) {
+        this.collectSubtree(resolved.children, lang, currentDepth + 1, maxDepth, textCache, out);
+      }
+    }
   }
 
   // ─── Resolve (batch) ──────────────────────────────────────────────
@@ -408,6 +460,13 @@ export class IconclassDb {
 
   // ─── Internal ─────────────────────────────────────────────────────
 
+  private runFtsQueries(ftsExpr: string): Set<string> {
+    const set = new Set<string>();
+    for (const r of this.stmtTextFts.all(ftsExpr) as { notation: string }[]) set.add(r.notation);
+    for (const r of this.stmtKwFts.all(ftsExpr) as { notation: string }[]) set.add(r.notation);
+    return set;
+  }
+
   /**
    * Batch-fetch counts for sorting. Uses a temp table + JOIN instead of N+1
    * individual queries — ~200x faster for broad FTS result sets.
@@ -417,9 +476,10 @@ export class IconclassDb {
     notations: string[],
     countsCache: Map<string, Record<string, number>>,
     collectionId?: string,
+    onlyWithArtworks: boolean = false,
   ): { notation: string; total: number }[] {
     if (!this.stmtGetCollectionCounts || !this.db) {
-      return collectionId ? [] : notations.map(n => ({ notation: n, total: 0 }));
+      return (collectionId || onlyWithArtworks) ? [] : notations.map(n => ({ notation: n, total: 0 }));
     }
 
     // Batch: insert all notations into a temp table, then JOIN against counts
@@ -460,7 +520,7 @@ export class IconclassDb {
       for (const [cid, count] of Object.entries(counts)) {
         if (!collectionId || cid === collectionId) total += count;
       }
-      if (collectionId && total === 0) continue;
+      if ((collectionId || onlyWithArtworks) && total === 0) continue;
       results.push({ notation, total });
     }
     return results;

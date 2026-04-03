@@ -68,10 +68,16 @@ const SearchOutput = {
   error: z.string().optional(),
 };
 
+const SubtreeEntryShape = () => IconclassEntryShape().extend({
+  depth: z.number().int(),
+  totalChildren: z.number().int(),
+  truncated: z.boolean(),
+});
+
 const BrowseOutput = {
   notation: z.string(),
   entry: IconclassEntryShape(),
-  subtree: z.array(IconclassEntryShape()),
+  subtree: z.array(SubtreeEntryShape()),
   keyVariants: z.array(IconclassEntryShape()),
   totalKeyVariants: z.number().int().optional(),
   collections: z.array(CollectionInfoShape()),
@@ -133,11 +139,14 @@ export function registerTools(
       description:
         "Search Iconclass notations by keyword or concept. " +
         "Two modes (provide exactly one of query or semanticQuery):\n" +
-        "• query — FTS5 keyword search across labels and keywords in all 13 languages (exact word match)\n" +
+        "• query — FTS keyword search across labels and keywords in all 13 languages. " +
+        "Multi-word queries try phrase match first, then individual terms (AND). " +
+        "No stemming: use base noun forms ('crucifixion' not 'crucified'). " +
+        "Use parentNotation to restrict results to a subtree.\n" +
         "• semanticQuery — find notations by meaning (e.g. 'domestic animals' finds dogs, cats, horses)" +
         (semanticAvailable ? "" : " [currently unavailable — embeddings not loaded]") + "\n\n" +
-        "collectionCounts shows how many artworks carry each notation per loaded collection. " +
-        "Results are ranked by total collection count.",
+        "Results ranked by collection count. " +
+        "For enumerating all notations under a prefix, use search_prefix instead.",
       inputSchema: z.object({
         query: optStr()
           .describe(
@@ -153,9 +162,11 @@ export function registerTools(
           .boolean()
           .default(false)
           .optional()
-          .describe("Only return notations that have artworks in any loaded collection (semantic mode only)."),
+          .describe("Only return notations that have artworks in any loaded collection."),
         collectionId: optStr()
           .describe("Filter to notations with artworks in this specific collection (e.g. 'rijksmuseum')."),
+        parentNotation: optStr()
+          .describe("Restrict results to a subtree — only notations starting with this prefix (e.g. '11F' for Virgin Mary, '73D' for life of Christ)."),
         lang: z.string().default("en").describe(LANG_DESC),
         maxResults: z
           .number().int()
@@ -192,12 +203,20 @@ export function registerTools(
           );
         }
 
+        // Over-fetch if parentNotation will filter down results
+        const fetchK = args.parentNotation ? args.maxResults * 5 : args.maxResults;
         const result = db.semanticSearch(
-          args.semanticQuery, queryVec, args.maxResults, args.lang,
+          args.semanticQuery, queryVec, fetchK, args.lang,
           args.onlyWithArtworks ?? false, args.collectionId,
         );
         if (!result) {
           return errorResponse("Semantic search failed — embeddings may be corrupted.");
+        }
+
+        if (args.parentNotation) {
+          result.results = result.results.filter(e => e.notation.startsWith(args.parentNotation!));
+          result.results = result.results.slice(0, args.maxResults);
+          result.totalResults = result.results.length;
         }
 
         const header = `${result.results.length} semantic matches for "${args.semanticQuery}"`;
@@ -208,7 +227,7 @@ export function registerTools(
       }
 
       // FTS search mode
-      const result = db.search(args.query!, args.maxResults, args.lang, args.offset ?? 0, args.collectionId);
+      const result = db.search(args.query!, args.maxResults, args.lang, args.offset ?? 0, args.collectionId, args.onlyWithArtworks ?? false, args.parentNotation);
 
       const header = `${result.results.length} of ${result.totalResults} matches for "${args.query}"`;
       const lines = result.results.map((e, i) =>
@@ -225,12 +244,15 @@ export function registerTools(
     {
       title: "Browse Iconclass",
       description:
-        "Browse an Iconclass notation's hierarchy: returns the entry with its path, direct children, " +
-        "cross-references, and optionally key-expanded variants. " +
-        "Use this to navigate the Iconclass tree structure.",
+        "Browse an Iconclass notation's hierarchy: returns the entry with its path, children (expandable to depth 1-3), " +
+        "cross-references (resolved with labels), and optionally key-expanded variants. " +
+        "Use depth=2 for narrative exploration; wide branches are capped at 25 children per parent. " +
+        "To list all key variants of a notation, use expand_keys instead of includeKeys.",
       inputSchema: z.object({
         notation: z.string().min(1).describe("Iconclass notation to browse (e.g. '31A33', '73D82')."),
         lang: z.string().default("en").describe(LANG_DESC),
+        depth: z.number().int().min(1).max(3).default(1).optional()
+          .describe("How many levels deep to expand children (1-3, default 1). Use 2 for narrative exploration; 3 only for narrow branches."),
         includeKeys: z.boolean().default(false).optional()
           .describe("Include key-expanded variants (e.g. 25F23(+46)). Only applies to base notations."),
         maxKeyVariants: z.number().int().min(1).max(335).default(25).optional()
@@ -243,7 +265,7 @@ export function registerTools(
     async (args) => {
       const result = db.browse(
         args.notation, args.lang, args.includeKeys ?? false,
-        args.maxKeyVariants ?? 25, args.keyOffset ?? 0,
+        args.maxKeyVariants ?? 25, args.keyOffset ?? 0, args.depth ?? 1,
       );
       if (!result) {
         return errorResponse(`Notation "${args.notation}" not found in Iconclass.`);
@@ -260,14 +282,28 @@ export function registerTools(
         sections.push(`Keywords: ${entry.keywords.join(", ")}`);
       }
       if (entry.refs.length > 0) {
-        sections.push(`Cross-references: ${entry.refs.join(", ")}`);
+        const resolvedRefs = db.resolve(entry.refs, args.lang);
+        const refLines = resolvedRefs.map(r => {
+          const rc = formatCounts(r.collectionCounts);
+          return `  ${r.notation}${rc} "${r.text}"`;
+        });
+        const unresolvedRefs = entry.refs.filter(n => !resolvedRefs.some(r => r.notation === n));
+        if (unresolvedRefs.length > 0) refLines.push(...unresolvedRefs.map(n => `  ${n}`));
+        sections.push(`Cross-references (${entry.refs.length}):`, ...refLines);
       }
       if (subtree.length > 0) {
         const childLines = subtree.map(c => {
+          const indent = "  ".repeat(c.depth);
           const cc = formatCounts(c.collectionCounts);
-          return `  ${c.notation}${cc} "${c.text}"`;
+          const trunc = c.truncated ? ` [${c.totalChildren} children, showing 25]` : "";
+          return `${indent}${c.notation}${cc} "${c.text}"${trunc}`;
         });
-        sections.push(`Children (${childLines.length}):`, ...childLines);
+        const totalChildren = entry.children.length;
+        const shownAtDepth1 = subtree.filter(c => c.depth === 1).length;
+        const childHeader = totalChildren > shownAtDepth1
+          ? `Children (${shownAtDepth1} of ${totalChildren} shown, ${subtree.length} total entries):`
+          : `Children (${subtree.length}):`;
+        sections.push(childHeader, ...childLines);
       }
       if (keyVariants.length > 0) {
         const keyLines = keyVariants.map(k => {
@@ -331,10 +367,11 @@ export function registerTools(
     {
       title: "Expand Iconclass Keys",
       description:
-        "Given a base Iconclass notation, return all its key-expanded variants. " +
+        "List all key-expanded variants of a base notation with pagination. " +
         "Key expansions add specificity — e.g. 25F23 (beasts of prey) → " +
-        "25F23(+1) 'beasts of prey, swimming', 25F23(+46) 'beasts of prey, sleeping'. " +
-        "Returns the base entry and all variants with their texts and collection counts." +
+        "25F23(+1) 'swimming', 25F23(+46) 'sleeping'. " +
+        "Use this when you need the full list of variants; " +
+        "use browse with includeKeys for a quick preview alongside children." +
         (keysAvailable ? "" : " [currently unavailable — DB does not include key-expanded notations]"),
       inputSchema: z.object({
         notation: z.string().min(1).describe("Base notation to expand (e.g. '25F23'). Must not contain parentheses."),

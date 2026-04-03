@@ -14,6 +14,14 @@ export function escapeFts5(value: string): string | null {
   return `"${cleaned}"`;
 }
 
+/** Escape a multi-word value as individual AND-ed FTS5 terms.
+ *  Returns null if fewer than 2 words remain after stripping. */
+export function escapeFts5Terms(value: string): string | null {
+  const words = value.replace(/[.*^():{}[\]\\"/]/g, " ").trim().split(/\s+/).filter(Boolean);
+  if (words.length < 2) return null;
+  return words.map(w => `"${w}"`).join(" AND ");
+}
+
 /** Resolve a database path from environment variable or default data/ location.
  *  Returns null if the file doesn't exist at either location. */
 export function resolveDbPath(envVarName: string, defaultFilename: string): string | null {

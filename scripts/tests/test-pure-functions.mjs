@@ -4,7 +4,7 @@
  * Run:  node scripts/tests/test-pure-functions.mjs
  * Requires: npm run build (imports from dist/)
  */
-import { escapeFts5 } from "../../dist/utils/db.js";
+import { escapeFts5, escapeFts5Terms } from "../../dist/utils/db.js";
 import { formatCounts, formatEntryLine } from "../../dist/registration.js";
 
 // ── Test helpers ─────────────────────────────────────────────────
@@ -49,6 +49,18 @@ assertEq(escapeFts5(""), null, "empty string → null");
 assertEq(escapeFts5("***"), null, "only operators → null");
 assertEq(escapeFts5("Christ's death"), '"Christ\'s death"', "apostrophe preserved");
 assertEq(escapeFts5("mother-child"), '"mother-child"', "hyphen preserved (safe in FTS5 phrases)");
+
+// ── escapeFts5Terms ─────────────────────────────────────────────
+
+section("escapeFts5Terms");
+
+assertEq(escapeFts5Terms("Marriage Cana"), '"Marriage" AND "Cana"', "two words AND-ed");
+assertEq(escapeFts5Terms("broken string instrument"), '"broken" AND "string" AND "instrument"', "three words AND-ed");
+assertEq(escapeFts5Terms("crucifixion"), null, "single word → null (use escapeFts5 instead)");
+assertEq(escapeFts5Terms(""), null, "empty string → null");
+assertEq(escapeFts5Terms("***"), null, "only operators → null");
+assertEq(escapeFts5Terms("sleeping (animal)"), '"sleeping" AND "animal"', "strips parens then splits");
+assertEq(escapeFts5Terms('say "hello" world'), '"say" AND "hello" AND "world"', "strips quotes then splits");
 
 // ── formatCounts ────────────────────────────────────────────────
 

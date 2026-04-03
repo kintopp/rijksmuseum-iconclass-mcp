@@ -4,8 +4,7 @@ import { fileURLToPath } from "node:url";
 import { pipeline } from "node:stream/promises";
 import { createGunzip } from "node:zlib";
 
-/** Project root: two levels up from dist/utils/db.js (or src/utils/db.ts). */
-export const PROJECT_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
+const PROJECT_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 
 /** Escape a value for safe FTS5 phrase matching. Returns null if input is empty after stripping.
  *  Strips FTS5 operators and bracket characters; preserves hyphens (safe inside quoted phrases). */

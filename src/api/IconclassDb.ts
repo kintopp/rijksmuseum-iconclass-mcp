@@ -78,8 +78,6 @@ export class IconclassDb {
   private _hasEmbeddings = false;
   private _embeddingDimensions = 0;
   private _collections: CollectionInfo[] = [];
-  private _hasCounts = false;
-
   private stmtTextFts!: Statement;
   private stmtKwFts!: Statement;
   private stmtGetNotation!: Statement;
@@ -106,13 +104,15 @@ export class IconclassDb {
       this.db.pragma("mmap_size = 4294967296"); // 4 GB — covers full DB + growth headroom
       const count = (this.db.prepare("SELECT COUNT(*) as n FROM notations").get() as { n: number }).n;
 
-      // Attach sidecar counts DB if available
       const countsPath = resolveDbPath("COUNTS_DB_PATH", "iconclass-counts.db");
       if (countsPath) {
         try {
           this.db.exec(`ATTACH DATABASE '${countsPath}' AS counts`);
           this.db.prepare("SELECT 1 FROM counts.collection_counts LIMIT 1").get();
-          this._hasCounts = true;
+
+          this.stmtGetCollectionCounts = this.db.prepare(
+            "SELECT collection_id, count FROM counts.collection_counts WHERE notation = ?"
+          );
 
           const rows = this.db.prepare("SELECT collection_id, label, counts_as_of, total_artworks FROM counts.collection_info").all() as {
             collection_id: string; label: string; counts_as_of: string | null; total_artworks: number;
@@ -129,7 +129,6 @@ export class IconclassDb {
         }
       }
 
-      // Embeddings
       try {
         const dimRow = this.db.prepare(
           "SELECT value FROM version_info WHERE key = 'embedding_dimensions'"
@@ -149,7 +148,7 @@ export class IconclassDb {
           ORDER BY distance
         `);
 
-        if (this._hasCounts) {
+        if (this.stmtGetCollectionCounts) {
           this.stmtFilteredKnn = this.db.prepare(`
             SELECT ie.notation,
                    vec_distance_cosine(vec_int8(ie.embedding), vec_int8(?)) as distance
@@ -162,11 +161,8 @@ export class IconclassDb {
         this._hasEmbeddings = true;
         const embCount = (this.db.prepare("SELECT COUNT(*) as n FROM iconclass_embeddings").get() as { n: number }).n;
         console.error(`  Iconclass embeddings: ${embCount.toLocaleString()} vectors (${this._embeddingDimensions}d)`);
-      } catch {
-        // No embeddings or sqlite-vec not available
-      }
+      } catch { /* no embeddings */ }
 
-      // Prepared statements
       this.stmtTextFts = this.db.prepare(
         `SELECT DISTINCT t.notation
          FROM texts t
@@ -199,12 +195,6 @@ export class IconclassDb {
         "SELECT notation FROM notations WHERE base_notation = ? ORDER BY notation"
       );
 
-      if (this._hasCounts) {
-        this.stmtGetCollectionCounts = this.db.prepare(
-          "SELECT collection_id, count FROM counts.collection_counts WHERE notation = ?"
-        );
-      }
-
       console.error(`Iconclass DB loaded: ${dbPath} (${count.toLocaleString()} notations, ${this._collections.length} collection overlays)`);
     } catch (err) {
       console.error(`Failed to open Iconclass DB: ${err instanceof Error ? err.message : err}`);
@@ -229,7 +219,7 @@ export class IconclassDb {
   }
 
   get hasKeyExpansion(): boolean {
-    return this.stmtKeyVariants != null;
+    return this.db !== null;
   }
 
   // ─── Search (FTS) ─────────────────────────────────────────────────
@@ -250,7 +240,8 @@ export class IconclassDb {
 
     if (notationSet.size === 0) return empty;
 
-    const countedNotations = this.fetchCountsForSort([...notationSet], collectionId);
+    const countsCache = new Map<string, Record<string, number>>();
+    const countedNotations = this.fetchCountsForSort([...notationSet], countsCache, collectionId);
 
     countedNotations.sort((a, b) => {
       if (b.total !== a.total) return b.total - a.total;
@@ -262,7 +253,7 @@ export class IconclassDb {
 
     const textCache = new Map<string, string | null>();
     const results = page
-      .map(({ notation }) => this.resolveEntry(notation, lang, textCache))
+      .map(({ notation }) => this.resolveEntry(notation, lang, textCache, countsCache))
       .filter((e): e is IconclassEntry => e !== null);
 
     return { query, totalResults, results, collections: this._collections };
@@ -318,9 +309,10 @@ export class IconclassDb {
     const rows = this.stmtPrefixSearch.all(`${clean}%`, fetchLimit, 0) as { notation: string }[];
 
     let notations = rows.map(r => r.notation);
+    const countsCache = new Map<string, Record<string, number>>();
 
     if (collectionId) {
-      const counted = this.fetchCountsForSort(notations, collectionId);
+      const counted = this.fetchCountsForSort(notations, countsCache, collectionId);
       notations = counted.map(c => c.notation);
     }
 
@@ -329,7 +321,7 @@ export class IconclassDb {
 
     const textCache = new Map<string, string | null>();
     const results = page
-      .map((n) => this.resolveEntry(n, lang, textCache))
+      .map((n) => this.resolveEntry(n, lang, textCache, countsCache))
       .filter((e): e is IconclassEntry => e !== null);
 
     return { prefix, totalResults, results, collections: this._collections };
@@ -396,20 +388,26 @@ export class IconclassDb {
 
   // ─── Internal ─────────────────────────────────────────────────────
 
-  private fetchCountsForSort(notations: string[], collectionId?: string): { notation: string; total: number }[] {
+  /** Fetch counts for sorting. Also populates countsCache for later use by resolveEntry. */
+  private fetchCountsForSort(
+    notations: string[],
+    countsCache: Map<string, Record<string, number>>,
+    collectionId?: string,
+  ): { notation: string; total: number }[] {
     if (!this.stmtGetCollectionCounts) {
-      // No counts DB — return all with zero counts (no filtering possible)
       return collectionId ? [] : notations.map(n => ({ notation: n, total: 0 }));
     }
 
     const results: { notation: string; total: number }[] = [];
     for (const notation of notations) {
+      const counts: Record<string, number> = {};
       let total = 0;
       const countRows = this.stmtGetCollectionCounts.all(notation) as { collection_id: string; count: number }[];
       for (const cr of countRows) {
-        if (collectionId && cr.collection_id !== collectionId) continue;
-        total += cr.count;
+        counts[cr.collection_id] = cr.count;
+        if (!collectionId || cr.collection_id === collectionId) total += cr.count;
       }
+      countsCache.set(notation, counts);
       if (collectionId && total === 0) continue;
       results.push({ notation, total });
     }
@@ -423,7 +421,7 @@ export class IconclassDb {
       .filter((e): e is IconclassEntry => e !== null);
   }
 
-  private resolveEntry(notation: string, lang: string, textCache: Map<string, string | null>): IconclassEntry | null {
+  private resolveEntry(notation: string, lang: string, textCache: Map<string, string | null>, countsCache?: Map<string, Record<string, number>>): IconclassEntry | null {
     if (!this.db) return null;
 
     const row = this.stmtGetNotation.get(notation) as {
@@ -441,11 +439,14 @@ export class IconclassDb {
       text: this.getTextCached(n, lang, textCache) ?? n,
     }));
 
-    const collectionCounts: Record<string, number> = {};
-    if (this.stmtGetCollectionCounts) {
-      const countRows = this.stmtGetCollectionCounts.all(notation) as { collection_id: string; count: number }[];
-      for (const cr of countRows) {
-        collectionCounts[cr.collection_id] = cr.count;
+    let collectionCounts = countsCache?.get(notation);
+    if (!collectionCounts) {
+      collectionCounts = {};
+      if (this.stmtGetCollectionCounts) {
+        const countRows = this.stmtGetCollectionCounts.all(notation) as { collection_id: string; count: number }[];
+        for (const cr of countRows) {
+          collectionCounts[cr.collection_id] = cr.count;
+        }
       }
     }
 

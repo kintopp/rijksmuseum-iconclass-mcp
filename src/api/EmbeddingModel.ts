@@ -1,9 +1,4 @@
-/**
- * Query-time embedding model using @huggingface/transformers (ONNX/WASM).
- *
- * Uses intfloat/multilingual-e5-base by default — a multilingual model (768d)
- * with E5 query/passage prefix conventions.
- */
+export const DEFAULT_MODEL_ID = "Xenova/multilingual-e5-base";
 
 export class EmbeddingModel {
   // Typed as `any` because @huggingface/transformers pipeline() returns
@@ -21,7 +16,7 @@ export class EmbeddingModel {
    * @param modelId   - HuggingFace model ID or local path
    * @param targetDim - MRL truncation target dimension (0 = no truncation).
    */
-  async init(modelId: string = "Xenova/multilingual-e5-base", targetDim = 0): Promise<void> {
+  async init(modelId: string = DEFAULT_MODEL_ID, targetDim = 0): Promise<void> {
     this._modelId = modelId;
     this.targetDim = targetDim;
 

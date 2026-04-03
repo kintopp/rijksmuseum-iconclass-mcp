@@ -1,6 +1,6 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { IconclassDb, type CollectionInfo } from "./api/IconclassDb.js";
+import { IconclassDb } from "./api/IconclassDb.js";
 import { EmbeddingModel } from "./api/EmbeddingModel.js";
 
 // ─── Shared helpers ─────────────────────────────────────────────────

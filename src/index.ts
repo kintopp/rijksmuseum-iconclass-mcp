@@ -9,7 +9,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { IconclassDb } from "./api/IconclassDb.js";
-import { EmbeddingModel } from "./api/EmbeddingModel.js";
+import { EmbeddingModel, DEFAULT_MODEL_ID } from "./api/EmbeddingModel.js";
 import { ensureDb, type DbSpec } from "./utils/db.js";
 import { registerTools } from "./registration.js";
 
@@ -59,7 +59,7 @@ async function initDatabase(): Promise<void> {
 
   if (iconclassDb.embeddingsAvailable) {
     embeddingModel = new EmbeddingModel();
-    const modelId = process.env.EMBEDDING_MODEL_ID ?? "Xenova/multilingual-e5-base";
+    const modelId = process.env.EMBEDDING_MODEL_ID ?? DEFAULT_MODEL_ID;
     const targetDim = iconclassDb.embeddingDimensions;
     await embeddingModel.init(modelId, targetDim);
   }
@@ -113,6 +113,8 @@ async function runStdio(): Promise<void> {
 }
 
 // ─── HTTP mode ──────────────────────────────────────────────────────
+
+let httpServer: import("node:http").Server | undefined;
 
 async function runHttp(): Promise<void> {
   await initDatabase();
@@ -175,8 +177,6 @@ async function runHttp(): Promise<void> {
 }
 
 // ─── Graceful shutdown ──────────────────────────────────────────────
-
-let httpServer: import("node:http").Server | undefined;
 
 function shutdown() {
   console.error("Shutting down...");

@@ -4,12 +4,6 @@ MCP server for [Iconclass](https://iconclass.org) — a hierarchical classificat
 
 The database includes all 1.3 million Iconclass notations — both the 39,802 base concepts and over 1.3 million key-expanded variants that add modifiers like posture, context, or symbolism. Labels and keywords are available in 13 languages, from English and Dutch to Japanese and Chinese. Beyond simple keyword matching, the server supports semantic search using multilingual-e5-base embeddings, so you can search for concepts like "religious suffering" or "domestic animals" and get meaningful results even when the exact words don't appear in the notation text. Collection count overlays let you see at a glance how many artworks in the Rijksmuseum (or any other collection you load) carry a given notation — useful for focusing on subjects that actually appear in a specific collection rather than the full taxonomy. The server speaks both stdio (for Claude Desktop and CLI tools) and HTTP (for claude.ai and web clients).
 
-## What is Iconclass?
-
-Iconclass is a subject classification system designed for art and iconography. It organises subjects hierarchically — from broad categories like "Religion" (1) down to specific scenes like "the crucifixion of Christ" (73D6). Notations encode meaning left-to-right: `73D6` = Bible (7) → New Testament (73) → Passion of Christ (73D) → Crucifixion (73D6).
-
-**Key expansions** add modifiers in parentheses. `25F23` is "beasts of prey"; `25F23(+46)` is "beasts of prey, sleeping". The server covers all 1.3M combinations.
-
 ## Quick start
 
 ### From source
@@ -220,13 +214,13 @@ Other, more minor biases to be aware of: named notations like `11H(JOHN)` embed 
 
 ### Paging defaults and limits
 
-The paging constants were chosen by profiling the actual Iconclass database (1.3M notations) rather than by convention. Key data points:
+The paging constants were chosen by profiling the Iconclass database. Key data points:
 
 **Result sizes.** A resolved Iconclass entry averages ~350 bytes of JSON (median). At the default page size of 25, a typical search response is ~8 KB (~2,300 tokens) — roughly 1% of a 200K-token context window. At the maximum of 50 results, responses reach ~16 KB (~4,600 tokens). Both leave ample room for LLM reasoning.
 
 **Key variant distribution.** 81% of base notations have 25 or fewer key variants, so the default page of 25 captures most notations in a single call. The maximum of 335 matches the largest notation in the database and eliminates pagination entirely — important because each pagination round-trip costs the user several seconds of LLM reasoning time, far more than the ~9 ms the database needs to resolve 335 variants.
 
-**Keywords.** The per-notation keyword limit of 40 matches the observed maximum in the database, so no keywords are truncated. The 99th percentile is 9 keywords; only 705 notations (0.04%) exceed 20. These are concentrated in a few keyword-heavy base notations — notably `46C1313` ("equestrian statue", 28 keywords listing famous statues by name), `23K` ("labours of the months", 30 keywords), and saint notations like `11H(THOMAS AQUINAS)` whose long attribute lists push into the high 20s. Key-expanded variants of these inherit the base keywords and add modifier keywords on top, reaching up to 40.
+**Keywords.** The per-notation keyword limit of 40 matches the observed maximum in the database, so no keywords are truncated. The 99th percentile is 9 keywords; only 705 notations (0.04%) exceed 20. These are concentrated in a few keyword-heavy base notations — notably `46C1313` ("equestrian statue", 28 keywords listing famous statues by name), `23K` ("labours of the months", 30 keywords), and saint notations like `11H(THOMAS AQUINAS)`. Key-expanded variants of these inherit the base keywords and add modifier keywords on top, reaching up to 40.
 
 **Collection count sparsity.** Only 1.8% of notations have artwork counts (24K of 1.3M). The `collectionCounts` field is empty for the vast majority of entries, adding negligible overhead. The `onlyWithArtworks` and `collectionId` filters are aggressive narrowers — useful when the caller only needs notations that appear in a specific collection.
 

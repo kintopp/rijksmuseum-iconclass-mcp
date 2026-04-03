@@ -54,8 +54,9 @@ semanticQuery: "domestic animals" → top matches by embedding similarity
 
 | Parameter | Description |
 |-----------|-------------|
-| `query` | FTS5 keyword search (exact word match, 13 languages) |
+| `query` | FTS keyword search (13 languages, multi-word fallback) |
 | `semanticQuery` | Semantic concept search (finds by meaning, not exact words) |
+| `parentNotation` | Restrict results to a subtree (e.g. `"11F"` for Virgin Mary) |
 | `onlyWithArtworks` | Filter to notations with artworks in any loaded collection |
 | `collectionId` | Filter to a specific collection (e.g. `"rijksmuseum"`) |
 | `lang` | Preferred language for labels (default: `en`) |
@@ -65,10 +66,10 @@ Provide exactly one of `query` or `semanticQuery`.
 
 ### `browse` — navigate the hierarchy
 
-Explore a notation's place in the tree: path, children, cross-references, key variants.
+Explore a notation's place in the tree: path, children (expandable to depth 1–3), cross-references, key variants.
 
 ```
-notation: "73D"  → Passion of Christ, 9 children, cross-ref to 7 (Bible)
+notation: "73D", depth: 2  → Passion of Christ, children + grandchildren
 notation: "25F23", includeKeys: true  → 204 key-expanded variants
 ```
 
@@ -214,19 +215,51 @@ In practice, this may rarely matter — semantic search is a fallback for when t
 
 Other, more minor biases to be aware of: named notations like `11H(JOHN)` embed the name itself, so saints or figures with common English names may rank slightly higher than those with non-English names; the composite text mixes English and Dutch keywords, which can give a small boost to notations that happen to have Dutch keywords matching a query; and structural placeholder notations like `25F23(...)` ("beasts of prey, with NAME") sit in a generic part of embedding space and can surface as top results for broad queries even though they are not real subject entries.
 
-### Paging defaults and limits
+### Limits, defaults, and response sizing
 
-The paging constants were chosen by profiling the Iconclass database. Key data points:
+The constants below were chosen by profiling the Iconclass database, balancing response size (protecting the LLM's context window) against round-trip overhead (each tool call costs several seconds of LLM reasoning time).
 
-**Result sizes.** A resolved Iconclass entry averages ~350 bytes of JSON (median). At the default page size of 25, a typical search response is ~8 KB (~2,300 tokens) — roughly 1% of a 200K-token context window. At the maximum of 50 results, responses reach ~16 KB (~4,600 tokens). Both leave ample room for LLM reasoning.
+#### Result pages
 
-**Key variant distribution.** 81% of base notations have 25 or fewer key variants, so the default page of 25 captures most notations in a single call. The maximum of 335 matches the largest notation in the database and eliminates pagination entirely — important because each pagination round-trip costs the user several seconds of LLM reasoning time, far more than the ~9 ms the database needs to resolve 335 variants.
+A resolved Iconclass entry averages ~350 bytes of JSON (median). At the default page size of 25, a typical search response is ~8 KB (~2,300 tokens) — roughly 1% of a 200K-token context window. At the maximum of 50 results, responses reach ~16 KB (~4,600 tokens). Both leave ample room for LLM reasoning.
 
-**Keywords.** The per-notation keyword limit of 40 matches the observed maximum in the database, so no keywords are truncated. The 99th percentile is 9 keywords; only 705 notations (0.04%) exceed 20. These are concentrated in a few keyword-heavy base notations — notably `46C1313` ("equestrian statue", 28 keywords listing famous statues by name), `23K` ("labours of the months", 30 keywords), and saint notations like `11H(THOMAS AQUINAS)`. Key-expanded variants of these inherit the base keywords and add modifier keywords on top, reaching up to 40.
+FTS queries return anywhere from ~800 unique notations ("crucifixion") to ~30,000 ("portrait"). Results are sorted by total collection count so the most relevant notations appear first regardless of page size. The fixed cost of the FTS scan dominates — returning 10 or 50 results takes roughly the same time.
 
-**Collection count sparsity.** Only 1.8% of notations have artwork counts (24K of 1.3M). The `collectionCounts` field is empty for the vast majority of entries, adding negligible overhead. The `onlyWithArtworks` and `collectionId` filters are aggressive narrowers — useful when the caller only needs notations that appear in a specific collection.
+#### Browse depth and subtree caps
 
-**FTS result sets.** Queries return anywhere from ~800 unique notations ("crucifixion") to ~30,000 ("portrait"). Results are sorted by total collection count so the most relevant notations appear first regardless of page size. The fixed cost of the FTS scan dominates — returning 10 or 50 results takes roughly the same time.
+The `browse` tool supports `depth` 1–3 for recursive child expansion. The Iconclass tree has a skewed fanout: the median node has 0 children (leaf), P95 is 6, but the widest node has 183 (`11H(...)`, saints by name). Subtree sizes at each depth level vary dramatically:
+
+| Notation | d+1 | d+2 | d+3 |
+|----------|-----|-----|-----|
+| `73D82` (road to Calvary) | 1 | 10 | 11 |
+| `25F` (animals) | 9 | 46 | 85 |
+| `11H` (saints) | 1 | 192 | 1,837 |
+
+To prevent wide branches from flooding the context window, two caps apply:
+- **Per-parent cap** of 25 children — wide branches self-document via `totalChildren` count vs entries shown
+- **Total subtree cap** of 250 entries — a hard safety net across all depth levels
+
+At ~350 bytes per entry, a full 250-entry subtree is ~85 KB (~25K tokens) — substantial but bounded. Narrow branches (the common case) are returned complete with no truncation.
+
+#### Key variant distribution
+
+81% of base notations have 25 or fewer key variants, so the default page of 25 captures most notations in a single call. The maximum of 335 matches the largest notation in the database and eliminates pagination entirely — important because each pagination round-trip costs the user several seconds of LLM reasoning time, far more than the ~9 ms the database needs to resolve 335 variants.
+
+#### Resolve batch limit
+
+The resolve tool accepts up to 25 notations per call. This is intentionally conservative — a 25-entry resolve response is ~8 KB, and the SKILL.md coaches LLMs to "use search for discovery, resolve only for the 3–5 you need full metadata on."
+
+#### Keywords
+
+The per-notation keyword limit of 40 matches the observed maximum in the database, so no keywords are truncated. The 99th percentile is 9 keywords; only 705 notations (0.04%) exceed 20. These are concentrated in a few keyword-heavy base notations — notably `46C1313` ("equestrian statue", 28 keywords listing famous statues by name), `23K` ("labours of the months", 30 keywords), and saint notations like `11H(THOMAS AQUINAS)`. Key-expanded variants of these inherit the base keywords and add modifier keywords on top, reaching up to 40.
+
+#### Collection count sparsity
+
+Only 1.8% of notations have artwork counts (24K of 1.3M). The `collectionCounts` field is empty for the vast majority of entries, adding negligible overhead. The `onlyWithArtworks` and `collectionId` filters are aggressive narrowers — useful when the caller only needs notations that appear in a specific collection.
+
+#### FTS multi-word fallback
+
+Multi-word queries try phrase match first (adjacent words, high precision), then fall back to AND-ed individual terms if the phrase returns zero results. This adds at most two extra FTS queries on the zero-result path — negligible given sub-millisecond FTS query times on the mmap'd database.
 
 ## License
 

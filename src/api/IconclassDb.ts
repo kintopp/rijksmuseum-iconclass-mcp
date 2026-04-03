@@ -513,7 +513,7 @@ export class IconclassDb {
     for (const notation of notations) {
       const counts = countsCache.get(notation);
       if (!counts) {
-        if (!collectionId) results.push({ notation, total: 0 });
+        if (!collectionId && !onlyWithArtworks) results.push({ notation, total: 0 });
         continue;
       }
       let total = 0;

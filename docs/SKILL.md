@@ -47,7 +47,7 @@ Iconclass is a retrieval tool, not a descriptive language. A notation's meaning 
 
 The keyword search (`query`) uses FTS5 across labels and keywords in all 13 languages. Understanding its behaviour avoids wasted tool calls.
 
-**Word matching is exact — no stemming.** "crucifixion" works, "crucified" does not. "odour" and "odor" are separate words. Always use base noun forms.
+**Inflected forms often work** because the Iconclass keyword data includes variants — "crucified" finds "crucifixion" (675 matches). But **spelling variants do not** — "odour" and "odor" are separate words and won't cross-match. When in doubt, try both spellings or fall back to `semanticQuery`.
 
 **Multi-word queries** try phrase match first (adjacent words), then fall back to AND-ed individual terms if the phrase returns zero results. So "Marriage at Cana" will find notations containing both "Marriage" and "Cana" even if they're not adjacent.
 
@@ -201,7 +201,6 @@ Multiple codes AND-combine on the collection server. Check `collectionCounts` he
 
 | Issue | Workaround |
 |---|---|
-| No stemming — "crucified" misses "crucifixion" | Use base noun forms. Fall back to `semanticQuery` for conceptual matching. |
 | British/American spelling — "odour" vs "odor" | Try both spellings. `semanticQuery` handles this automatically. |
 | Wide branches truncated at 25 per parent | Use `search_prefix` to enumerate all notations, or paginate with `offset`. |
 | Resolve batch limit of 25 | Use `search` for discovery (returns summary), `resolve` only for the 3-5 notations you need full metadata on. |

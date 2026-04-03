@@ -141,7 +141,7 @@ export function registerTools(
         "Two modes (provide exactly one of query or semanticQuery):\n" +
         "• query — FTS keyword search across labels and keywords in all 13 languages. " +
         "Multi-word queries try phrase match first, then individual terms (AND). " +
-        "No stemming: use base noun forms ('crucifixion' not 'crucified'). " +
+        "Inflected forms often work, but spelling variants (odour/odor) do not. " +
         "Use parentNotation to restrict results to a subtree.\n" +
         "• semanticQuery — find notations by meaning (e.g. 'domestic animals' finds dogs, cats, horses)" +
         (semanticAvailable ? "" : " [currently unavailable — embeddings not loaded]") + "\n\n" +
@@ -151,7 +151,8 @@ export function registerTools(
         query: optStr()
           .describe(
             "Text search across Iconclass labels and keywords. " +
-            "Exact word matching (no stemming): 'crucifixion' won't match 'crucified'."
+            "Exact word matching — inflected forms may work ('crucified' finds 'crucifixion') " +
+            "but spelling variants do not ('odour' won't match 'odor'). Try semanticQuery for fuzzy matching."
           ),
         semanticQuery: optStr()
           .describe(

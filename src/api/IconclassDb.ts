@@ -71,18 +71,6 @@ function langFallbacks(lang: string): string[] {
   return langs;
 }
 
-function hasColumn(db: DatabaseType, table: string, column: string): boolean {
-  const cols = db.pragma(`table_info(${table})`) as { name: string }[];
-  return cols.some(c => c.name === column);
-}
-
-function tableExists(db: DatabaseType, table: string): boolean {
-  const row = db.prepare(
-    "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?"
-  ).get(table);
-  return row !== undefined;
-}
-
 // ─── IconclassDb ─────────────────────────────────────────────────────
 
 export class IconclassDb {
@@ -90,7 +78,7 @@ export class IconclassDb {
   private _hasEmbeddings = false;
   private _embeddingDimensions = 0;
   private _collections: CollectionInfo[] = [];
-  private _hasKeyColumns = false;
+  private _hasCounts = false;
 
   private stmtTextFts!: Statement;
   private stmtKwFts!: Statement;
@@ -100,8 +88,8 @@ export class IconclassDb {
   private stmtGetKeywords!: Statement;
   private stmtGetKeywordsAny!: Statement;
   private stmtPrefixSearch!: Statement;
+  private stmtKeyVariants!: Statement;
   private stmtGetCollectionCounts: Statement | null = null;
-  private stmtKeyVariants: Statement | null = null;
   private stmtQuantize: Statement | null = null;
   private stmtKnn: Statement | null = null;
   private stmtFilteredKnn: Statement | null = null;
@@ -115,38 +103,30 @@ export class IconclassDb {
 
     try {
       this.db = new Database(dbPath, { readonly: true });
-      this.db.pragma("mmap_size = 1073741824");
+      this.db.pragma("mmap_size = 4294967296"); // 4 GB — covers full DB + growth headroom
       const count = (this.db.prepare("SELECT COUNT(*) as n FROM notations").get() as { n: number }).n;
 
-      // Schema detection
-      this._hasKeyColumns = hasColumn(this.db, "notations", "base_notation");
-      const hasCollectionCounts = tableExists(this.db, "collection_counts");
-      const hasRijksCount = hasColumn(this.db, "notations", "rijks_count");
-
-      // Collection info
-      if (hasCollectionCounts && tableExists(this.db, "collection_info")) {
-        const rows = this.db.prepare("SELECT collection_id, label, counts_as_of, total_artworks FROM collection_info").all() as {
-          collection_id: string; label: string; counts_as_of: string | null; total_artworks: number;
-        }[];
-        this._collections = rows.map(r => ({
-          collectionId: r.collection_id,
-          label: r.label,
-          countsAsOf: r.counts_as_of,
-          totalArtworks: r.total_artworks,
-        }));
-      } else if (hasRijksCount) {
-        // Legacy schema: synthesize collection info from version_info built_at
-        let countsAsOf: string | null = null;
+      // Attach sidecar counts DB if available
+      const countsPath = resolveDbPath("COUNTS_DB_PATH", "iconclass-counts.db");
+      if (countsPath) {
         try {
-          const row = this.db.prepare("SELECT value FROM version_info WHERE key = 'built_at'").get() as { value: string } | undefined;
-          countsAsOf = row ? row.value.slice(0, 10) : null;
-        } catch { /* version_info may not exist */ }
-        this._collections = [{
-          collectionId: "rijksmuseum",
-          label: "Rijksmuseum",
-          countsAsOf,
-          totalArtworks: 0,
-        }];
+          this.db.exec(`ATTACH DATABASE '${countsPath}' AS counts`);
+          this.db.prepare("SELECT 1 FROM counts.collection_counts LIMIT 1").get();
+          this._hasCounts = true;
+
+          const rows = this.db.prepare("SELECT collection_id, label, counts_as_of, total_artworks FROM counts.collection_info").all() as {
+            collection_id: string; label: string; counts_as_of: string | null; total_artworks: number;
+          }[];
+          this._collections = rows.map(r => ({
+            collectionId: r.collection_id,
+            label: r.label,
+            countsAsOf: r.counts_as_of,
+            totalArtworks: r.total_artworks,
+          }));
+          console.error(`  Counts DB attached: ${countsPath} (${this._collections.length} collections)`);
+        } catch (err) {
+          console.error(`  Counts DB not available: ${err instanceof Error ? err.message : err}`);
+        }
       }
 
       // Embeddings
@@ -154,7 +134,7 @@ export class IconclassDb {
         const dimRow = this.db.prepare(
           "SELECT value FROM version_info WHERE key = 'embedding_dimensions'"
         ).get() as { value: string } | undefined;
-        this._embeddingDimensions = dimRow ? parseInt(dimRow.value, 10) : 384;
+        this._embeddingDimensions = dimRow ? parseInt(dimRow.value, 10) : 768;
 
         this.db.prepare("SELECT 1 FROM iconclass_embeddings LIMIT 1").get();
         const sqliteVec = require("sqlite-vec");
@@ -169,21 +149,12 @@ export class IconclassDb {
           ORDER BY distance
         `);
 
-        if (hasCollectionCounts) {
+        if (this._hasCounts) {
           this.stmtFilteredKnn = this.db.prepare(`
             SELECT ie.notation,
                    vec_distance_cosine(vec_int8(ie.embedding), vec_int8(?)) as distance
             FROM iconclass_embeddings ie
-            WHERE ie.notation IN (SELECT DISTINCT notation FROM collection_counts WHERE count > 0)
-            ORDER BY distance LIMIT ?
-          `);
-        } else if (hasRijksCount) {
-          this.stmtFilteredKnn = this.db.prepare(`
-            SELECT ie.notation,
-                   vec_distance_cosine(vec_int8(ie.embedding), vec_int8(?)) as distance
-            FROM iconclass_embeddings ie
-            JOIN notations n ON ie.notation = n.notation
-            WHERE n.rijks_count > 0
+            WHERE ie.notation IN (SELECT DISTINCT notation FROM counts.collection_counts WHERE count > 0)
             ORDER BY distance LIMIT ?
           `);
         }
@@ -206,21 +177,9 @@ export class IconclassDb {
          FROM keywords k
          WHERE k.rowid IN (SELECT rowid FROM keywords_fts WHERE keywords_fts MATCH ?)`
       );
-
-      if (this._hasKeyColumns) {
-        this.stmtGetNotation = this.db.prepare(
-          "SELECT notation, path, children, refs, base_notation, key_id, is_key_expanded FROM notations WHERE notation = ?"
-        );
-      } else if (hasRijksCount) {
-        this.stmtGetNotation = this.db.prepare(
-          "SELECT notation, path, children, refs, rijks_count FROM notations WHERE notation = ?"
-        );
-      } else {
-        this.stmtGetNotation = this.db.prepare(
-          "SELECT notation, path, children, refs FROM notations WHERE notation = ?"
-        );
-      }
-
+      this.stmtGetNotation = this.db.prepare(
+        "SELECT notation, path, children, refs, base_notation, key_id, is_key_expanded FROM notations WHERE notation = ?"
+      );
       this.stmtGetText = this.db.prepare(
         "SELECT text FROM texts WHERE notation = ? AND lang = ? LIMIT 1"
       );
@@ -236,20 +195,17 @@ export class IconclassDb {
       this.stmtPrefixSearch = this.db.prepare(
         "SELECT notation FROM notations WHERE notation LIKE ? ORDER BY notation LIMIT ? OFFSET ?"
       );
+      this.stmtKeyVariants = this.db.prepare(
+        "SELECT notation FROM notations WHERE base_notation = ? ORDER BY notation"
+      );
 
-      if (hasCollectionCounts) {
+      if (this._hasCounts) {
         this.stmtGetCollectionCounts = this.db.prepare(
-          "SELECT collection_id, count FROM collection_counts WHERE notation = ?"
-        );
-      }
-      if (this._hasKeyColumns) {
-        this.stmtKeyVariants = this.db.prepare(
-          "SELECT notation FROM notations WHERE base_notation = ? ORDER BY notation"
+          "SELECT collection_id, count FROM counts.collection_counts WHERE notation = ?"
         );
       }
 
-      const schemaLabel = this._hasKeyColumns ? "expanded" : "legacy";
-      console.error(`Iconclass DB loaded: ${dbPath} (${count.toLocaleString()} notations, ${schemaLabel} schema, ${this._collections.length} collection overlays)`);
+      console.error(`Iconclass DB loaded: ${dbPath} (${count.toLocaleString()} notations, ${this._collections.length} collection overlays)`);
     } catch (err) {
       console.error(`Failed to open Iconclass DB: ${err instanceof Error ? err.message : err}`);
       this.db = null;
@@ -273,7 +229,7 @@ export class IconclassDb {
   }
 
   get hasKeyExpansion(): boolean {
-    return this._hasKeyColumns;
+    return this.stmtKeyVariants != null;
   }
 
   // ─── Search (FTS) ─────────────────────────────────────────────────
@@ -294,10 +250,8 @@ export class IconclassDb {
 
     if (notationSet.size === 0) return empty;
 
-    // Fetch counts cheaply for sorting, then resolve only the page
     const countedNotations = this.fetchCountsForSort([...notationSet], collectionId);
 
-    // Sort by total count DESC, notation ASC
     countedNotations.sort((a, b) => {
       if (b.total !== a.total) return b.total - a.total;
       return a.notation.localeCompare(b.notation);
@@ -306,7 +260,6 @@ export class IconclassDb {
     const totalResults = countedNotations.length;
     const page = countedNotations.slice(offset, offset + maxResults);
 
-    // Only resolve full entries for the page
     const textCache = new Map<string, string | null>();
     const results = page
       .map(({ notation }) => this.resolveEntry(notation, lang, textCache))
@@ -385,7 +338,7 @@ export class IconclassDb {
   // ─── Key expansion ────────────────────────────────────────────────
 
   expandKeys(notation: string, lang: string = "en"): IconclassKeyExpansionResult | null {
-    if (!this.db || !this.stmtKeyVariants) return null;
+    if (!this.db) return null;
 
     const textCache = new Map<string, string | null>();
     const baseEntry = this.resolveEntry(notation, lang, textCache);
@@ -443,32 +396,27 @@ export class IconclassDb {
 
   // ─── Internal ─────────────────────────────────────────────────────
 
-  /** Fetch total collection counts for a list of notations (cheap — no full entry resolution). */
   private fetchCountsForSort(notations: string[], collectionId?: string): { notation: string; total: number }[] {
+    if (!this.stmtGetCollectionCounts) {
+      // No counts DB — return all with zero counts (no filtering possible)
+      return collectionId ? [] : notations.map(n => ({ notation: n, total: 0 }));
+    }
+
     const results: { notation: string; total: number }[] = [];
     for (const notation of notations) {
       let total = 0;
-      if (this.stmtGetCollectionCounts) {
-        const countRows = this.stmtGetCollectionCounts.all(notation) as { collection_id: string; count: number }[];
-        for (const cr of countRows) {
-          if (collectionId && cr.collection_id !== collectionId) continue;
-          total += cr.count;
-        }
-      } else {
-        // Legacy: rijks_count is on the notation row
-        const row = this.stmtGetNotation.get(notation) as Record<string, unknown> | undefined;
-        if (row && "rijks_count" in row && typeof row.rijks_count === "number") {
-          total = row.rijks_count;
-        }
+      const countRows = this.stmtGetCollectionCounts.all(notation) as { collection_id: string; count: number }[];
+      for (const cr of countRows) {
+        if (collectionId && cr.collection_id !== collectionId) continue;
+        total += cr.count;
       }
-      if (collectionId && total === 0) continue; // filter out zero-count entries
+      if (collectionId && total === 0) continue;
       results.push({ notation, total });
     }
     return results;
   }
 
   private resolveKeyVariants(notation: string, lang: string, textCache: Map<string, string | null>): IconclassEntry[] {
-    if (!this.stmtKeyVariants) return [];
     const keyRows = this.stmtKeyVariants.all(notation) as { notation: string }[];
     return keyRows
       .map((r) => this.resolveEntry(r.notation, lang, textCache))
@@ -478,12 +426,15 @@ export class IconclassDb {
   private resolveEntry(notation: string, lang: string, textCache: Map<string, string | null>): IconclassEntry | null {
     if (!this.db) return null;
 
-    const row = this.stmtGetNotation.get(notation) as Record<string, unknown> | undefined;
+    const row = this.stmtGetNotation.get(notation) as {
+      notation: string; path: string; children: string; refs: string;
+      base_notation: string | null; key_id: string | null; is_key_expanded: number;
+    } | undefined;
     if (!row) return null;
 
-    const pathNotations: string[] = JSON.parse(row.path as string);
-    const children: string[] = JSON.parse(row.children as string);
-    const refs: string[] = JSON.parse(row.refs as string);
+    const pathNotations: string[] = JSON.parse(row.path);
+    const children: string[] = JSON.parse(row.children);
+    const refs: string[] = JSON.parse(row.refs);
 
     const pathEntries = pathNotations.map((n) => ({
       notation: n,
@@ -496,27 +447,22 @@ export class IconclassDb {
       for (const cr of countRows) {
         collectionCounts[cr.collection_id] = cr.count;
       }
-    } else if ("rijks_count" in row && typeof row.rijks_count === "number") {
-      if (row.rijks_count > 0) {
-        collectionCounts["rijksmuseum"] = row.rijks_count;
-      }
     }
 
     return {
-      notation: row.notation as string,
-      text: this.getTextCached(row.notation as string, lang, textCache) ?? (row.notation as string),
+      notation: row.notation,
+      text: this.getTextCached(row.notation, lang, textCache) ?? row.notation,
       path: pathEntries,
       children,
       refs,
-      keywords: this.getKeywords(row.notation as string, lang),
-      isKeyExpanded: this._hasKeyColumns ? (row.is_key_expanded as number) === 1 : false,
-      baseNotation: this._hasKeyColumns ? (row.base_notation as string | null) : null,
-      keyId: this._hasKeyColumns ? (row.key_id as string | null) : null,
+      keywords: this.getKeywords(row.notation, lang),
+      isKeyExpanded: row.is_key_expanded === 1,
+      baseNotation: row.base_notation,
+      keyId: row.key_id,
       collectionCounts,
     };
   }
 
-  /** getText with per-request cache — path ancestors repeat across sibling results. */
   private getTextCached(notation: string, lang: string, cache: Map<string, string | null>): string | null {
     const key = `${notation}:${lang}`;
     if (cache.has(key)) return cache.get(key)!;

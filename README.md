@@ -113,17 +113,17 @@ This two-server workflow separates the classification vocabulary (this server) f
 
 ## Collection counts
 
-Artwork counts per notation are loaded as **collection overlays** — CSV files mapping notations to counts. The Rijksmuseum overlay ships by default (24,066 notations with artworks).
+Artwork counts per notation live in a separate **sidecar database** (`iconclass-counts.db`, ~700 KB) so they can be updated independently of the main 3 GB notation/text/embedding database. The Rijksmuseum overlay ships by default (24,066 notations with artworks).
 
-To add another collection:
+To add or update collections, rebuild only the sidecar — no need to touch the main DB:
 
 ```bash
 # Export counts from your collection database
 # CSV format: notation,count (one per line)
 python scripts/export-collection-counts.py --vocab-db path/to/vocab.db --output data/my-museum-counts.csv
 
-# Rebuild the DB with multiple overlays
-python scripts/build-iconclass-db.py \
+# Build the counts sidecar with multiple overlays
+python scripts/build-counts-db.py \
   --counts-csv data/rijksmuseum-counts.csv \
   --counts-csv data/my-museum-counts.csv
 ```
@@ -141,10 +141,13 @@ git clone https://github.com/iconclass/data /tmp/iconclass-data
 # Install Python dependencies
 pip install iconclass
 
-# Build (takes ~6 minutes)
+# Build the main DB (takes ~6 minutes)
 python scripts/build-iconclass-db.py \
   --data-dir /tmp/iconclass-data \
-  --output data/iconclass.db \
+  --output data/iconclass.db
+
+# Build the counts sidecar (~instant)
+python scripts/build-counts-db.py \
   --counts-csv data/rijksmuseum-counts.csv
 ```
 
@@ -174,8 +177,10 @@ This embeds ~40K base notations using `intfloat/multilingual-e5-base` (768d, int
 | Variable | Default | Purpose |
 |----------|---------|---------|
 | `PORT` | — | Set to enable HTTP mode (e.g. `3000`) |
-| `ICONCLASS_DB_PATH` | `data/iconclass.db` | Override database location |
-| `ICONCLASS_DB_URL` | — | URL to download DB if missing (supports `.gz`) |
+| `ICONCLASS_DB_PATH` | `data/iconclass.db` | Main database (notations, texts, keywords, embeddings) |
+| `ICONCLASS_DB_URL` | — | URL to download main DB if missing (supports `.gz`) |
+| `COUNTS_DB_PATH` | `data/iconclass-counts.db` | Sidecar database (collection counts) |
+| `COUNTS_DB_URL` | — | URL to download counts DB if missing (supports `.gz`) |
 | `EMBEDDING_MODEL_ID` | `Xenova/multilingual-e5-base` | HuggingFace model for query embedding |
 | `HF_HOME` | — | HuggingFace cache directory |
 | `ALLOWED_ORIGINS` | `*` | CORS origins for HTTP mode |

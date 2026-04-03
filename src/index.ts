@@ -39,6 +39,14 @@ const ICONCLASS_DB_SPEC: DbSpec = {
   validationQuery: "SELECT 1 FROM notations LIMIT 1",
 };
 
+const COUNTS_DB_SPEC: DbSpec = {
+  name: "Counts",
+  pathEnvVar: "COUNTS_DB_PATH",
+  urlEnvVar: "COUNTS_DB_URL",
+  defaultFile: "iconclass-counts.db",
+  validationQuery: "SELECT 1 FROM collection_counts LIMIT 1",
+};
+
 // ─── Shared instances ───────────────────────────────────────────────
 
 let iconclassDb: IconclassDb | null = null;
@@ -46,6 +54,7 @@ let embeddingModel: EmbeddingModel | null = null;
 
 async function initDatabase(): Promise<void> {
   await ensureDb(ICONCLASS_DB_SPEC);
+  await ensureDb(COUNTS_DB_SPEC);
   iconclassDb = new IconclassDb();
 
   if (iconclassDb.embeddingsAvailable) {

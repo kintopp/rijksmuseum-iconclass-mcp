@@ -16,7 +16,6 @@ Output:
 """
 
 import argparse
-import csv
 import gzip
 import json
 import os
@@ -139,7 +138,7 @@ def parse_keyword_files(kw_dir: str, langs: set[str]) -> dict[str, dict[str, lis
 
 # ─── Build ───────────────────────────────────────────────────────────
 
-def build(data_dir: str, output_path: str, count_csvs: list[str]):
+def build(data_dir: str, output_path: str):
     start = time.time()
 
     os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
@@ -449,37 +448,8 @@ def build(data_dir: str, output_path: str, count_csvs: list[str]):
     conn.commit()
     print("  Built keywords_fts index")
 
-    # ── Phase 4: Collection counts (optional CSV overlays) ────────
-    print("Phase 4: Collection counts...")
-
-    conn.execute("""
-        CREATE TABLE collection_counts (
-            collection_id TEXT NOT NULL,
-            notation      TEXT NOT NULL,
-            count         INTEGER NOT NULL,
-            PRIMARY KEY (collection_id, notation)
-        ) WITHOUT ROWID
-    """)
-
-    conn.execute("""
-        CREATE TABLE collection_info (
-            collection_id  TEXT PRIMARY KEY,
-            label          TEXT NOT NULL,
-            counts_as_of   TEXT,
-            total_artworks INTEGER DEFAULT 0
-        )
-    """)
-
-    if count_csvs:
-        for csv_path in count_csvs:
-            load_collection_counts(conn, csv_path)
-    else:
-        print("  No collection count CSVs provided — skipping")
-
-    conn.commit()
-
-    # ── Phase 5: Version info + VACUUM ────────────────────────────
-    print("Phase 5: Finalizing...")
+    # ── Phase 4: Version info + VACUUM ─────────────────────────────
+    print("Phase 4: Finalizing...")
 
     conn.execute("""
         CREATE TABLE version_info (key TEXT PRIMARY KEY, value TEXT)
@@ -496,7 +466,7 @@ def build(data_dir: str, output_path: str, count_csvs: list[str]):
         ("key_expanded_count", str(key_count)),
         ("text_languages", ",".join(sorted(ALL_TEXT_LANGS))),
         ("keyword_languages", ",".join(sorted(ALL_KW_LANGS | LIBRARY_LANGS))),
-        ("schema_version", "2"),  # v2 = expanded schema with key columns + collection_counts
+        ("schema_version", "3"),  # v3 = counts moved to sidecar DB
     ])
     conn.commit()
 
@@ -513,53 +483,6 @@ def build(data_dir: str, output_path: str, count_csvs: list[str]):
     print(f"  Iconclass commit: {iconclass_commit[:7]}")
 
 
-# ─── Collection count loading ────────────────────────────────────────
-
-def load_collection_counts(conn: sqlite3.Connection, csv_path: str):
-    """Load a collection count CSV: notation,count (with optional header).
-    Collection ID and label are derived from the filename."""
-    if not os.path.exists(csv_path):
-        print(f"  Warning: {csv_path} not found — skipping")
-        return
-
-    # Derive collection_id from filename: "rijksmuseum-counts.csv" → "rijksmuseum"
-    basename = os.path.basename(csv_path)
-    collection_id = basename.replace("-counts.csv", "").replace("_counts.csv", "").replace(".csv", "")
-    label = collection_id.replace("-", " ").replace("_", " ").title()
-
-    print(f"  Loading counts for '{collection_id}' from {csv_path}...")
-
-    rows: list[tuple[str, str, int]] = []
-    total_artworks = 0
-    with open(csv_path, "r", encoding="utf-8") as f:
-        reader = csv.reader(f)
-        for i, row in enumerate(reader):
-            if len(row) < 2:
-                continue
-            notation, count_str = row[0].strip(), row[1].strip()
-            # Skip header row
-            if i == 0 and not count_str.isdigit():
-                continue
-            try:
-                count = int(count_str)
-                rows.append((collection_id, notation, count))
-                total_artworks = max(total_artworks, count)  # approximate
-            except ValueError:
-                continue
-
-    conn.executemany(
-        "INSERT OR REPLACE INTO collection_counts VALUES (?, ?, ?)",
-        rows,
-    )
-
-    # Insert/update collection info
-    conn.execute(
-        "INSERT OR REPLACE INTO collection_info VALUES (?, ?, ?, ?)",
-        (collection_id, label, datetime.now(timezone.utc).strftime("%Y-%m-%d"), 0),
-    )
-
-    matched = len(rows)
-    print(f"  Loaded {matched:,} notation counts for '{collection_id}'")
 
 
 # ─── Helpers ─────────────────────────────────────────────────────────
@@ -593,10 +516,6 @@ if __name__ == "__main__":
         "--output", default="data/iconclass.db",
         help="Output path for iconclass.db",
     )
-    parser.add_argument(
-        "--counts-csv", action="append", default=[],
-        help="Collection count CSV file (notation,count). Can be specified multiple times.",
-    )
     args = parser.parse_args()
 
     # Verify data dir exists
@@ -612,4 +531,4 @@ if __name__ == "__main__":
         print("Error: 'iconclass' library not installed. Run: pip install iconclass", file=sys.stderr)
         sys.exit(1)
 
-    build(args.data_dir, args.output, args.counts_csv)
+    build(args.data_dir, args.output)

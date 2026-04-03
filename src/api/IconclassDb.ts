@@ -94,6 +94,7 @@ export class IconclassDb {
   private stmtGetKeywords!: Statement;
   private stmtGetKeywordsAny!: Statement;
   private stmtPrefixSearch!: Statement;
+  private stmtPrefixCount!: Statement;
   private stmtKeyVariantsPage!: Statement;
   private stmtKeyVariantsCount!: Statement;
   private stmtGetCollectionCounts: Statement | null = null;
@@ -199,6 +200,9 @@ export class IconclassDb {
       );
       this.stmtPrefixSearch = this.db.prepare(
         "SELECT notation FROM notations WHERE notation LIKE ? ORDER BY notation LIMIT ? OFFSET ?"
+      );
+      this.stmtPrefixCount = this.db.prepare(
+        "SELECT COUNT(*) as n FROM notations WHERE notation LIKE ?"
       );
       this.stmtKeyVariantsPage = this.db.prepare(
         "SELECT notation FROM notations WHERE base_notation = ? ORDER BY notation LIMIT ? OFFSET ?"
@@ -371,23 +375,34 @@ export class IconclassDb {
     const clean = prefix.replace(/[^a-zA-Z0-9()+]/g, "");
     if (!clean) return empty;
 
-    const fetchLimit = collectionId ? maxResults * 5 + offset : maxResults + offset;
-    const rows = this.stmtPrefixSearch.all(`${clean}%`, fetchLimit, 0) as { notation: string }[];
-
-    let notations = rows.map(r => r.notation);
+    const likePattern = `${clean}%`;
     const countsCache = new Map<string, Record<string, number>>();
 
     if (collectionId) {
-      const counted = this.fetchCountsForSort(notations, countsCache, collectionId);
-      notations = counted.map(c => c.notation);
+      // Collection filter: fetch ALL matching notations, filter, then paginate
+      const allRows = this.stmtPrefixSearch.all(likePattern, -1, 0) as { notation: string }[];
+      const allNotations = allRows.map(r => r.notation);
+      const counted = this.fetchCountsForSort(allNotations, countsCache, collectionId);
+      const filteredNotations = counted.map(c => c.notation).sort();
+
+      const totalResults = filteredNotations.length;
+      const page = filteredNotations.slice(offset, offset + maxResults);
+
+      const textCache = new Map<string, string | null>();
+      const results = page
+        .map((n) => this.resolveEntry(n, lang, textCache, countsCache))
+        .filter((e): e is IconclassEntry => e !== null);
+
+      return { prefix, totalResults, results, collections: this._collections };
     }
 
-    const totalResults = notations.length;
-    const page = notations.slice(offset, offset + maxResults);
+    // No collection filter: use SQL COUNT + LIMIT/OFFSET directly
+    const totalResults = (this.stmtPrefixCount.get(likePattern) as { n: number }).n;
+    const rows = this.stmtPrefixSearch.all(likePattern, maxResults, offset) as { notation: string }[];
 
     const textCache = new Map<string, string | null>();
-    const results = page
-      .map((n) => this.resolveEntry(n, lang, textCache, countsCache))
+    const results = rows
+      .map((r) => this.resolveEntry(r.notation, lang, textCache, countsCache))
       .filter((e): e is IconclassEntry => e !== null);
 
     return { prefix, totalResults, results, collections: this._collections };
@@ -429,26 +444,41 @@ export class IconclassDb {
 
     let rows: { notation: string; distance: number }[];
 
+    // When filtering by collection or onlyWithArtworks, over-fetch to compensate
+    // for post-filtering. Use filtered brute-force scan when available, otherwise
+    // expand the vec0 KNN candidate pool up to 4096.
+    const needsPostFilter = collectionId || onlyWithArtworks;
+    const fetchK = needsPostFilter ? Math.min(k * 20, 4096) : Math.min(k, 4096);
+
     if (onlyWithArtworks && this.stmtFilteredKnn) {
-      rows = this.stmtFilteredKnn.all(quantized.v, k) as { notation: string; distance: number }[];
+      rows = this.stmtFilteredKnn.all(quantized.v, fetchK) as { notation: string; distance: number }[];
     } else if (this.stmtKnn) {
-      rows = this.stmtKnn.all(quantized.v, Math.min(k, 4096)) as { notation: string; distance: number }[];
+      rows = this.stmtKnn.all(quantized.v, fetchK) as { notation: string; distance: number }[];
     } else {
       return null;
     }
 
+    // Batch-filter by collectionId using temp table + JOIN (same pattern as
+    // FTS search and prefix search) instead of N+1 per-row queries.
+    const countsCache = new Map<string, Record<string, number>>();
+    let candidates = rows;
+    if (collectionId || onlyWithArtworks) {
+      const kept = new Set(
+        this.fetchCountsForSort(rows.map(r => r.notation), countsCache, collectionId, onlyWithArtworks)
+          .map(c => c.notation)
+      );
+      candidates = rows.filter(r => kept.has(r.notation));
+    }
+    candidates = candidates.slice(0, k);
+
     const textCache = new Map<string, string | null>();
-    let results = rows
+    const results = candidates
       .map((row) => {
-        const entry = this.resolveEntry(row.notation, lang, textCache);
+        const entry = this.resolveEntry(row.notation, lang, textCache, countsCache);
         if (!entry) return null;
         return { ...entry, similarity: Math.round((1 - row.distance) * 1000) / 1000 };
       })
       .filter((e): e is IconclassEntry & { similarity: number } => e !== null);
-
-    if (collectionId) {
-      results = results.filter(e => e.collectionCounts[collectionId] > 0);
-    }
 
     return {
       query,

@@ -389,6 +389,11 @@ export function registerTools(
       if (!keysAvailable) {
         return errorResponse("Key expansion is not available — the loaded DB does not include key-expanded notations.");
       }
+      if (/[()]/.test(args.notation)) {
+        return errorResponse(
+          `"${args.notation}" is a key-expanded notation — expand_keys requires a base notation without parentheses (e.g. "${args.notation.replace(/\(.*$/, "")}").`
+        );
+      }
       const result = db.expandKeys(args.notation, args.lang, args.maxResults, args.offset ?? 0);
       if (!result) {
         return errorResponse(`Notation "${args.notation}" not found in Iconclass.`);
@@ -418,7 +423,9 @@ export function registerTools(
         "Search all notations under a hierarchy subtree by notation prefix. " +
         "Leverages Iconclass's left-to-right hierarchical encoding — " +
         "e.g. '73D8' finds everything under 'Passion of Christ'. " +
-        "Results are ordered alphabetically by notation.",
+        "Results are ordered alphabetically by notation. " +
+        "Broad prefixes (1–2 chars) can match thousands of notations — " +
+        "use the first page to orient, then narrow the prefix rather than paginating exhaustively.",
       inputSchema: z.object({
         notation: z.string().min(1).describe("Notation prefix (e.g. '73D8', '25F'). Matches all notations starting with this prefix."),
         lang: z.string().default("en").describe(LANG_DESC),
@@ -445,7 +452,10 @@ export function registerTools(
         const counts = formatCounts(e.collectionCounts);
         return `  ${e.notation}${counts} "${e.text}"`;
       });
-      return structuredResponse(result, [header, ...lines].join("\n"));
+      const hint = result.totalResults > 200
+        ? `\n(Large subtree — narrow the prefix instead of paginating, e.g. "${args.notation}3" or "${args.notation}A")`
+        : "";
+      return structuredResponse(result, [header, ...lines].join("\n") + hint);
     }
   );
 }

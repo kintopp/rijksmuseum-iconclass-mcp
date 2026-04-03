@@ -8,3 +8,4 @@ data/*.gz
 *.tgz
 __pycache__/
 CLAUDE.md
+AGENTS.md

@@ -85,9 +85,11 @@ def build_counts_db(output_path: str, count_csvs: list[str]):
             "INSERT OR REPLACE INTO collection_counts VALUES (?, ?, ?)",
             rows,
         )
+        # total_artworks = number of distinct notations with artworks in this collection
+        total_artworks = len(rows)
         conn.execute(
             "INSERT OR REPLACE INTO collection_info VALUES (?, ?, ?, ?)",
-            (collection_id, label, datetime.now(timezone.utc).strftime("%Y-%m-%d"), 0),
+            (collection_id, label, datetime.now(timezone.utc).strftime("%Y-%m-%d"), total_artworks),
         )
 
         total_collections += 1

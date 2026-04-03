@@ -382,6 +382,95 @@ assert(s8fr.entry.text !== s8de.entry.text, "French text differs from German");
 assert(s8fr.entry.text.length > 0, `French text present: "${s8fr.entry.text.slice(0, 50)}"`);
 
 // ══════════════════════════════════════════════════════════════════
+//  9. Regression: search_prefix pagination with collection filter
+// ══════════════════════════════════════════════════════════════════
+
+section("9. Regression: search_prefix pagination (P1)");
+
+// Broad prefix "7" with collectionId should report the full filtered count,
+// not a truncated window. Before the fix, this returned totalResults: 11.
+const r9a = await client.callTool({
+  name: "search_prefix",
+  arguments: { notation: "7", collectionId: "rijksmuseum", maxResults: 10 },
+});
+const s9a = sc(r9a);
+assert(s9a.totalResults > 100, `prefix "7" + rijksmuseum: totalResults should be large (got ${s9a.totalResults})`);
+assertEq(s9a.results.length, 10, "page returns maxResults items");
+
+// Paginating beyond offset 20 should still return results
+const r9b = await client.callTool({
+  name: "search_prefix",
+  arguments: { notation: "7", collectionId: "rijksmuseum", maxResults: 10, offset: 20 },
+});
+const s9b = sc(r9b);
+assert(s9b.results.length > 0, `offset 20 still returns results (got ${s9b.results.length})`);
+assertEq(s9b.totalResults, s9a.totalResults, "totalResults consistent across pages");
+
+// Without collectionId, totalResults should also be accurate
+const r9c = await client.callTool({
+  name: "search_prefix",
+  arguments: { notation: "7", maxResults: 5 },
+});
+const s9c = sc(r9c);
+assert(s9c.totalResults > 1000, `prefix "7" unfiltered: totalResults large (got ${s9c.totalResults})`);
+
+// ══════════════════════════════════════════════════════════════════
+//  10. Regression: semantic search collection underfill (P1)
+// ══════════════════════════════════════════════════════════════════
+
+section("10. Regression: semantic search collection underfill (P1)");
+
+// With collectionId, should return a full page. Before the fix,
+// this returned only 1 result because post-filter drained the small pool.
+const r10 = await client.callTool({
+  name: "search",
+  arguments: { semanticQuery: "religious suffering", collectionId: "rijksmuseum", maxResults: 5 },
+});
+const s10 = sc(r10);
+assert(!r10.isError, "no error");
+assert(s10.results.length >= 3, `collection-scoped semantic: should fill page (got ${s10.results.length})`);
+for (const entry of s10.results) {
+  assert(entry.collectionCounts.rijksmuseum > 0, `semantic+collection: ${entry.notation} has rijksmuseum count`);
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  11. Regression: expand_keys rejects key-expanded input (P2)
+// ══════════════════════════════════════════════════════════════════
+
+section("11. Regression: expand_keys rejects parentheses (P2)");
+
+const r11 = await client.callTool({
+  name: "expand_keys",
+  arguments: { notation: "25F23(+46)" },
+});
+assert(r11.isError === true, "expand_keys rejects key-expanded notation");
+assert(txt(r11).includes("base notation"), `error message mentions base notation: "${txt(r11).slice(0, 80)}"`);
+
+// Also test with just opening paren
+const r11b = await client.callTool({
+  name: "expand_keys",
+  arguments: { notation: "25F23(" },
+});
+assert(r11b.isError === true, "expand_keys rejects partial parenthesis");
+
+// ══════════════════════════════════════════════════════════════════
+//  12. Regression: totalArtworks is non-zero (P2)
+// ══════════════════════════════════════════════════════════════════
+
+section("12. Regression: totalArtworks non-zero (P2)");
+
+// Every tool response includes collections[]. Check that totalArtworks > 0.
+const r12 = await client.callTool({
+  name: "search_prefix",
+  arguments: { notation: "11H", maxResults: 1 },
+});
+const s12 = sc(r12);
+assert(s12.collections.length > 0, "collections array present");
+const rij = s12.collections.find(c => c.collectionId === "rijksmuseum");
+assert(rij !== undefined, "rijksmuseum collection present");
+assert(rij.totalArtworks > 0, `totalArtworks > 0 (got ${rij?.totalArtworks})`);
+
+// ══════════════════════════════════════════════════════════════════
 //  Summary
 // ══════════════════════════════════════════════════════════════════
 

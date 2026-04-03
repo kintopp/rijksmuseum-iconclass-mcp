@@ -36,6 +36,9 @@ export function resolveDbPath(envVarName: string, defaultFilename: string): stri
 
 // ─── DB download helper ─────────────────────────────────────────────
 
+/** Timeout per download operation (single file or individual chunk). */
+const DOWNLOAD_TIMEOUT_MS = 330_000;
+
 export interface DbSpec {
   name: string;
   pathEnvVar: string;
@@ -49,9 +52,58 @@ function resolveDbPathForSpec(spec: DbSpec): string {
   return process.env[spec.pathEnvVar] || path.join(PROJECT_ROOT, "data", spec.defaultFile);
 }
 
+/** Generate the two-letter suffix that `split -b` produces for index i (0→aa, 1→ab, …). */
+function chunkSuffix(i: number): string {
+  return String.fromCharCode(97 + Math.floor(i / 26)) + String.fromCharCode(97 + (i % 26));
+}
+
+/** Fetch a single URL to a writable path, with timeout. */
+async function fetchToFile(url: string, destPath: string, flags: "w" | "a" = "w"): Promise<void> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), DOWNLOAD_TIMEOUT_MS);
+  try {
+    const res = await fetch(url, { redirect: "follow", signal: controller.signal });
+    if (!res.ok || !res.body) throw new Error(`HTTP ${res.status} ${res.statusText}`);
+    await pipeline(res.body, fs.createWriteStream(destPath, { flags }));
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
+ * Try downloading a URL as split chunks (.part-aa, .part-ab, …).
+ * Returns true if chunks were found and downloaded, false if no chunks exist.
+ * Downloaded chunks are reassembled into `assembledPath` and decompressed to `destPath` if gzip.
+ */
+async function tryChunkedDownload(baseUrl: string, destPath: string, assembledPath: string, isGzip: boolean): Promise<boolean> {
+  let chunkCount = 0;
+
+  for (let i = 0; ; i++) {
+    const partUrl = `${baseUrl}.part-${chunkSuffix(i)}`;
+    try {
+      await fetchToFile(partUrl, assembledPath, i === 0 ? "w" : "a");
+      chunkCount++;
+      console.error(`  chunk ${chunkCount} (${chunkSuffix(i)}) ✓`);
+    } catch {
+      if (i === 0) return false; // no chunks exist
+      break; // end of chunk sequence
+    }
+  }
+
+  console.error(`  ${chunkCount} chunks downloaded, decompressing...`);
+  if (isGzip) {
+    await pipeline(fs.createReadStream(assembledPath), createGunzip(), fs.createWriteStream(destPath));
+    fs.unlinkSync(assembledPath);
+  } else {
+    fs.renameSync(assembledPath, destPath);
+  }
+  return true;
+}
+
 /**
  * Ensure a SQLite database exists and passes validation.
  * Downloads from the URL env var if missing or invalid.
+ * Supports both single-file and chunked (.part-aa/ab/…) release assets.
  */
 export async function ensureDb(spec: DbSpec): Promise<void> {
   const dbPath = resolveDbPathForSpec(spec);
@@ -76,27 +128,27 @@ export async function ensureDb(spec: DbSpec): Promise<void> {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 
   const tmpPath = dbPath + ".tmp";
-  const controller = new AbortController();
-  const downloadTimer = setTimeout(() => controller.abort(), 330_000);
+  const gzTmpPath = tmpPath + ".gz";
   try {
-    const res = await fetch(url, { redirect: "follow", signal: controller.signal });
-    if (!res.ok || !res.body) throw new Error(`HTTP ${res.status} ${res.statusText}`);
+    const isGzip = url.endsWith(".gz");
 
-    const dest = fs.createWriteStream(tmpPath);
-    const isGzip = url.endsWith(".gz") || res.headers.get("content-type")?.includes("gzip");
-
-    if (isGzip) {
-      await pipeline(res.body, createGunzip(), dest);
-    } else {
-      await pipeline(res.body, dest);
+    // Try chunked download first (split-for-release.sh assets), fall back to single file
+    const chunked = await tryChunkedDownload(url, tmpPath, gzTmpPath, isGzip);
+    if (!chunked) {
+      console.error("  single-file download...");
+      await fetchToFile(url, isGzip ? gzTmpPath : tmpPath);
+      if (isGzip) {
+        await pipeline(fs.createReadStream(gzTmpPath), createGunzip(), fs.createWriteStream(tmpPath));
+        fs.unlinkSync(gzTmpPath);
+      }
     }
 
     fs.renameSync(tmpPath, dbPath);
     console.error(`${spec.name} DB ready: ${dbPath}`);
   } catch (err) {
     console.error(`Failed to download ${spec.name} DB: ${err instanceof Error ? err.message : err}`);
-    if (fs.existsSync(tmpPath)) fs.unlinkSync(tmpPath);
-  } finally {
-    clearTimeout(downloadTimer);
+    for (const f of [tmpPath, gzTmpPath]) {
+      if (fs.existsSync(f)) fs.unlinkSync(f);
+    }
   }
 }

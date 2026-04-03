@@ -161,6 +161,20 @@ modal run scripts/generate-embeddings-modal.py
 
 This embeds ~40K base notations using `intfloat/multilingual-e5-base` (768d, int8). Takes ~4 minutes on an A10G GPU. Key-expanded notations are not embedded — they are searchable via FTS.
 
+### Releasing the database
+
+The main database is ~1 GB compressed — too large for a single reliable upload on slow connections. The release script splits it into 200 MB chunks and uploads each as a separate GitHub release asset, with automatic retry on failure:
+
+```bash
+# Compress the database
+gzip -k data/iconclass.db
+
+# Split and upload to a release
+scripts/split-for-release.sh v0.1.0
+```
+
+The server's download logic auto-detects chunked assets (`.part-aa`, `.part-ab`, …), downloads them in sequence, reassembles, and decompresses. Single-file uploads are still supported as a fallback.
+
 ## Data sources
 
 | Source | Content | License |
@@ -267,7 +281,7 @@ If you use rijksmuseum-iconclass-mcp in your research, please cite it as follows
 
 **APA (7th ed.)**
 
-> Bosse, A. (2026). *rijksmuseum-iconclass-mcp* (Version 0.10.0) [Software]. Research and Infrastructure Support (RISE), University of Basel. https://github.com/kintopp/rijksmuseum-iconclass-mcp
+> Bosse, A. (2026). *rijksmuseum-iconclass-mcp* (Version 0.1.0) [Software]. Research and Infrastructure Support (RISE), University of Basel. https://github.com/kintopp/rijksmuseum-iconclass-mcp
 
 **BibTeX**
 ```bibtex
@@ -275,7 +289,7 @@ If you use rijksmuseum-iconclass-mcp in your research, please cite it as follows
   author    = {Bosse, Arno},
   title     = {{rijksmuseum-iconclass-mcp}},
   year      = {2026},
-  version   = {0.10.0},
+  version   = {0.1.0},
   publisher = {Research and Infrastructure Support (RISE), University of Basel},
   url       = {https://github.com/kintopp/rijksmuseum-iconclass-mcp},
   orcid     = {0000-0003-3681-1289},

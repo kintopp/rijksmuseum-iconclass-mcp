@@ -192,14 +192,14 @@ Benchmarked on Apple M4, 24 GB unified memory. Cold-start times (fresh server pr
 
 | Operation | Time | Notes |
 |-----------|------|-------|
-| FTS search (800 hits) | ~18ms | "crucifixion" |
-| FTS search (8K hits) | ~36ms | "horse" |
-| FTS search (28K hits) | ~170ms | "portrait" |
-| Semantic search | ~50ms | vec0 KNN over 40K base-notation embeddings + ~10ms query embedding |
-| Browse | ~1ms | B-tree lookup + child resolution |
-| Browse with key variants | ~35ms | Default page of 25 key variants (DB-layer LIMIT/OFFSET) |
-| Resolve (batch of 15) | ~13ms | 15 notations with full metadata |
-| Prefix search | ~55ms | Depends on subtree size |
+| FTS search (844 hits) | ~18ms | "crucifixion" |
+| FTS search (8.5K hits) | ~38ms | "horse" |
+| FTS search (28.7K hits) | ~165ms | "portrait" |
+| Semantic search | ~65ms | vec0 KNN over 40K base-notation embeddings + ~10ms query embedding |
+| Browse | ~5ms | B-tree lookup + child resolution |
+| Browse with key variants | ~7ms | Default page of 25 key variants (DB-layer LIMIT/OFFSET) |
+| Resolve (batch of 15) | ~7ms | 15 notations with full metadata |
+| Prefix search | ~60ms | Depends on subtree size |
 | Server cold start | ~8s | Embedding model download cached after first run |
 
 ## Notes
@@ -226,7 +226,7 @@ The paging constants were chosen by profiling the actual Iconclass database (1.3
 
 **Key variant distribution.** 81% of base notations have 25 or fewer key variants, so the default page of 25 captures most notations in a single call. The maximum of 335 matches the largest notation in the database and eliminates pagination entirely — important because each pagination round-trip costs the user several seconds of LLM reasoning time, far more than the ~9 ms the database needs to resolve 335 variants.
 
-**Keywords.** The per-notation keyword limit of 20 captures 100% of (notation, language) pairs in the database. The 99th percentile is 9 keywords; the observed maximum is 40, but only a handful of entries exceed 20.
+**Keywords.** The per-notation keyword limit of 40 matches the observed maximum in the database, so no keywords are truncated. The 99th percentile is 9 keywords; only 705 notations (0.04%) exceed 20. These are concentrated in a few keyword-heavy base notations — notably `46C1313` ("equestrian statue", 28 keywords listing famous statues by name), `23K` ("labours of the months", 30 keywords), and saint notations like `11H(THOMAS AQUINAS)` whose long attribute lists push into the high 20s. Key-expanded variants of these inherit the base keywords and add modifier keywords on top, reaching up to 40.
 
 **Collection count sparsity.** Only 1.8% of notations have artwork counts (24K of 1.3M). The `collectionCounts` field is empty for the vast majority of entries, adding negligible overhead. The `onlyWithArtworks` and `collectionId` filters are aggressive narrowers — useful when the caller only needs notations that appear in a specific collection.
 

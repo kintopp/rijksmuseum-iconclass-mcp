@@ -186,10 +186,10 @@ export class IconclassDb {
         "SELECT text FROM texts WHERE notation = ? LIMIT 1"
       );
       this.stmtGetKeywords = this.db.prepare(
-        "SELECT keyword FROM keywords WHERE notation = ? AND lang = ? LIMIT 20"
+        "SELECT keyword FROM keywords WHERE notation = ? AND lang = ? LIMIT 40"
       );
       this.stmtGetKeywordsAny = this.db.prepare(
-        "SELECT keyword FROM keywords WHERE notation = ? LIMIT 20"
+        "SELECT keyword FROM keywords WHERE notation = ? LIMIT 40"
       );
       this.stmtPrefixSearch = this.db.prepare(
         "SELECT notation FROM notations WHERE notation LIKE ? ORDER BY notation LIMIT ? OFFSET ?"

@@ -38,6 +38,7 @@ export interface IconclassBrowseResult {
   entry: IconclassEntry;
   subtree: IconclassEntry[];
   keyVariants: IconclassEntry[];
+  totalKeyVariants: number;
   collections: CollectionInfo[];
 }
 
@@ -59,6 +60,7 @@ export interface IconclassKeyExpansionResult {
   notation: string;
   baseEntry: IconclassEntry;
   keyVariants: IconclassEntry[];
+  totalKeyVariants: number;
   collections: CollectionInfo[];
 }
 
@@ -86,7 +88,8 @@ export class IconclassDb {
   private stmtGetKeywords!: Statement;
   private stmtGetKeywordsAny!: Statement;
   private stmtPrefixSearch!: Statement;
-  private stmtKeyVariants!: Statement;
+  private stmtKeyVariantsPage!: Statement;
+  private stmtKeyVariantsCount!: Statement;
   private stmtGetCollectionCounts: Statement | null = null;
   private stmtQuantize: Statement | null = null;
   private stmtKnn: Statement | null = null;
@@ -191,8 +194,11 @@ export class IconclassDb {
       this.stmtPrefixSearch = this.db.prepare(
         "SELECT notation FROM notations WHERE notation LIKE ? ORDER BY notation LIMIT ? OFFSET ?"
       );
-      this.stmtKeyVariants = this.db.prepare(
-        "SELECT notation FROM notations WHERE base_notation = ? ORDER BY notation"
+      this.stmtKeyVariantsPage = this.db.prepare(
+        "SELECT notation FROM notations WHERE base_notation = ? ORDER BY notation LIMIT ? OFFSET ?"
+      );
+      this.stmtKeyVariantsCount = this.db.prepare(
+        "SELECT COUNT(*) as n FROM notations WHERE base_notation = ?"
       );
 
       console.error(`Iconclass DB loaded: ${dbPath} (${count.toLocaleString()} notations, ${this._collections.length} collection overlays)`);
@@ -261,7 +267,13 @@ export class IconclassDb {
 
   // ─── Browse ───────────────────────────────────────────────────────
 
-  browse(notation: string, lang: string = "en", includeKeys: boolean = false): IconclassBrowseResult | null {
+  browse(
+    notation: string,
+    lang: string = "en",
+    includeKeys: boolean = false,
+    maxKeyVariants: number = 25,
+    keyOffset: number = 0,
+  ): IconclassBrowseResult | null {
     if (!this.db) return null;
 
     const textCache = new Map<string, string | null>();
@@ -273,11 +285,13 @@ export class IconclassDb {
       .filter((e): e is IconclassEntry => e !== null);
 
     let keyVariants: IconclassEntry[] = [];
+    let totalKeyVariants = 0;
     if (includeKeys && !entry.isKeyExpanded) {
-      keyVariants = this.resolveKeyVariants(notation, lang, textCache);
+      totalKeyVariants = (this.stmtKeyVariantsCount.get(notation) as { n: number }).n;
+      keyVariants = this.resolveKeyVariantsPage(notation, lang, maxKeyVariants, keyOffset, textCache);
     }
 
-    return { notation, entry, subtree, keyVariants, collections: this._collections };
+    return { notation, entry, subtree, keyVariants, totalKeyVariants, collections: this._collections };
   }
 
   // ─── Resolve (batch) ──────────────────────────────────────────────
@@ -329,16 +343,22 @@ export class IconclassDb {
 
   // ─── Key expansion ────────────────────────────────────────────────
 
-  expandKeys(notation: string, lang: string = "en"): IconclassKeyExpansionResult | null {
+  expandKeys(
+    notation: string,
+    lang: string = "en",
+    maxResults: number = 25,
+    offset: number = 0,
+  ): IconclassKeyExpansionResult | null {
     if (!this.db) return null;
 
     const textCache = new Map<string, string | null>();
     const baseEntry = this.resolveEntry(notation, lang, textCache);
     if (!baseEntry) return null;
 
-    const keyVariants = this.resolveKeyVariants(notation, lang, textCache);
+    const totalKeyVariants = (this.stmtKeyVariantsCount.get(notation) as { n: number }).n;
+    const keyVariants = this.resolveKeyVariantsPage(notation, lang, maxResults, offset, textCache);
 
-    return { notation, baseEntry, keyVariants, collections: this._collections };
+    return { notation, baseEntry, keyVariants, totalKeyVariants, collections: this._collections };
   }
 
   // ─── Semantic search ──────────────────────────────────────────────
@@ -414,8 +434,8 @@ export class IconclassDb {
     return results;
   }
 
-  private resolveKeyVariants(notation: string, lang: string, textCache: Map<string, string | null>): IconclassEntry[] {
-    const keyRows = this.stmtKeyVariants.all(notation) as { notation: string }[];
+  private resolveKeyVariantsPage(notation: string, lang: string, limit: number, offset: number, textCache: Map<string, string | null>): IconclassEntry[] {
+    const keyRows = this.stmtKeyVariantsPage.all(notation, limit, offset) as { notation: string }[];
     return keyRows
       .map((r) => this.resolveEntry(r.notation, lang, textCache))
       .filter((e): e is IconclassEntry => e !== null);

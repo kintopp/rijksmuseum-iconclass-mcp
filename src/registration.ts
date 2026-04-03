@@ -241,15 +241,15 @@ export function registerTools(
       ...withOutputSchema(BrowseOutput),
     },
     async (args) => {
-      const result = db.browse(args.notation, args.lang, args.includeKeys ?? false);
+      const result = db.browse(
+        args.notation, args.lang, args.includeKeys ?? false,
+        args.maxKeyVariants ?? 25, args.keyOffset ?? 0,
+      );
       if (!result) {
         return errorResponse(`Notation "${args.notation}" not found in Iconclass.`);
       }
 
-      const { entry, subtree } = result;
-      const totalKeyVariants = result.keyVariants.length;
-      const keyOffset = args.keyOffset ?? 0;
-      const keyVariants = result.keyVariants.slice(keyOffset, keyOffset + (args.maxKeyVariants ?? 25));
+      const { entry, subtree, keyVariants, totalKeyVariants } = result;
       const pathStr = entry.path.length > 0
         ? entry.path.map(p => `${p.notation} "${p.text}"`).join(" > ") + " > "
         : "";
@@ -274,14 +274,14 @@ export function registerTools(
           const kc = formatCounts(k.collectionCounts);
           return `  ${k.notation}${kc} "${k.text}"`;
         });
+        const kvOff = args.keyOffset ?? 0;
         const keyHeader = totalKeyVariants > keyVariants.length
-          ? `Key variants (${keyOffset + 1}–${keyOffset + keyVariants.length} of ${totalKeyVariants}):`
+          ? `Key variants (${kvOff + 1}–${kvOff + keyVariants.length} of ${totalKeyVariants}):`
           : `Key variants (${keyVariants.length}):`;
         sections.push(keyHeader, ...keyLines);
       }
 
-      const data = { ...result, keyVariants, totalKeyVariants: totalKeyVariants || undefined };
-      return structuredResponse(data, sections.join("\n"));
+      return structuredResponse(result, sections.join("\n"));
     }
   );
 
@@ -350,27 +350,22 @@ export function registerTools(
       if (!keysAvailable) {
         return errorResponse("Key expansion is not available — the loaded DB does not include key-expanded notations.");
       }
-      const result = db.expandKeys(args.notation, args.lang);
+      const result = db.expandKeys(args.notation, args.lang, args.maxResults, args.offset ?? 0);
       if (!result) {
         return errorResponse(`Notation "${args.notation}" not found in Iconclass.`);
       }
 
-      const { baseEntry } = result;
-      const totalKeyVariants = result.keyVariants.length;
-      const kvOffset = args.offset ?? 0;
-      const keyVariants = result.keyVariants.slice(kvOffset, kvOffset + args.maxResults);
-
+      const { baseEntry, keyVariants, totalKeyVariants } = result;
       const counts = formatCounts(baseEntry.collectionCounts);
       const rangeStr = totalKeyVariants > keyVariants.length
-        ? ` (${kvOffset + 1}–${kvOffset + keyVariants.length} of ${totalKeyVariants})`
+        ? ` (${(args.offset ?? 0) + 1}–${(args.offset ?? 0) + keyVariants.length} of ${totalKeyVariants})`
         : "";
       const header = `${baseEntry.notation} "${baseEntry.text}"${counts} — ${totalKeyVariants} key variants${rangeStr}`;
       const lines = keyVariants.map(k => {
         const kc = formatCounts(k.collectionCounts);
         return `  ${k.notation} (${k.keyId})${kc} "${k.text}"`;
       });
-      const data = { ...result, keyVariants, totalKeyVariants };
-      return structuredResponse(data, [header, ...lines].join("\n"));
+      return structuredResponse(result, [header, ...lines].join("\n"));
     }
   );
 

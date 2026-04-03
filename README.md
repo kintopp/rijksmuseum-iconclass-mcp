@@ -199,6 +199,16 @@ Benchmarked on Apple M4, 24 GB unified memory.
 | Query embedding | ~10ms | e5-base on CPU (ONNX/WASM) |
 | Cold start (stdio) | ~8s | Model download cached after first run |
 
+## Notes
+
+### Semantic search and Iconclass structure
+
+Semantic search embeddings are built from a composite text that includes each notation's label, keywords, and full category path (e.g., "Religion and Magic > non-Christian religions > Mithraism and other Hellenistic..."). Because Iconclass labels are often inherited verbatim from parent to child, notations deep in verbose branches end up with the same qualifying phrase repeated at every level of the path. The embedding model sees this repetition as emphasis, which means **deep notations in long-named branches are over-represented in embedding space** relative to equally relevant notations in shallower or more concisely named parts of the hierarchy. A broad semantic query like "ancient religion" will favour the Mithraism subtree (9 levels, verbose labels) over a structurally simpler branch that may be just as relevant.
+
+In practice, this rarely matters — semantic search is a fallback for when you don't know the right keyword, and for most Iconclass lookups, FTS keyword search (`query`) gives more predictable results. When you do know the vocabulary, prefer `query` over `semanticQuery`.
+
+Other, more minor biases to be aware of: named notations like `11H(JOHN)` embed the name itself, so saints or figures with common English names may rank slightly higher than those with non-English names; the composite text mixes English and Dutch keywords, which can give a small boost to notations that happen to have Dutch keywords matching a query; and structural placeholder notations like `25F23(...)` ("beasts of prey, with NAME") sit in a generic part of embedding space and can surface as top results for broad queries even though they are not real subject entries.
+
 ## License
 
 MIT

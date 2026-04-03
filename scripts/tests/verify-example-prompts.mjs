@@ -371,7 +371,8 @@ const p9l = await client.callTool({
 assert(!p9l.isError, "browse 48C7323 (lute) succeeds");
 assert(sc(p9l).entry.text.includes("lute"), "lute entry text correct");
 
-// Expand keys on lute to find +42 (damage) — it's at offset ~40
+// Expand keys on lute — +42 exists but means "damage to a work of art" (art-production
+// discourse), not depicted instrument condition. Verify it exists as a discoverable false match.
 const p9k = await client.callTool({
   name: "expand_keys",
   arguments: { notation: "48C7323", maxResults: 50, offset: 30 },
@@ -379,7 +380,7 @@ const p9k = await client.callTool({
 const s9k = sc(p9k);
 assert(!p9k.isError, "expand_keys 48C7323 succeeds");
 const hasDamage = s9k.keyVariants.some(v => v.keyId === "+42");
-assert(hasDamage, "key variant +42 (damage) found for lute");
+assert(hasDamage, "key variant +42 exists (but means damage to artwork-as-object, not depicted condition)");
 
 // Also search vanitas
 const p9vs = await client.callTool({

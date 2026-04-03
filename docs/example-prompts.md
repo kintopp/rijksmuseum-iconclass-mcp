@@ -155,13 +155,13 @@ Sample prompts that show what an LLM can do with this server's five tools. Each 
 **Tools:** `browse`, `search` (FTS), `expand_keys`
 
 **How the tools enable it:**
-- `browse` on `11R7` (vanitas symbols) to see what the system offers: `11R71` (skull), `11R72` (smoking pot) — but no specific entry for broken strings
+- `browse` on `11R7` (vanitas symbols) to see what the system offers: `11R71` (skull), `11R72` (smoking pot) — but no specific entry for broken strings or musical instruments
 - `search` with `query: "broken string"` to check if it appears anywhere as a keyword or label
-- `browse` on `48C7323` (lute) to see the base instrument notation, then `expand_keys` on `48C7323` to discover that `48C7323(+42)` exists — "lute (+ damage and repair of work of art)" — a key-expanded variant that captures the physical state of the instrument
-- `search` with `query: "vanitas"` to find all vanitas-related notations, including `48C7311(+42)` (violin + damage) for comparison
-- The result: there is no single notation for "broken string as vanitas." The cataloguer should assign both `11R7` (vanitas context) and `48C7323(+42)` (damaged lute) — multiple codes working together
+- `browse` on `48C7323` (lute) to see the base instrument notation, then `expand_keys` on `48C7323` to explore key variants — note that `48C7323(+42)` ("lute + damage and repair of work of art") does exist but is a category error here: the `(+4...)` key group concerns artistic production and works of art as objects (stages of production, damage, restoration), not the depicted condition of an instrument within a scene
+- `search` with `query: "vanitas"` to find all vanitas-related notations and confirm the gap
+- The result: there is no single notation for "broken string as vanitas," nor does the key expansion system provide one. The cataloguer should assign `11R7` (vanitas symbols) and `48C7323` (lute), with the broken string recorded in a scope note or catalogue description
 
-**Why it matters:** A [forum discussion on broken strings as vanitas symbols](https://forum.iconclass.org) revealed exactly this tension. Hans Brandhorst suggested that the key expansion system (`+42` for damage) combined with a vanitas cross-reference might be more flexible than a dedicated notation. This prompt shows how Iconclass handles concepts that span multiple branches — vanitas (religion/symbolism) and musical instruments (arts) — and why cataloguers often need to assign multiple codes rather than searching for a single perfect match.
+**Why it matters:** This prompt demonstrates a real gap in Iconclass — the broken string as a vanitas motif is a well-known art-historical convention, but the classification system has no notation for it. The `(+42)` key expansion is a tempting false match that illustrates why key meanings must be verified in context: "damage to a work of art" is about the artwork-as-object, not about depicted objects within a scene. The correct approach is multi-code assignment (`11R7` + `48C7323`) with the interpretive nuance captured in prose.
 
 ---
 

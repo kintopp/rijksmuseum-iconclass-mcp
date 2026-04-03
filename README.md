@@ -188,16 +188,19 @@ This embeds ~40K base notations using `intfloat/multilingual-e5-base` (768d, int
 
 ## Performance
 
-Benchmarked on Apple M4, 24 GB unified memory.
+Benchmarked on Apple M4, 24 GB unified memory. Cold-start times (fresh server process per query, no warm caches).
 
 | Operation | Time | Notes |
 |-----------|------|-------|
-| Semantic search | ~45ms | vec0 KNN over 40K base-notation embeddings |
-| FTS search | 1–90ms | Depends on result count (1–30K matches) |
-| Browse | <0.1ms | B-tree lookup |
-| Prefix search | 0.04–90ms | Depends on subtree size |
-| Query embedding | ~10ms | e5-base on CPU (ONNX/WASM) |
-| Cold start (stdio) | ~8s | Model download cached after first run |
+| FTS search (800 hits) | ~18ms | "crucifixion" — batch count sort + page resolve |
+| FTS search (8K hits) | ~36ms | "horse" |
+| FTS search (28K hits) | ~170ms | "portrait" — dominated by FTS scan over 28K matches |
+| Semantic search | ~50ms | vec0 KNN over 40K base-notation embeddings + ~10ms query embedding |
+| Browse | ~1ms | B-tree lookup + child resolution |
+| Browse with key variants | ~35ms | Default page of 25 key variants (DB-layer LIMIT/OFFSET) |
+| Resolve (batch of 10) | ~13ms | 10 notations with full metadata |
+| Prefix search | ~55ms | Depends on subtree size |
+| Server cold start | ~8s | Embedding model download cached after first run |
 
 ## Notes
 

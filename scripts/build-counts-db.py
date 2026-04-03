@@ -94,6 +94,9 @@ def build_counts_db(output_path: str, count_csvs: list[str]):
         total_notation_counts += len(rows)
         print(f"  Loaded {len(rows):,} notation counts for '{collection_id}'")
 
+    # Queries filter by notation, not collection_id — add a notation-first index
+    conn.execute("CREATE INDEX idx_counts_notation ON collection_counts(notation, collection_id)")
+
     built_at = datetime.now(timezone.utc).isoformat()
     conn.executemany("INSERT INTO version_info VALUES (?, ?)", [
         ("built_at", built_at),

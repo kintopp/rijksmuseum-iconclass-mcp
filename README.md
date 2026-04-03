@@ -203,17 +203,17 @@ The server's download logic auto-detects chunked assets (`.part-aa`, `.part-ab`,
 
 | Operation | Local | Production | Notes |
 |-----------|-------|------------|-------|
-| FTS search (844 hits) | ~18ms | ~118ms | "crucifixion" |
-| FTS search (8.5K hits) | ~38ms | ~148ms | "horse" |
-| FTS search (28.7K hits) | ~165ms | ~260ms | "portrait" |
-| Semantic search | ~65ms | ~184ms | vec0 KNN over 40K embeddings + query encoding |
-| Browse | ~5ms | ~149ms | B-tree lookup + child resolution |
-| Browse with key variants | ~7ms | ~118ms | Default page of 25 key variants |
-| Resolve (batch of 15) | ~7ms | ~117ms | 15 notations with full metadata |
-| Prefix search | ~60ms | ~175ms | Depends on subtree size |
+| FTS search (844 hits) | ~7ms | ~60ms | "crucifixion" |
+| FTS search (8.5K hits) | ~26ms | ~85ms | "horse" |
+| FTS search (28.7K hits) | ~137ms | ~203ms | "portrait" |
+| Semantic search | ~51ms | ~115ms | vec0 KNN over 40K embeddings + query encoding |
+| Browse | ~1ms | ~54ms | B-tree lookup + child resolution |
+| Browse with key variants | ~1ms | ~58ms | Default page of 25 key variants |
+| Resolve (batch of 15) | ~1ms | ~54ms | 15 notations with full metadata |
+| Prefix search | ~113ms | ~196ms | Depends on subtree size; accurate COUNT query |
 | Server cold start | ~8s | ~77s | Local: embedding model only. Production: chunked DB download + decompression |
 
-**Local:** Apple M4, 24 GB unified memory, warm mmap caches. **Production:** Railway, warm caches. Production times include ~110ms network round-trip overhead.
+**Local:** Apple M4, 24 GB unified memory, warm mmap caches. **Production:** Railway, warm caches (2026-04-03). Production times are median of 5 runs, including network round-trip.
 
 ## Notes
 
@@ -237,9 +237,11 @@ The constants below were chosen by profiling the Iconclass database, balancing r
 
 #### Result pages
 
-A resolved Iconclass entry averages ~350 bytes of JSON (median). At the default page size of 25, a typical search response is ~8 KB (~2,300 tokens) — roughly 1% of a 200K-token context window. At the maximum of 50 results, responses reach ~16 KB (~4,600 tokens). Both leave ample room for LLM reasoning.
+A resolved Iconclass entry averages ~350 bytes of JSON (median). At the default page size of 25, a typical `search` response is ~8 KB (~2,300 tokens) — roughly 1% of a 200K-token context window. At the maximum of 50 results, responses reach ~16 KB (~4,600 tokens). Both leave ample room for LLM reasoning.
 
 FTS queries return anywhere from ~800 unique notations ("crucifixion") to ~30,000 ("portrait"). Results are sorted by total collection count so the most relevant notations appear first regardless of page size. The fixed cost of the FTS scan dominates — returning 10 or 50 results takes roughly the same time.
+
+`search_prefix` allows up to 100 results per page (default 25). Broad prefixes can match very large subtrees — e.g. `7%` spans ~89K notations, of which ~3K have Rijksmuseum artworks. To discourage LLMs from exhaustively paginating these, the tool description and response text nudge the caller to narrow the prefix rather than page through thousands of results. The `totalResults` count is always accurate (computed via SQL `COUNT` for unfiltered queries, or batch-filtered for collection-scoped queries).
 
 #### Browse depth and subtree caps
 
@@ -261,9 +263,13 @@ At ~350 bytes per entry, a full 250-entry subtree is ~85 KB (~25K tokens) — su
 
 81% of base notations have 25 or fewer key variants, so the default page of 25 captures most notations in a single call. The maximum of 335 matches the largest notation in the database and eliminates pagination entirely — important because each pagination round-trip costs the user several seconds of LLM reasoning time, far more than the ~9 ms the database needs to resolve 335 variants.
 
+#### Semantic search with collection filters
+
+When `collectionId` or `onlyWithArtworks` is set, the semantic path over-fetches from the KNN index (up to `k × 20`, capped at 4,096 candidates) and then batch-filters by collection count before resolving entries. This ensures the requested page fills reliably even when the target collection covers a small fraction of the embedding space. Without a filter, the index returns exactly `k` neighbors with no over-fetch.
+
 #### Resolve batch limit
 
-The resolve tool accepts up to 25 notations per call. This is intentionally conservative — a 25-entry resolve response is ~8 KB, and the SKILL.md coaches LLMs to "use search for discovery, resolve only for the 3–5 you need full metadata on."
+The resolve tool accepts up to 25 notations per call (default 15). This is intentionally conservative — a 25-entry resolve response is ~8 KB, and the SKILL.md coaches LLMs to "use search for discovery, resolve only for the 3–5 you need full metadata on."
 
 #### Keywords
 
@@ -271,7 +277,7 @@ The per-notation keyword limit of 40 matches the observed maximum in the databas
 
 #### Collection count sparsity
 
-Only 1.8% of notations have artwork counts (24K of 1.3M). The `collectionCounts` field is empty for the vast majority of entries, adding negligible overhead. The `onlyWithArtworks` and `collectionId` filters are aggressive narrowers — useful when the caller only needs notations that appear in a specific collection.
+Only 1.8% of notations have artwork counts (24K of 1.3M). The `collectionCounts` field is empty for the vast majority of entries, adding negligible overhead. The `onlyWithArtworks` and `collectionId` filters are aggressive narrowers — useful when the caller only needs notations that appear in a specific collection. Each collection's `totalArtworks` in the sidecar DB reflects the number of distinct notations with artworks in that collection (not the number of artworks themselves, which cannot be derived from notation-level counts).
 
 #### FTS multi-word fallback
 

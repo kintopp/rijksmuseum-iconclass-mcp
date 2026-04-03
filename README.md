@@ -105,6 +105,8 @@ notation: "25F"   → all animal notations
 
 This two-server workflow separates the classification vocabulary (this server) from collection-specific search (the Rijksmuseum server).
 
+For more detailed examples — sensory history, finding saints, navigating the hierarchy, classifying complex scenes — see [Example Prompts](docs/example-prompts.md).
+
 ## Collection counts
 
 Artwork counts per notation live in a separate **sidecar database** (`iconclass-counts.db`, ~700 KB) so they can be updated independently of the main 3 GB notation/text/embedding database. The Rijksmuseum overlay ships by default (24,066 notations with artworks).

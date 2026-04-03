@@ -9,3 +9,4 @@ data/*.gz
 __pycache__/
 CLAUDE.md
 AGENTS.md
+offline/

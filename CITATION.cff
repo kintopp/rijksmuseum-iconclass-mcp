@@ -1,0 +1,39 @@
+cff-version: 1.2.0
+message: "If you use this software in your research, please cite it as below."
+type: software
+title: "rijksmuseum-iconclass-mcp"
+abstract: >
+  An MCP server for the Iconclass classification system — a universal
+  art-subject taxonomy covering 1.3 million notations in 13 languages,
+  with full-text and semantic search, hierarchy navigation, and
+  collection count overlays.
+authors:
+  - family-names: Bosse
+    given-names: Arno
+    orcid: "https://orcid.org/0000-0003-3681-1289"
+    affiliation: "Research and Infrastructure Support (RISE), University of Basel"
+repository-code: "https://github.com/kintopp/rijksmuseum-iconclass-mcp"
+license: MIT
+version: "0.10.0"
+date-released: "2026-04-06"
+keywords:
+  - digital humanities
+  - iconclass
+  - art classification
+  - model context protocol
+  - semantic search
+  - art history
+references:
+  - type: software
+    title: "Claude Code"
+    authors:
+      - name: "Anthropic"
+    url: "https://www.anthropic.com"
+    notes: "AI coding assistant used in the development of this software"
+  - type: dataset
+    title: "Iconclass — CC0 Data Dump"
+    authors:
+      - name: "Iconclass Foundation"
+    url: "https://github.com/iconclass/data"
+    license: "CC0-1.0"
+    notes: "1.3 million notations, texts in 13 languages, keywords, and hierarchy structure"

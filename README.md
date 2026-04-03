@@ -261,10 +261,32 @@ Only 1.8% of notations have artwork counts (24K of 1.3M). The `collectionCounts`
 
 Multi-word queries try phrase match first (adjacent words, high precision), then fall back to AND-ed individual terms if the phrase returns zero results. This adds at most two extra FTS queries on the zero-result path — negligible given sub-millisecond FTS query times on the mmap'd database.
 
+## Citation
+
+If you use rijksmuseum-iconclass-mcp in your research, please cite it as follows. A `CITATION.cff` file is included for use with Zotero, GitHub's "Cite this repository" button, and other reference managers.
+
+**APA (7th ed.)**
+
+> Bosse, A. (2026). *rijksmuseum-iconclass-mcp* (Version 0.10.0) [Software]. Research and Infrastructure Support (RISE), University of Basel. https://github.com/kintopp/rijksmuseum-iconclass-mcp
+
+**BibTeX**
+```bibtex
+@software{bosse_2026_rijksmuseum_iconclass_mcp,
+  author    = {Bosse, Arno},
+  title     = {{rijksmuseum-iconclass-mcp}},
+  year      = {2026},
+  version   = {0.10.0},
+  publisher = {Research and Infrastructure Support (RISE), University of Basel},
+  url       = {https://github.com/kintopp/rijksmuseum-iconclass-mcp},
+  orcid     = {0000-0003-3681-1289},
+  note      = {Developed with Claude Code (Anthropic, \url{https://www.anthropic.com})}
+}
+```
+
 ## License
 
 MIT
 
 ## Acknowledgements
 
-The [Iconclass](https://iconclass.org) classification system was created by Henri van de Waal and is maintained by the Iconclass Foundation. The data used in this server is published under the CC0 license.
+The [Iconclass](https://iconclass.org) classification system was created by Henri van de Waal and is maintained by the Iconclass Foundation. The [data](https://github.com/iconclass/data) used in this server is published under a Creative Commons CC0 license.

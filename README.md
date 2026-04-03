@@ -192,9 +192,9 @@ Benchmarked on Apple M4, 24 GB unified memory. Cold-start times (fresh server pr
 
 | Operation | Time | Notes |
 |-----------|------|-------|
-| FTS search (800 hits) | ~18ms | "crucifixion" — batch count sort + page resolve |
+| FTS search (800 hits) | ~18ms | "crucifixion" |
 | FTS search (8K hits) | ~36ms | "horse" |
-| FTS search (28K hits) | ~170ms | "portrait" — dominated by FTS scan over 28K matches |
+| FTS search (28K hits) | ~170ms | "portrait" |
 | Semantic search | ~50ms | vec0 KNN over 40K base-notation embeddings + ~10ms query embedding |
 | Browse | ~1ms | B-tree lookup + child resolution |
 | Browse with key variants | ~35ms | Default page of 25 key variants (DB-layer LIMIT/OFFSET) |

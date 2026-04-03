@@ -17,7 +17,7 @@ Sample prompts that show what an LLM can do with this server's five tools. Each 
 
 ### 1. Smell and the Senses in Art
 
-*How does Iconclass classify the sense of smell? What notations exist for odours, fragrant objects, and olfactory experience — and which of these actually appear in museum collections?*
+*"How does Iconclass classify the sense of smell? What notations exist for odours, fragrant objects, and olfactory experience — and which of these actually appear in the Rijksmuseum's collections?"* [link](https://claude.ai/share/df2662de-c3de-4d5e-aba7-edf0a98fb906)
 
 **Tools:** `search` (semantic + FTS), `browse`
 
@@ -34,7 +34,7 @@ Sample prompts that show what an LLM can do with this server's five tools. Each 
 
 ### 2. Finding Saints by Name
 
-*I need to find Iconclass notations for St. Jerome and St. Catherine of Siena. Do they exist? What are their attributes, and how many artworks does the Rijksmuseum hold for each?*
+*"I need to find Iconclass notations for St. Jerome and St. Catherine of Siena. Do they exist? What are their attributes, and how many artworks does the Rijksmuseum hold for each?"* [link](https://claude.ai/share/fafef7e7-e6a7-481c-949c-465a1a564bcf)
 
 **Tools:** `search` (FTS)
 
@@ -50,7 +50,7 @@ Sample prompts that show what an LLM can do with this server's five tools. Each 
 
 ### 3. Where Does Alchemy Belong?
 
-*Alchemy sits under "science" in Iconclass (49E39), but its symbolism overlaps with religion and magic. Show me the full hierarchy around alchemy — its parent path, siblings, children, and cross-references — so I can understand and evaluate how Iconclass positions it.*
+*"Alchemy sits under 'science' in Iconclass (49E39), but its symbolism overlaps with religion and magic. Show me the full hierarchy around alchemy — its parent path, siblings, children, and cross-references — so I can understand and evaluate how Iconclass positions it."* [link](https://claude.ai/share/53ed27f2-5e43-412d-afff-ba092439fdc2)
 
 **Tools:** `browse`
 
@@ -66,7 +66,7 @@ Sample prompts that show what an LLM can do with this server's five tools. Each 
 
 ### 4. The Life and Miracles of St. Francis
 
-*What scenes from the life of St. Francis of Assisi does Iconclass cover? Show me the full narrative structure — his early life, visions, miracles, martyrdom, and posthumous events — and which scenes have artworks in the Rijksmuseum.*
+*"What scenes from the life of St. Francis of Assisi does Iconclass cover? Show me the full narrative structure — his early life, visions, miracles, martyrdom, and posthumous events — and which scenes have artworks in the Rijksmuseum."* [link](https://claude.ai/share/5762502a-3803-4c5f-899a-6136c18c6a81)
 
 **Tools:** `browse`, `search_prefix`
 
@@ -83,7 +83,7 @@ Sample prompts that show what an LLM can do with this server's five tools. Each 
 
 ### 5. Mapping All Animal Notations
 
-*How many notations exist under "animals" in Iconclass? Give me an overview of the major sub-branches — mammals, birds, reptiles, fish, insects — with counts of notations and artworks in each. For the salamander specifically, show me where it appears in the hierarchy and what modifiers are available — can I specify a salamander as a bestiary creature, a heraldic device, or a spirit of fire?*
+*"How many notations exist under 'animals' in Iconclass? Give me an overview of the major sub-branches — mammals, birds, reptiles, fish, insects — with counts of notations and artworks in each. For the salamander specifically, show me where it appears in the hierarchy and what modifiers are available — can I specify a salamander as a bestiary creature, a heraldic device, or a spirit of fire?"* [link](https://claude.ai/share/6bbd38a7-729f-4c57-8403-5471d674f896)
 
 **Tools:** `search_prefix`, `browse`, `search` (FTS), `expand_keys`
 
@@ -101,7 +101,7 @@ Sample prompts that show what an LLM can do with this server's five tools. Each 
 
 ### 6. Classifying a Complex Scene
 
-*I'm cataloguing a painting that shows the Virgin Mary seated with the Christ Child on her lap, reading from an open book, with a vase of lilies on a table beside her. What Iconclass notations should I assign? Show me the full metadata for each so I can verify they fit.*
+*"I'm cataloguing a painting that shows the Virgin Mary seated with the Christ Child on her lap, reading from an open book, with a vase of lilies on a table beside her. What Iconclass notations should I assign? Show me the full metadata for each so I can verify they fit."* [link](https://claude.ai/share/d0d2f5c0-efee-4389-9e5f-201cd488c23c)
 
 **Tools:** `search` (FTS + semantic), `resolve`
 
@@ -118,7 +118,7 @@ Sample prompts that show what an LLM can do with this server's five tools. Each 
 
 ### 7. From Notation to Artwork
 
-*Find the Iconclass notation for "the Crucifixion of Christ", then search the Rijksmuseum collection for artworks depicting it. How many are there, and which are the most important?*
+*"Find the Iconclass notation for 'the Crucifixion of Christ', then search the Rijksmuseum collection for artworks depicting it. How many are there, and which are the most important?"*
 
 **Tools:** `search` (FTS), then `search_artwork` on the Rijksmuseum server
 
@@ -133,7 +133,7 @@ Sample prompts that show what an LLM can do with this server's five tools. Each 
 
 ### 8. Last Supper or Wedding at Cana?
 
-*I'm looking at a painting of a banquet scene with Christ at a long table surrounded by guests. It could be the Last Supper or the Marriage at Cana — both are large gatherings around a table. What are the Iconclass notations for each, and what distinguishing features does the classification record?*
+*"I'm looking at a painting of a banquet scene with Christ at a long table surrounded by guests. It could be the Last Supper or the Marriage at Cana — both are large gatherings around a table. What are the Iconclass notations for each, and what distinguishing features does the classification record?"* [link](https://claude.ai/share/d695c60a-826f-4d36-9f29-36e875d4ee2f)
 
 **Tools:** `search` (FTS), `resolve`
 
@@ -150,7 +150,7 @@ Sample prompts that show what an LLM can do with this server's five tools. Each 
 
 ### 9. A Broken Lute String as Vanitas
 
-*A still-life painting includes a lute with a broken string — a classic vanitas motif. How should I classify this in Iconclass? Is the broken string a vanitas symbol, a damaged musical instrument, or both?*
+*"A still-life painting includes a lute with a broken string — a classic vanitas motif. How should I classify this in Iconclass? Is the broken string a vanitas symbol, a damaged musical instrument, or both?"* [link](https://claude.ai/share/d6083605-e56e-4470-a12e-674bbd3a914a)
 
 **Tools:** `browse`, `search` (FTS), `expand_keys`
 
@@ -167,7 +167,7 @@ Sample prompts that show what an LLM can do with this server's five tools. Each 
 
 ### 10. Classifying Jungle Book Illustrations
 
-*I'm cataloguing a set of prints illustrating Kipling's Jungle Book. How do I classify Mowgli, Baloo, and Bagheera in Iconclass? Are they literary characters, animals, or something else?*
+*"I'm cataloguing a set of prints illustrating Kipling's Jungle Book. How do I classify Mowgli, Baloo, and Bagheera in Iconclass? Are they literary characters, animals, or something else?"* [link](https://claude.ai/share/8f96b5b5-dd70-4d17-9836-ea2664285d09)
 
 **Tools:** `search` (FTS), `browse`
 

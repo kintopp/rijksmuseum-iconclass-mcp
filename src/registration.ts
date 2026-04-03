@@ -146,6 +146,7 @@ export function registerTools(
         "• semanticQuery — find notations by meaning (e.g. 'domestic animals' finds dogs, cats, horses)" +
         (semanticAvailable ? "" : " [currently unavailable — embeddings not loaded]") + "\n\n" +
         "Results ranked by collection count. " +
+        "Pass resulting notation codes to a collection server's search_artwork(iconclass=...) to find matching artworks — multiple codes are AND-combined.\n\n" +
         "For enumerating all notations under a prefix, use search_prefix instead.",
       inputSchema: z.object({
         query: optStr()

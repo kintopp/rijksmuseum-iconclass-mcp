@@ -201,19 +201,19 @@ The server's download logic auto-detects chunked assets (`.part-aa`, `.part-ab`,
 
 ## Performance
 
-Benchmarked on Apple M4, 24 GB unified memory. Cold-start times (fresh server process per query, no warm caches).
+| Operation | Local | Production | Notes |
+|-----------|-------|------------|-------|
+| FTS search (844 hits) | ~18ms | ~118ms | "crucifixion" |
+| FTS search (8.5K hits) | ~38ms | ~148ms | "horse" |
+| FTS search (28.7K hits) | ~165ms | ~260ms | "portrait" |
+| Semantic search | ~65ms | ~184ms | vec0 KNN over 40K embeddings + query encoding |
+| Browse | ~5ms | ~149ms | B-tree lookup + child resolution |
+| Browse with key variants | ~7ms | ~118ms | Default page of 25 key variants |
+| Resolve (batch of 15) | ~7ms | ~117ms | 15 notations with full metadata |
+| Prefix search | ~60ms | ~175ms | Depends on subtree size |
+| Server cold start | ~8s | ~77s | Local: embedding model only. Production: chunked DB download + decompression |
 
-| Operation | Time | Notes |
-|-----------|------|-------|
-| FTS search (844 hits) | ~18ms | "crucifixion" |
-| FTS search (8.5K hits) | ~38ms | "horse" |
-| FTS search (28.7K hits) | ~165ms | "portrait" |
-| Semantic search | ~65ms | vec0 KNN over 40K base-notation embeddings + ~10ms query embedding |
-| Browse | ~5ms | B-tree lookup + child resolution |
-| Browse with key variants | ~7ms | Default page of 25 key variants (DB-layer LIMIT/OFFSET) |
-| Resolve (batch of 15) | ~7ms | 15 notations with full metadata |
-| Prefix search | ~60ms | Depends on subtree size |
-| Server cold start | ~8s | Embedding model download cached after first run |
+**Local:** Apple M4, 24 GB unified memory, warm mmap caches. **Production:** Railway, warm caches. Production times include ~110ms network round-trip overhead.
 
 ## Notes
 

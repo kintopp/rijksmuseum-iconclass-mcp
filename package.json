@@ -5,12 +5,9 @@
   "license": "MIT",
   "type": "module",
   "engines": {
-    "node": ">=20.0.0"
+    "node": ">=24.14.1 <25"
   },
   "main": "dist/index.js",
-  "bin": {
-    "rijksmuseum-iconclass-mcp": "./dist/index.js"
-  },
   "scripts": {
     "build": "tsc",
     "start": "node dist/index.js",

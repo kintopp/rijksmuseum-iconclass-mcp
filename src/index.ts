@@ -79,7 +79,7 @@ function createServer(): McpServer {
         "Five tools for discovery and navigation:\n" +
         "• search — keyword (FTS) or semantic concept search across labels and keywords\n" +
         "• browse — navigate the hierarchy: entry + children + cross-references + key variants\n" +
-        "• resolve — batch lookup of specific notation codes (up to 50)\n" +
+        "• resolve — batch lookup of specific notation codes (up to 25)\n" +
         "• expand_keys — list all key-expanded variants of a base notation\n" +
         "• search_prefix — find all notations under a hierarchy subtree (e.g. '73D8' = Passion of Christ)\n\n" +
 

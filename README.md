@@ -12,31 +12,6 @@ Iconclass is a subject classification system designed for art and iconography. I
 
 ## Quick start
 
-### Claude Desktop (stdio)
-
-Add to your `claude_desktop_config.json`:
-
-```json
-{
-  "mcpServers": {
-    "iconclass": {
-      "command": "npx",
-      "args": ["-y", "rijksmuseum-iconclass-mcp"]
-    }
-  }
-}
-```
-
-On first run, the server downloads `iconclass.db` (~1 GB compressed) to `data/`. Subsequent starts are fast.
-
-### HTTP mode
-
-```bash
-PORT=3000 npx rijksmuseum-iconclass-mcp
-# MCP endpoint: POST http://localhost:3000/mcp
-# Health check: GET  http://localhost:3000/health
-```
-
 ### From source
 
 ```bash
@@ -45,6 +20,31 @@ cd rijksmuseum-iconclass-mcp
 npm install && npm run build
 npm start          # stdio mode
 npm run serve      # HTTP mode on port 3000
+```
+
+On first run, the server downloads `iconclass.db` (~1 GB compressed) to `data/` if `ICONCLASS_DB_URL` is set. Subsequent starts are fast.
+
+### Claude Desktop (stdio)
+
+Add to your `claude_desktop_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "iconclass": {
+      "command": "node",
+      "args": ["/path/to/rijksmuseum-iconclass-mcp/dist/index.js"]
+    }
+  }
+}
+```
+
+### HTTP mode
+
+```bash
+PORT=3000 node dist/index.js
+# MCP endpoint: POST http://localhost:3000/mcp
+# Health check: GET  http://localhost:3000/health
 ```
 
 ## Tools
@@ -80,7 +80,7 @@ notation: "25F23", includeKeys: true  → 204 key-expanded variants
 
 ### `resolve` — batch notation lookup
 
-Look up one or more notations by code. Accepts a single string or an array of up to 50.
+Look up one or more notations by code. Accepts a single string or an array of up to 25.
 
 ```
 notation: ["73D6", "31A33", "25F23"]  → full metadata for each
@@ -198,7 +198,7 @@ Benchmarked on Apple M4, 24 GB unified memory. Cold-start times (fresh server pr
 | Semantic search | ~50ms | vec0 KNN over 40K base-notation embeddings + ~10ms query embedding |
 | Browse | ~1ms | B-tree lookup + child resolution |
 | Browse with key variants | ~35ms | Default page of 25 key variants (DB-layer LIMIT/OFFSET) |
-| Resolve (batch of 10) | ~13ms | 10 notations with full metadata |
+| Resolve (batch of 15) | ~13ms | 15 notations with full metadata |
 | Prefix search | ~55ms | Depends on subtree size |
 | Server cold start | ~8s | Embedding model download cached after first run |
 
@@ -217,6 +217,20 @@ Semantic search embeddings are built from a composite text that includes each no
 In practice, this may rarely matter — semantic search is a fallback for when the exact vocabulary term is unknown, and FTS keyword search is unaffected by these structural biases.
 
 Other, more minor biases to be aware of: named notations like `11H(JOHN)` embed the name itself, so saints or figures with common English names may rank slightly higher than those with non-English names; the composite text mixes English and Dutch keywords, which can give a small boost to notations that happen to have Dutch keywords matching a query; and structural placeholder notations like `25F23(...)` ("beasts of prey, with NAME") sit in a generic part of embedding space and can surface as top results for broad queries even though they are not real subject entries.
+
+### Paging defaults and limits
+
+The paging constants were chosen by profiling the actual Iconclass database (1.3M notations) rather than by convention. Key data points:
+
+**Result sizes.** A resolved Iconclass entry averages ~350 bytes of JSON (median). At the default page size of 25, a typical search response is ~8 KB (~2,300 tokens) — roughly 1% of a 200K-token context window. At the maximum of 50 results, responses reach ~16 KB (~4,600 tokens). Both leave ample room for LLM reasoning.
+
+**Key variant distribution.** 81% of base notations have 25 or fewer key variants, so the default page of 25 captures most notations in a single call. The maximum of 335 matches the largest notation in the database and eliminates pagination entirely — important because each pagination round-trip costs the user several seconds of LLM reasoning time, far more than the ~9 ms the database needs to resolve 335 variants.
+
+**Keywords.** The per-notation keyword limit of 20 captures 100% of (notation, language) pairs in the database. The 99th percentile is 9 keywords; the observed maximum is 40, but only a handful of entries exceed 20.
+
+**Collection count sparsity.** Only 1.8% of notations have artwork counts (24K of 1.3M). The `collectionCounts` field is empty for the vast majority of entries, adding negligible overhead. The `onlyWithArtworks` and `collectionId` filters are aggressive narrowers — useful when the caller only needs notations that appear in a specific collection.
+
+**FTS result sets.** Queries return anywhere from ~800 unique notations ("crucifixion") to ~30,000 ("portrait"). Results are sorted by total collection count so the most relevant notations appear first regardless of page size. The fixed cost of the FTS scan dominates — returning 10 or 50 results takes roughly the same time.
 
 ## License
 

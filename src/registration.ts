@@ -105,7 +105,7 @@ const PrefixSearchOutput = {
 
 const TOOL_LIMITS = {
   search:        { max: 50, default: 25 },
-  resolve:       { max: 25, default: 10 },
+  resolve:       { max: 25, default: 15 },
   search_prefix: { max: 100, default: 25 },
 } as const;
 
@@ -233,8 +233,8 @@ export function registerTools(
         lang: z.string().default("en").describe(LANG_DESC),
         includeKeys: z.boolean().default(false).optional()
           .describe("Include key-expanded variants (e.g. 25F23(+46)). Only applies to base notations."),
-        maxKeyVariants: z.number().int().min(1).max(200).default(25).optional()
-          .describe("Maximum key variants to return when includeKeys is true (1-200, default 25)."),
+        maxKeyVariants: z.number().int().min(1).max(335).default(25).optional()
+          .describe("Maximum key variants to return when includeKeys is true (1-335, default 25)."),
         keyOffset: z.number().int().min(0).default(0).optional()
           .describe("Skip this many key variants (for pagination)."),
       }).strict(),
@@ -294,12 +294,12 @@ export function registerTools(
       description:
         "Look up one or more Iconclass notations by code. Returns full metadata: " +
         "text, keywords, hierarchy path, children, cross-references, key info, and collection counts. " +
-        "Accepts up to 50 notations in a single call.",
+        "Accepts up to 25 notations in a single call.",
       inputSchema: z.object({
         notation: z.union([
           z.string().min(1),
           z.array(z.string().min(1)).min(1).max(TOOL_LIMITS.resolve.max),
-        ]).describe("One notation or array of notations to resolve (max 50)."),
+        ]).describe("One notation or array of notations to resolve (max 25)."),
         lang: z.string().default("en").describe(LANG_DESC),
       }).strict(),
       ...withOutputSchema(ResolveOutput),
@@ -339,8 +339,8 @@ export function registerTools(
       inputSchema: z.object({
         notation: z.string().min(1).describe("Base notation to expand (e.g. '25F23'). Must not contain parentheses."),
         lang: z.string().default("en").describe(LANG_DESC),
-        maxResults: z.number().int().min(1).max(200).default(25)
-          .describe("Maximum key variants to return (1-200, default 25)."),
+        maxResults: z.number().int().min(1).max(335).default(25)
+          .describe("Maximum key variants to return (1-335, default 25)."),
         offset: z.number().int().min(0).default(0).optional()
           .describe("Skip this many key variants (for pagination)."),
       }).strict(),

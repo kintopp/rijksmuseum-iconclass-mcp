@@ -15,7 +15,8 @@
     "lint": "eslint src/",
     "test": "node scripts/tests/test-pure-functions.mjs",
     "test:tools": "node scripts/tests/test-tools.mjs",
-    "test:all": "node scripts/tests/test-pure-functions.mjs && node scripts/tests/test-tools.mjs"
+    "test:all": "node scripts/tests/test-pure-functions.mjs && node scripts/tests/test-tools.mjs",
+    "warm-cache": "node scripts/warm-cache-local.mjs --validate"
   },
   "dependencies": {
     "@huggingface/transformers": "3.8.1",

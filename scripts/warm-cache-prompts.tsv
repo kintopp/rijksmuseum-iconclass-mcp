@@ -1,0 +1,110 @@
+# warm-cache-prompts.tsv — Tool calls for warming caches and smoke-testing
+# Format: tool_name<TAB>json_args
+# Lines starting with # are comments; blank lines are ignored.
+#
+# Derived from the 10 example prompts in docs/example-prompts.md.
+# Calls are ordered: FTS/semantic searches first (warm SQLite FTS + mmap page
+# cache), then browse/resolve (warm notation lookup cache), then expand_keys
+# and search_prefix (warm key variant + prefix queries).
+
+# ===================================================================
+# Prompt 1: Smell and the Senses in Art
+# ===================================================================
+search	{"semanticQuery": "smell and olfactory experience", "maxResults": 10}
+search	{"query": "smell", "maxResults": 10}
+browse	{"notation": "31A3", "depth": 2}
+browse	{"notation": "31A33", "includeKeys": true}
+
+# ===================================================================
+# Prompt 2: Finding Saints by Name
+# ===================================================================
+search	{"query": "Jerome", "maxResults": 5}
+search	{"query": "Catherine Siena", "maxResults": 5}
+search	{"query": "Euphemia", "maxResults": 5}
+
+# ===================================================================
+# Prompt 3: Where Does Alchemy Belong?
+# ===================================================================
+browse	{"notation": "49E39", "depth": 2}
+search	{"query": "alchemy", "maxResults": 10}
+
+# ===================================================================
+# Prompt 4: The Life and Miracles of St. Francis
+# ===================================================================
+browse	{"notation": "11H(FRANCIS)", "depth": 2}
+browse	{"notation": "11H(FRANCIS)5"}
+search_prefix	{"notation": "11H(FRANCIS)", "maxResults": 50}
+
+# ===================================================================
+# Prompt 5: Mapping All Animal Notations
+# ===================================================================
+browse	{"notation": "25F", "depth": 2}
+search_prefix	{"notation": "25F2", "maxResults": 25}
+search_prefix	{"notation": "25F3", "maxResults": 25}
+search_prefix	{"notation": "25F4", "maxResults": 25}
+search	{"query": "salamander", "maxResults": 10}
+expand_keys	{"notation": "25F44", "maxResults": 25}
+browse	{"notation": "25FF412"}
+
+# ===================================================================
+# Prompt 6: Classifying a Complex Scene
+# ===================================================================
+search	{"semanticQuery": "Virgin Mary reading with Christ Child", "maxResults": 10}
+search	{"query": "Christ-child", "maxResults": 10}
+search	{"query": "open book", "maxResults": 5}
+search	{"query": "lily vase", "maxResults": 5}
+resolve	{"notation": ["73B732", "11F4212", "49MM32", "25G41(LILY)"]}
+
+# ===================================================================
+# Prompt 7: From Notation to Artwork (cross-server handoff)
+# ===================================================================
+search	{"query": "crucifixion", "maxResults": 5}
+browse	{"notation": "73D", "depth": 2}
+
+# ===================================================================
+# Prompt 8: Last Supper or Wedding at Cana?
+# ===================================================================
+search	{"query": "Last Supper", "maxResults": 5}
+search	{"query": "Cana", "maxResults": 5}
+resolve	{"notation": ["73D24", "73C611"]}
+
+# ===================================================================
+# Prompt 9: A Broken Lute String as Vanitas
+# ===================================================================
+browse	{"notation": "11R7", "depth": 2}
+search	{"query": "broken string", "maxResults": 5}
+browse	{"notation": "48C7323"}
+expand_keys	{"notation": "48C7323", "maxResults": 50}
+search	{"query": "vanitas", "maxResults": 5}
+
+# ===================================================================
+# Prompt 10: Classifying Jungle Book Illustrations
+# ===================================================================
+search	{"query": "Mowgli", "maxResults": 5}
+browse	{"notation": "82", "depth": 2}
+search	{"query": "Jungle Book", "maxResults": 5}
+
+# ===================================================================
+# Extra: exercise new parameters and edge cases
+# ===================================================================
+# onlyWithArtworks filter (FTS + semantic)
+search	{"query": "smell", "onlyWithArtworks": true, "maxResults": 10}
+search	{"semanticQuery": "domestic animals", "onlyWithArtworks": true, "maxResults": 10}
+
+# parentNotation scoped search
+search	{"query": "reading", "parentNotation": "73", "maxResults": 10}
+search	{"query": "crown", "parentNotation": "11H", "maxResults": 10}
+
+# browse depth=3 on a narrow branch
+browse	{"notation": "73D82", "depth": 3}
+
+# multi-word FTS fallback (phrase match should fail, AND fallback should work)
+search	{"query": "Marriage Cana", "maxResults": 5}
+search	{"query": "broken string instrument", "maxResults": 5}
+
+# collectionId filter
+search	{"query": "crucifixion", "collectionId": "rijksmuseum", "maxResults": 5}
+
+# Non-English queries
+search	{"query": "Kreuzigung", "maxResults": 5, "lang": "de"}
+search	{"query": "kruisiging", "maxResults": 5, "lang": "nl"}

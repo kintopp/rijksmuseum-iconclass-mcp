@@ -1,6 +1,6 @@
 ---
 name: iconclass-mcp
-version: "0.2.0"
+version: "0.10.0"
 last_updated: 2026-04-03
 description: >
   Research workflows for the Iconclass MCP server — a universal art-subject

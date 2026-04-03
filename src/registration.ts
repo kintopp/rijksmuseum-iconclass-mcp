@@ -105,7 +105,7 @@ const PrefixSearchOutput = {
 
 const TOOL_LIMITS = {
   search:        { max: 50, default: 25 },
-  resolve:       { max: 50, default: 10 },
+  resolve:       { max: 25, default: 10 },
   search_prefix: { max: 100, default: 25 },
 } as const;
 

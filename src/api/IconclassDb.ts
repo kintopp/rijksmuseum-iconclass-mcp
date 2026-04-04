@@ -142,7 +142,14 @@ export class IconclassDb {
             "SELECT collection_id, count FROM counts.collection_counts WHERE notation = ?"
           );
 
-          const rows = this.db.prepare("SELECT collection_id, label, counts_as_of, total_artworks, search_url_template FROM counts.collection_info").all() as {
+          const rows = this.db.prepare(`
+            SELECT ci.collection_id, ci.label, ci.counts_as_of, ci.search_url_template,
+                   COUNT(cc.notation) AS total_artworks
+            FROM counts.collection_info ci
+            LEFT JOIN counts.collection_counts cc ON cc.collection_id = ci.collection_id
+            INNER JOIN notations n ON cc.notation = n.notation
+            GROUP BY ci.collection_id
+          `).all() as {
             collection_id: string; label: string; counts_as_of: string | null; total_artworks: number; search_url_template: string | null;
           }[];
           this._collections = rows.map(r => ({

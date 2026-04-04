@@ -1,7 +1,7 @@
 ---
 name: iconclass-mcp
-version: "0.1.0"
-last_updated: 2026-04-03
+version: "0.1.1"
+last_updated: 2026-04-04
 description: >
   Research workflows for the Iconclass MCP server — a universal art-subject
   taxonomy with ~40K base notations across 13 languages. Use this skill whenever
@@ -26,6 +26,8 @@ DISCOVER  ->  NARROW  ->  RESOLVE  ->  HAND OFF
 Iconclass is a retrieval tool, not a descriptive language. A notation's meaning comes from its position in the hierarchy, not just its label. Complex artworks carry many codes (often 30+) across different branches because a single image contains multiple subjects — a scene, its setting, its actors, their attributes, symbolic objects. The goal is not to find *the one right code* but to identify the set of codes that carve out the search space you need.
 
 Most of the ~40K base notations are "theoretical" — they exist in the taxonomy but no museum has tagged artworks with them. Always check `collectionCounts` before handing a code to a collection server: a code with 0 artworks returns nothing, and a code with 371 vs 2 signals very different curatorial depth.
+
+**Never truncate discovery queries.** When searching for notation codes, use the default `maxResults` (25) or higher — never set a lower value. You need to see the full result set with collection counts to evaluate which codes are useful. Cutting results short means you miss relevant notations and can't make informed handoff decisions.
 
 ---
 

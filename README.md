@@ -112,7 +112,7 @@ notation: ["73D6", "92D192134"]  → batch lookup across collections
 Currently includes three collections:
 - **Rijksmuseum, Amsterdam** — 24,066 notations (count only; use [rijksmuseum-mcp-plus](https://github.com/kintopp/rijksmuseum-mcp-plus) for artwork search)
 - **RKD — Netherlands Institute for Art History** — 13,984 notations with search link-out
-- **Arkyves** — 34,721 notations with search link-out (counts derived from the [Iconclass AI Test Set](https://iconclass.org/testset/))
+- **Arkyves** — 34,721 notations with search link-out
 
 ## Typical workflow
 

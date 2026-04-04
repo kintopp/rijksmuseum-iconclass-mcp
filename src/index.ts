@@ -76,12 +76,13 @@ function createServer(): McpServer {
         "Iconclass subject classification explorer — a hierarchical taxonomy for art subjects " +
         "covering 1.3 million notations across 13 languages.\n\n" +
 
-        "Five tools for discovery and navigation:\n" +
+        "Six tools for discovery and navigation:\n" +
         "• search — keyword (FTS) or semantic concept search across labels and keywords\n" +
         "• browse — navigate the hierarchy: entry + children + cross-references + key variants\n" +
         "• resolve — batch lookup of specific notation codes (up to 25)\n" +
         "• expand_keys — list all key-expanded variants of a base notation\n" +
-        "• search_prefix — find all notations under a hierarchy subtree (e.g. '73D8' = Passion of Christ)\n\n" +
+        "• search_prefix — find all notations under a hierarchy subtree (e.g. '73D8' = Passion of Christ)\n" +
+        "• find_adopters — see which collections have artworks for given notations, with counts and links\n\n" +
 
         "Notations are hierarchical and encode left-to-right: broader → narrower. " +
         "A parent notation covers all its descendants. " +

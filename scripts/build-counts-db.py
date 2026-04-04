@@ -21,6 +21,21 @@ import sys
 from datetime import datetime, timezone
 
 
+COLLECTION_META: dict[str, tuple[str, str | None]] = {
+    "rijksmuseum": ("Rijksmuseum, Amsterdam", None),
+    "rkd": (
+        "RKD \u2014 Netherlands Institute for Art History",
+        "https://research.rkd.nl/en/search?q={notation}"
+        "&filters%5B0%5D%5Bfield%5D=db"
+        "&filters%5B0%5D%5Bvalues%5D%5B0%5D=rkdimages",
+    ),
+    "arkyves": (
+        "Arkyves",
+        "https://www.arkyves.org/r/section/all/?&q={notation}",
+    ),
+}
+
+
 def build_counts_db(output_path: str, count_csvs: list[str]):
     os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
     if os.path.exists(output_path):
@@ -41,10 +56,11 @@ def build_counts_db(output_path: str, count_csvs: list[str]):
 
     conn.execute("""
         CREATE TABLE collection_info (
-            collection_id  TEXT PRIMARY KEY,
-            label          TEXT NOT NULL,
-            counts_as_of   TEXT,
-            total_artworks INTEGER DEFAULT 0
+            collection_id        TEXT PRIMARY KEY,
+            label                TEXT NOT NULL,
+            counts_as_of         TEXT,
+            total_artworks       INTEGER DEFAULT 0,
+            search_url_template  TEXT
         )
     """)
 
@@ -62,7 +78,9 @@ def build_counts_db(output_path: str, count_csvs: list[str]):
 
         basename = os.path.basename(csv_path)
         collection_id = basename.replace("-counts.csv", "").replace("_counts.csv", "").replace(".csv", "")
-        label = collection_id.replace("-", " ").replace("_", " ").title()
+        meta = COLLECTION_META.get(collection_id)
+        label = meta[0] if meta else collection_id.replace("-", " ").replace("_", " ").title()
+        url_template = meta[1] if meta else None
 
         print(f"  Loading counts for '{collection_id}' from {csv_path}...")
 
@@ -88,8 +106,8 @@ def build_counts_db(output_path: str, count_csvs: list[str]):
         # total_artworks = number of distinct notations with artworks in this collection
         total_artworks = len(rows)
         conn.execute(
-            "INSERT OR REPLACE INTO collection_info VALUES (?, ?, ?, ?)",
-            (collection_id, label, datetime.now(timezone.utc).strftime("%Y-%m-%d"), total_artworks),
+            "INSERT OR REPLACE INTO collection_info VALUES (?, ?, ?, ?, ?)",
+            (collection_id, label, datetime.now(timezone.utc).strftime("%Y-%m-%d"), total_artworks, url_template),
         )
 
         total_collections += 1

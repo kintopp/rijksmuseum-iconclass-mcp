@@ -11,6 +11,7 @@ export interface CollectionInfo {
   label: string;
   countsAsOf: string | null;
   totalArtworks: number;
+  searchUrlTemplate: string | null;
 }
 
 export interface IconclassEntry {
@@ -70,6 +71,22 @@ export interface IconclassKeyExpansionResult {
   collections: CollectionInfo[];
 }
 
+export interface AdopterInfo {
+  collectionId: string;
+  label: string;
+  count: number;
+  url: string | null;
+}
+
+export interface FindAdoptersResult {
+  notations: {
+    notation: string;
+    text: string;
+    adopters: AdopterInfo[];
+  }[];
+  collections: CollectionInfo[];
+}
+
 // ─── Helpers ─────────────────────────────────────────────────────────
 
 function langFallbacks(lang: string): string[] {
@@ -86,6 +103,7 @@ export class IconclassDb {
   private _hasEmbeddings = false;
   private _embeddingDimensions = 0;
   private _collections: CollectionInfo[] = [];
+  private _collectionsMap: Map<string, CollectionInfo> = new Map();
   private stmtTextFts!: Statement;
   private stmtKwFts!: Statement;
   private stmtGetNotation!: Statement;
@@ -124,15 +142,17 @@ export class IconclassDb {
             "SELECT collection_id, count FROM counts.collection_counts WHERE notation = ?"
           );
 
-          const rows = this.db.prepare("SELECT collection_id, label, counts_as_of, total_artworks FROM counts.collection_info").all() as {
-            collection_id: string; label: string; counts_as_of: string | null; total_artworks: number;
+          const rows = this.db.prepare("SELECT collection_id, label, counts_as_of, total_artworks, search_url_template FROM counts.collection_info").all() as {
+            collection_id: string; label: string; counts_as_of: string | null; total_artworks: number; search_url_template: string | null;
           }[];
           this._collections = rows.map(r => ({
             collectionId: r.collection_id,
             label: r.label,
             countsAsOf: r.counts_as_of,
             totalArtworks: r.total_artworks,
+            searchUrlTemplate: r.search_url_template,
           }));
+          this._collectionsMap = new Map(this._collections.map(c => [c.collectionId, c]));
           console.error(`  Counts DB attached: ${countsPath} (${this._collections.length} collections)`);
         } catch (err) {
           console.error(`  Counts DB not available: ${err instanceof Error ? err.message : err}`);
@@ -486,6 +506,39 @@ export class IconclassDb {
       results,
       collections: this._collections,
     };
+  }
+
+  // ─── Find adopters ────────────────────────────────────────────────
+
+  findAdopters(notations: string[], lang: string = "en"): FindAdoptersResult {
+    const empty: FindAdoptersResult = { notations: [], collections: this._collections };
+    if (!this.db) return empty;
+
+    const results: FindAdoptersResult["notations"] = [];
+
+    for (const notation of notations) {
+      const text = this.getText(notation, lang) ?? notation;
+      const adopters: AdopterInfo[] = [];
+
+      if (this.stmtGetCollectionCounts) {
+        const rows = this.stmtGetCollectionCounts.all(notation) as { collection_id: string; count: number }[];
+        for (const row of rows) {
+          const info = this._collectionsMap.get(row.collection_id);
+          const template = info?.searchUrlTemplate;
+          adopters.push({
+            collectionId: row.collection_id,
+            label: info?.label ?? row.collection_id,
+            count: row.count,
+            url: template ? template.replace("{notation}", encodeURIComponent(notation)) : null,
+          });
+        }
+        adopters.sort((a, b) => b.count - a.count);
+      }
+
+      results.push({ notation, text, adopters });
+    }
+
+    return { notations: results, collections: this._collections };
   }
 
   // ─── Internal ─────────────────────────────────────────────────────

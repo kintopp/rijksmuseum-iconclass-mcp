@@ -71,12 +71,13 @@ section("1. Tool listing");
 const tools = await client.listTools();
 const toolNames = tools.tools.map(t => t.name).sort();
 
-assertEq(toolNames.length, 5, `5 tools registered`);
+assertEq(toolNames.length, 6, `6 tools registered`);
 assert(toolNames.includes("search"), "search tool present");
 assert(toolNames.includes("browse"), "browse tool present");
 assert(toolNames.includes("resolve"), "resolve tool present");
 assert(toolNames.includes("expand_keys"), "expand_keys tool present");
 assert(toolNames.includes("search_prefix"), "search_prefix tool present");
+assert(toolNames.includes("find_adopters"), "find_adopters tool present");
 
 // Verify all tools have outputSchema (structuredContent enabled)
 for (const tool of tools.tools) {
@@ -469,6 +470,78 @@ assert(s12.collections.length > 0, "collections array present");
 const rij = s12.collections.find(c => c.collectionId === "rijksmuseum");
 assert(rij !== undefined, "rijksmuseum collection present");
 assert(rij.totalArtworks > 0, `totalArtworks > 0 (got ${rij?.totalArtworks})`);
+
+// ══════════════════════════════════════════════════════════════════
+//  13. find_adopters
+// ══════════════════════════════════════════════════════════════════
+
+section("13. find_adopters");
+
+// Single notation — 73D6 (crucifixion, known to be in Rijksmuseum)
+const r13a = await client.callTool({
+  name: "find_adopters",
+  arguments: { notation: "73D6" },
+});
+const s13a = sc(r13a);
+assert(!s13a.error, "no error");
+assertEq(s13a.notations.length, 1, "1 notation returned");
+assertEq(s13a.notations[0].notation, "73D6", "notation echoed");
+assert(s13a.notations[0].text.length > 0, "text present");
+assert(s13a.notations[0].adopters.length > 0, `has adopters (got ${s13a.notations[0].adopters.length})`);
+
+// Check Rijksmuseum has no URL
+const rijAdopter = s13a.notations[0].adopters.find(a => a.collectionId === "rijksmuseum");
+if (rijAdopter) {
+  assert(rijAdopter.url === null, "rijksmuseum has no URL");
+  assert(rijAdopter.count > 0, `rijksmuseum count > 0 (got ${rijAdopter.count})`);
+}
+
+// Check RKD/Arkyves have URLs
+const rkdAdopter = s13a.notations[0].adopters.find(a => a.collectionId === "rkd");
+if (rkdAdopter) {
+  assert(typeof rkdAdopter.url === "string", "rkd has URL");
+  assert(rkdAdopter.url.includes("73D6"), "rkd URL contains notation");
+}
+const arkAdopter = s13a.notations[0].adopters.find(a => a.collectionId === "arkyves");
+if (arkAdopter) {
+  assert(typeof arkAdopter.url === "string", "arkyves has URL");
+  assert(arkAdopter.url.includes("73D6"), "arkyves URL contains notation");
+}
+
+// Adopters sorted by count descending
+const counts13 = s13a.notations[0].adopters.map(a => a.count);
+for (let i = 1; i < counts13.length; i++) {
+  assert(counts13[i] <= counts13[i - 1], `adopters sorted desc: ${counts13[i - 1]} >= ${counts13[i]}`);
+}
+
+// Collections metadata present
+assert(s13a.collections.length >= 3, `collections >= 3 (got ${s13a.collections.length})`);
+const rkdCol = s13a.collections.find(c => c.collectionId === "rkd");
+assert(rkdCol?.searchUrlTemplate != null, "rkd has searchUrlTemplate");
+const rijCol = s13a.collections.find(c => c.collectionId === "rijksmuseum");
+assert(rijCol?.searchUrlTemplate === null, "rijksmuseum searchUrlTemplate is null");
+
+// Batch notations — mix of found and not-found
+const r13b = await client.callTool({
+  name: "find_adopters",
+  arguments: { notation: ["73D6", "25F23(+46)", "NONEXISTENT_ZZZZZ"] },
+});
+const s13b = sc(r13b);
+assertEq(s13b.notations.length, 3, "3 notations returned");
+assertEq(s13b.notations[0].notation, "73D6", "first is 73D6");
+assertEq(s13b.notations[2].notation, "NONEXISTENT_ZZZZZ", "third is nonexistent");
+assertEq(s13b.notations[2].adopters.length, 0, "nonexistent has 0 adopters");
+
+// Key-expanded notation URL encoding
+const keyEntry = s13b.notations[1];
+assertEq(keyEntry.notation, "25F23(+46)", "key-expanded notation");
+if (keyEntry.adopters.length > 0) {
+  const urlAdopter = keyEntry.adopters.find(a => a.url);
+  if (urlAdopter) {
+    assert(urlAdopter.url.includes("25F23"), "URL contains base notation");
+    assert(urlAdopter.url.includes("%28"), "URL encodes parentheses");
+  }
+}
 
 // ══════════════════════════════════════════════════════════════════
 //  Summary

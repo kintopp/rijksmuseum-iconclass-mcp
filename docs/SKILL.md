@@ -1,15 +1,16 @@
 ---
 name: iconclass-mcp
-version: "0.1.1"
-last_updated: 2026-04-04
 description: >
   Research workflows for the Iconclass MCP server — a universal art-subject
-  taxonomy with ~40K base notations across 13 languages. Use this skill whenever
+  taxonomy with ~1.3M notations across 13 languages. Use this skill whenever
   the user wants to explore iconographic subjects, find Iconclass notation codes,
   browse the classification hierarchy, discover what subjects exist for a theme,
   or prepare notation codes for use with a collection server like the Rijksmuseum
   MCP. Also use when the user mentions Iconclass, subject classification,
   iconography, or art-historical taxonomy — even if they don't name the server.
+metadata:
+  version: "0.1.1"
+  last_updated: "2026-04-04"
 ---
 
 # Iconclass MCP Research Skill

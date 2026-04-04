@@ -100,19 +100,36 @@ notation: "73D8"  → 8 notations under "instruments of the Passion"
 notation: "25F"   → all animal notations
 ```
 
+### `find_adopters` — which collections have this subject?
+
+Given one or more notations, find which external art collections have artworks tagged with those notations. Returns per-collection counts and link-out URLs.
+
+```
+notation: "73B57"  → Rijksmuseum: 429, RKD: 1,390, Arkyves: 245
+notation: ["73D6", "92D192134"]  → batch lookup across collections
+```
+
+Currently includes three collections:
+- **Rijksmuseum, Amsterdam** — 24,066 notations (count only; use [rijksmuseum-mcp-plus](https://github.com/kintopp/rijksmuseum-mcp-plus) for artwork search)
+- **RKD — Netherlands Institute for Art History** — 13,984 notations with search link-out
+- **Arkyves** — 34,721 notations with search link-out (counts derived from the [Iconclass AI Test Set](https://iconclass.org/testset/))
+
 ## Typical workflow
 
 1. **Search** for a concept: `search({ semanticQuery: "religious suffering" })`
 2. **Browse** the hierarchy to find the right specificity level
-3. **Pass the notation** to a collection server's search (e.g., `search_artwork(iconclass: "73D6")` in [rijksmuseum-mcp-plus](https://github.com/kintopp/rijksmuseum-mcp-plus))
+3. **Find adopters** to see which collections have artworks with that subject: `find_adopters({ notation: "73D6" })`
+4. **Follow links** to browse artworks at the RKD or Arkyves, or **pass the notation** to a collection server's search (e.g., `search_artwork(iconclass: "73D6")` in [rijksmuseum-mcp-plus](https://github.com/kintopp/rijksmuseum-mcp-plus))
 
-This two-server workflow separates the classification vocabulary (this server) from collection-specific search (the Rijksmuseum server).
+This two-server workflow separates the classification vocabulary (this server) from collection-specific search (the Rijksmuseum server). When both servers are connected, the LLM can automatically follow up on `find_adopters` results by calling the Rijksmuseum server's `search_artwork` tool.
 
 For more detailed examples — sensory history, finding saints, navigating the hierarchy, classifying complex scenes — see [Example Prompts](docs/example-prompts.md).
 
 ## Collection counts
 
-Artwork counts per notation live in a separate **sidecar database** (`iconclass-counts.db`, ~700 KB) so they can be updated independently of the main 3 GB notation/text/embedding database. The Rijksmuseum overlay ships by default (24,066 notations with artworks).
+Artwork counts per notation live in a separate **sidecar database** (`iconclass-counts.db`, ~3.8 MB) so they can be updated independently of the main 3 GB notation/text/embedding database. Three collection overlays ship by default: Rijksmuseum (24,066 notations), RKD (13,984), and Arkyves (34,721) — totalling 72,771 notation counts.
+
+Each collection can optionally include a `search_url_template` for generating link-out URLs (e.g. `https://research.rkd.nl/en/search?q={notation}&...`). The `find_adopters` tool uses these templates to produce clickable links alongside counts.
 
 To add or update collections, rebuild only the sidecar — no need to touch the main DB:
 
@@ -124,10 +141,12 @@ python scripts/export-collection-counts.py --vocab-db path/to/vocab.db --output 
 # Build the counts sidecar with multiple overlays
 python scripts/build-counts-db.py \
   --counts-csv data/rijksmuseum-counts.csv \
+  --counts-csv data/rkd-counts.csv \
+  --counts-csv data/arkyves-counts.csv \
   --counts-csv data/my-museum-counts.csv
 ```
 
-Results then show counts per collection: `73D6 (rijksmuseum: 371, my-museum: 42)`.
+Results then show counts per collection: `73D6 (rijksmuseum: 371, rkd: 45, my-museum: 12)`. To add search link-out URLs for a new collection, add an entry to `COLLECTION_META` in `build-counts-db.py`.
 
 ## Building the database
 
@@ -147,7 +166,9 @@ python scripts/build-iconclass-db.py \
 
 # Build the counts sidecar (~instant)
 python scripts/build-counts-db.py \
-  --counts-csv data/rijksmuseum-counts.csv
+  --counts-csv data/rijksmuseum-counts.csv \
+  --counts-csv data/rkd-counts.csv \
+  --counts-csv data/arkyves-counts.csv
 ```
 
 ### Adding semantic embeddings
@@ -184,6 +205,8 @@ The server's download logic auto-detects chunked assets (`.part-aa`, `.part-ab`,
 | [iconclass/data](https://github.com/iconclass/data) | 1.3M notations, texts in 13 languages, keywords, hierarchy | CC0 |
 | [iconclass](https://pypi.org/project/iconclass/) Python library | Text composition for key-expanded notations | CC0 |
 | [Rijksmuseum vocabulary.db](https://github.com/kintopp/rijksmuseum-mcp-plus) | Artwork counts per notation (24K notations) | MIT |
+| [RKD Knowledge Graph](https://triplydb.com/rkd/RKD-Knowledge-Graph) | Artwork counts per notation (14K notations) | ODC-By 1.0 |
+| [Iconclass AI Test Set](https://iconclass.org/testset/) | Arkyves artwork counts per notation (35K notations, derived from data.json) | CC0 |
 
 ## Environment variables
 
@@ -210,6 +233,7 @@ The server's download logic auto-detects chunked assets (`.part-aa`, `.part-ab`,
 | Browse | ~1ms | ~54ms | B-tree lookup + child resolution |
 | Browse with key variants | ~1ms | ~58ms | Default page of 25 key variants |
 | Resolve (batch of 15) | ~1ms | ~54ms | 15 notations with full metadata |
+| Find adopters | ~1ms | — | Per-notation count lookup across 3 collections |
 | Prefix search | ~113ms | ~196ms | Depends on subtree size; accurate COUNT query |
 | Server cold start | ~8s | ~77s | Local: embedding model only. Production: chunked DB download + decompression |
 
@@ -277,7 +301,7 @@ The per-notation keyword limit of 40 matches the observed maximum in the databas
 
 #### Collection count sparsity
 
-Only 1.8% of notations have artwork counts (24K of 1.3M). The `collectionCounts` field is empty for the vast majority of entries, adding negligible overhead. The `onlyWithArtworks` and `collectionId` filters are aggressive narrowers — useful when the caller only needs notations that appear in a specific collection. Each collection's `totalArtworks` in the sidecar DB reflects the number of distinct notations with artworks in that collection (not the number of artworks themselves, which cannot be derived from notation-level counts).
+With three collection overlays, ~5.6% of notations have artwork counts (73K of 1.3M). The `collectionCounts` field is empty for the vast majority of entries, adding negligible overhead. The `onlyWithArtworks` and `collectionId` filters are aggressive narrowers — useful when the caller only needs notations that appear in a specific collection. Each collection's `totalArtworks` in the sidecar DB reflects the number of distinct notations with artworks in that collection (not the number of artworks themselves, which cannot be derived from notation-level counts).
 
 #### FTS multi-word fallback
 

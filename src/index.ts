@@ -44,7 +44,7 @@ const COUNTS_DB_SPEC: DbSpec = {
   pathEnvVar: "COUNTS_DB_PATH",
   urlEnvVar: "COUNTS_DB_URL",
   defaultFile: "iconclass-counts.db",
-  validationQuery: "SELECT 1 FROM collection_counts LIMIT 1",
+  validationQuery: "SELECT 1 FROM version_info WHERE key = 'schema_version' AND CAST(value AS INTEGER) >= 2",
 };
 
 // ─── Shared instances ───────────────────────────────────────────────

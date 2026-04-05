@@ -1,6 +1,6 @@
 {
   "name": "rijksmuseum-iconclass-mcp",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "MCP server for Iconclass — a hierarchical art-subject classification system (1.3M notations, 13 languages, semantic search)",
   "license": "MIT",
   "type": "module",

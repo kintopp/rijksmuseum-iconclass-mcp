@@ -118,17 +118,15 @@ Sample prompts that show what the AI assistant can do with this server's six too
 
 ### 7. From Notation to Artwork
 
-*"Find the Iconclass notation for 'the Crucifixion of Christ', then check which collections have artworks for it, and search the Rijksmuseum collection for the most important ones."*
+*"Find the Iconclass notation for 'the deposition from the cross', then check which collections have artworks for it."* [link](https://claude.ai/share/a87d2b5b-a7f4-4d65-b973-9cd7eeba2069)
 
-**Tools:** `search` (FTS), `find_artworks`, then `search_artwork` on an already connected [Rijksmuseum MCP server](https://github.com/kintopp/rijksmuseum-mcp-plus)
+**Tools:** `search` (FTS), `find_artworks`, then `search_artwork`
 
 **How the tools enable it:**
-- `search` with `query: "crucifixion"` on this server → `73D6` ("the Crucifixion of Christ: the death of Christ on the cross; Golgotha") appears with Rijksmuseum and RKD presence
-- `find_artworks` with `notation: ["73D6", "73D64", "73D82"]` to see which collections have artworks for these related notations — the Rijksmuseum, RKD, and Arkyves each have different coverage, and the link-out URLs let the user browse each collection's holdings directly
-- Pass `73D6` to `search_artwork(iconclass: "73D6")` on [rijksmuseum-mcp-plus](https://github.com/kintopp/rijksmuseum-mcp-plus) → returns artworks ranked by importance, with full metadata, images, and bibliography
-- For broader coverage, also try `73D64` (Christ on the cross with Mary and John) and `73D82` (instruments of the Passion) — related notations found via `browse` on `73D`
+- `search` with `query: "deposition from the cross"` → 0 results → "semanticQuery": "deposition from the cross, taking Christ down from the cross" → 73D71 — "descent from the cross" and its sub-notations
+- `find_artworks` with `notation: ["73D71", "73D711", "73D712", "73D713","73D714"]` to see which collections have artworks for these related notations — the Rijksmuseum, RKD, and Arkyves each have different coverage.
 
-**Why it matters:** A [forum question about quantitative iconographical data](https://forum.iconclass.org/t/quantitative-iconographical-data/219) highlighted a core challenge: a researcher studying hospital artworks needed to know which collections hold works tagged with specific Iconclass codes, and whether any single collection's coverage is representative. The `find_artworks` tool addresses this directly — it reveals which collections have artworks for a notation before committing to one. The RKD may have coverage for a notation that the Rijksmuseum lacks, or Arkyves may surface material from smaller institutions. This cross-collection step, combined with the deep search capabilities of a collection server like [rijksmuseum-mcp-plus](https://github.com/kintopp/rijksmuseum-mcp-plus), forms the core two-server workflow the system is designed for.
+**Why it matters:** A [forum question about quantitative iconographical data](https://forum.iconclass.org/t/quantitative-iconographical-data/219) highlighted a core challenge: a researcher studying hospital artworks needed to know which collections hold works tagged with specific Iconclass codes, and whether any single collection's coverage is representative. The `find_artworks` tool attempts to address this directly.
 
 ---
 

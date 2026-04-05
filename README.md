@@ -12,7 +12,7 @@ The resource was developed as a technology demo by the [Research and Infrastruct
 
 ## Quick start
 
-Add the Iconclass server as a custom connector in [Claude Desktop](https://claude.com/download) or [claude.ai](https://claude.ai) using the URL below. This currently requires a paid ('Pro') or higher [subscription](https://claude.com/pricing) from Anthropic.
+For the best results, add rijksmuseum-iconclass-mcp as a custom connector in [Claude Desktop](https://claude.com/download) or [claude.ai](https://claude.ai) using the URL below. This currently requires a paid ('Pro') or higher [subscription](https://claude.com/pricing) from Anthropic.
 
 ```
 https://rijksmuseum-iconclass-mcp-production.up.railway.app/mcp

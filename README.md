@@ -28,6 +28,14 @@ tba. See also [docs/example-prompts.md](docs/example-prompts.md).
 
 tba.
 
+## Choosing an AI system
+
+Technically speaking, both rijksmuseum-iconclass-mcp and rijksmuseum-mcp+ are based on the open [Model Context Protocol](https://modelcontextprotocol.io/docs/getting-started/intro) (MCP) standard. As such, they also work with generative large language models (LLMs) in other chatbots and applications which support this standard, including several which can be used **without a paid subscription** (see below). However, none beside [Claude Desktop](https://claude.com/download) and [claude.ai](https://claude.ai) support viewing, analysing, and interacting with images and visualisations in the chat timeline. If this is important to you, then your best (and currently only) choice is to use Anthropic Claude with a monthly subscription. 
+
+However, if you don't need these features, or only want to use rijksmuseum-iconclass-mcp, then you can use it just as well with many other, free to use, browser based chatbots. Mistral's [LeChat](https://chat.mistral.ai/chat) (follow [these instructions](https://help.mistral.ai/en/articles/393572-configuring-a-custom-connector)) is a fine example of a browser based chatbot with good, basic support of the MCP standard. It also offers a 'Personal Library' feature which can be used to upload research skill files (see below). In addition, many desktop 'LLM client' applications, such as [Jan.ai](https://jan.ai), are also MCP-compatible, and can even be used with many different LLM models (including local models). Most agentic coding applications (e.g. Claude Code, OpenAI Codex, Google Gemini CLI) also support the MCP standard. In contrast, OpenAI's ChatGPT still only offers limited, 'developer mode' support for MCP servers, and while Google has announced MCP support for Gemini it has not indicated when this will be ready. Currently (April, 2026) the current best, free alternative to Claude for most people is likely going to be Mistral's LeChat.
+
+Note to developers: the rijksmuseum-iconclass-mcp server can also be run locally in STDIO mode with local copies of its metadata database. Please see the [technical notes](docs/technical-guide.md) for details.
+
 ## How it works
 
 tba.
@@ -68,14 +76,6 @@ graph TB
     style MAIN fill:#fff9c4,stroke:#FFC107
     style COUNTS fill:#fff9c4,stroke:#FFC107
 ```
-
-## Choosing an AI system
-
-Technically speaking, both rijksmuseum-iconclass-mcp and rijksmuseum-mcp+ are based on the open [Model Context Protocol](https://modelcontextprotocol.io/docs/getting-started/intro) (MCP) standard. As such, they also work with generative large language models (LLMs) in other chatbots and applications which support this standard, including several which can be used **without a paid subscription** (see below). However, none beside [Claude Desktop](https://claude.com/download) and [claude.ai](https://claude.ai) support viewing, analysing, and interacting with images and visualisations in the chat timeline. If this is important to you, then your best (and currently only) choice is to use Anthropic Claude with a monthly subscription. 
-
-However, if you don't need these features, or only want to use rijksmuseum-iconclass-mcp, then you can use it just as well with many other, free to use, browser based chatbots. Mistral's [LeChat](https://chat.mistral.ai/chat) (follow [these instructions](https://help.mistral.ai/en/articles/393572-configuring-a-custom-connector)) is a fine example of a browser based chatbot with good, basic support of the MCP standard. It also offers a 'Personal Library' feature which can be used to upload research skill files (see below). In addition, many desktop 'LLM client' applications, such as [Jan.ai](https://jan.ai), are also MCP-compatible, and can even be used with many different LLM models (including local models). Most agentic coding applications (e.g. Claude Code, OpenAI Codex, Google Gemini CLI) also support the MCP standard. In contrast, OpenAI's ChatGPT still only offers limited, 'developer mode' support for MCP servers, and while Google has announced MCP support for Gemini it has not indicated when this will be ready. Currently (April, 2026) the current best, free alternative to Claude for most people is likely going to be Mistral's LeChat.
-
-Note to developers: the rijksmuseum-iconclass-mcp server can also be run locally in STDIO mode with local copies of its metadata database. Please see the [technical notes](docs/technical-guide.md) for details.
 
 ## Technical Notes
 

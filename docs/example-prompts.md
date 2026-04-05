@@ -26,7 +26,7 @@ Sample prompts that show what the AI assistant can do with this server's six too
 - `search` with `query: "smell"` for precise FTS matches across all 13 languages — picks up notations that mention smell in keywords or labels
 - `browse` on `31A3` (the five senses) to see the full hierarchy: `31A31` sight, `31A32` hearing, `31A33` smell, `31A34` taste, `31A35` touch — plus their children and cross-references
 - `browse` on `31A33` with `includeKeys: true` to discover key-expanded variants like `31A33(+1)` (smell, outdoors) that add situational modifiers
-- The `collectionCounts` on each result reveal which smell-related notations actually have artworks in the Rijksmuseum — `31A33` has 114, but deeper variants may have none
+- The `collections` array on each result reveals which smell-related notations have artworks in the Rijksmuseum — `31A33` is present, but deeper variants may not be
 
 **Why it matters:** Sensory history is a growing research field, but olfactory experience is underrepresented in art classification systems. A [discussion on the Iconclass forum](https://forum.iconclass.org/t/iconclass-and-sensory-history/15) proposed expanding `31A33` with sub-codes for smell sources, odour carriers, and fragrant spaces. This prompt maps the current landscape — what exists, what has artworks, and where the gaps are — giving a researcher a concrete starting point before proposing new notations.
 
@@ -39,12 +39,12 @@ Sample prompts that show what the AI assistant can do with this server's six too
 **Tools:** `search` (FTS)
 
 **How the tools enable it:**
-- `search` with `query: "Jerome"` finds `11H(JEROME)` — the notation includes his attributes listed in the label text ("book, cardinal's hat, crucifix, hour-glass, lion, skull, stone") and shows 238 Rijksmuseum artworks
+- `search` with `query: "Jerome"` finds `11H(JEROME)` — the notation includes his attributes listed in the label text ("book, cardinal's hat, crucifix, hour-glass, lion, skull, stone") and shows Rijksmuseum and RKD presence
 - `search` with `query: "Catherine Siena"` finds `11HH(CATHERINE OF SIENA)` — the results distinguish male saints under `11H(...)` from female saints under `11HH(...)`, a naming convention that encodes gender in the notation structure
-- Each result includes `collectionCounts` showing how many artworks in the Rijksmuseum carry that notation — Jerome (238) far outpaces most saints, reflecting the Rijksmuseum's strength in Northern European art where Jerome was a favourite subject
+- Each result includes a `collections` array showing which collections have artworks for that notation — Jerome appears in both the Rijksmuseum and RKD, reflecting his popularity as a subject in Northern European art
 - Searching for a name not in the database (e.g. "Euphemia" or "Balbina") returns zero results — confirming the saint is missing and needs to be proposed
 
-**Why it matters:** The Iconclass forum maintains a [collaborative list of saints missing from the system](https://forum.iconclass.org/t/list-saints-missing-in-iconclass/148). Researchers cataloguing religious art need to verify whether a saint already has an Iconclass notation before proposing a new one. The FTS search across all languages is essential because a saint may have a notation with labels only in Italian or German, not English. The collection count immediately tells the researcher whether the notation is actively used.
+**Why it matters:** The Iconclass forum maintains a [collaborative list of saints missing from the system](https://forum.iconclass.org/t/list-saints-missing-in-iconclass/148). Researchers cataloguing religious art need to verify whether a saint already has an Iconclass notation before proposing a new one. The FTS search across all languages is essential because a saint may have a notation with labels only in Italian or German, not English. The collection presence immediately tells the researcher whether the notation is actively used.
 
 ---
 
@@ -74,10 +74,10 @@ Sample prompts that show what the AI assistant can do with this server's six too
 - `browse` on `11H(FRANCIS)` returns the top-level entry with its attributes ("book, crucifix, lily, skull, stigmata") and direct children — numbered sub-codes that follow the generic saint lifecycle template
 - The children reveal a structured narrative: `11H(FRANCIS)2` (early life), `11H(FRANCIS)3` (personal devotion), `11H(FRANCIS)4` (non-miraculous events), `11H(FRANCIS)5` (miracles), `11H(FRANCIS)6` (martyrdom and death)
 - `browse` on `11H(FRANCIS)5` to expand the miracles: the pope's dream of St. Francis saving the Lateran Church (`51`), preaching to the birds (`53`), taming the wolf of Gubbio (`54`), the stigmatization (`59`)
-- `search_prefix` on `11H(FRANCIS)` to retrieve all 48 notations in the Francis sub-tree at once, with collection counts showing which scenes the Rijksmuseum holds (176 artworks for Francis overall, concentrated in the stigmatization and preaching to the birds)
+- `search_prefix` on `11H(FRANCIS)` to retrieve all 48 notations in the Francis sub-tree at once, with collection presence showing which scenes appear in the Rijksmuseum (stigmatization and preaching to the birds are well represented)
 - Compare with `browse` on `11H(...)` to see the generic template that all saints share — the same lifecycle structure (early life → devotion → miracles → death → posthumous events) applies to every saint in the system
 
-**Why it matters:** Iconclass encodes the lives of saints as structured narratives following a common lifecycle template. A [forum discussion on missing saints](https://forum.iconclass.org/t/list-saints-missing-in-iconclass/148) revealed the depth of this system — each named saint has a unique sub-tree with specific scenes, while the generic template `11H(...)` defines the slots available. For a researcher studying Franciscan iconography, the `browse` tool makes the full catalogue of classifiable scenes visible in seconds, and the collection counts immediately show which scenes were most popular with artists.
+**Why it matters:** Iconclass encodes the lives of saints as structured narratives following a common lifecycle template. A [forum discussion on missing saints](https://forum.iconclass.org/t/list-saints-missing-in-iconclass/148) revealed the depth of this system — each named saint has a unique sub-tree with specific scenes, while the generic template `11H(...)` defines the slots available. For a researcher studying Franciscan iconography, the `browse` tool makes the full catalogue of classifiable scenes visible in seconds, and the collection presence immediately shows which scenes are represented in museum holdings.
 
 ---
 
@@ -109,7 +109,7 @@ Sample prompts that show what the AI assistant can do with this server's six too
 - `search` with `semanticQuery: "Virgin Mary reading with Christ Child"` to find the most conceptually relevant notations — surfaces candidates like `73B732` (Mary teaches Christ-child to read)
 - `search` with `query: "Christ-child"` to catch labels describing this common scene type — Iconclass uses the hyphenated form in its English labels, so this finds notations like `73B732` (Mary teaches the Christ-child to read)
 - `search` with `query: "open book"` and `query: "lily vase"` to find notations for the secondary elements
-- `resolve` with all candidate notations in a single batch call — e.g. `["73B732", "11F4212", "49MM32", "25G41(LILY)"]` — to retrieve full metadata for each: labels, keywords, hierarchy path, cross-references, and collection counts
+- `resolve` with all candidate notations in a single batch call — e.g. `["73B732", "11F4212", "49MM32", "25G41(LILY)"]` — to retrieve full metadata for each: labels, keywords, hierarchy path, cross-references, and collection presence
 - The resolved entries let the LLM compare and recommend: `73B732` captures the primary scene, `49MM32` adds the open book as a distinct iconographic element, and `25G41(LILY)` records the symbolic flower
 
 **Why it matters:** Complex images require multiple Iconclass notations — this is a point the Iconclass community [emphasises repeatedly](https://forum.iconclass.org/t/what-bothers-me-about-iconclass/16). The batch `resolve` tool lets the LLM present all candidate notations side by side with full context, so the cataloguer can make an informed decision rather than guessing from notation codes alone. The cross-references on each notation may also reveal related codes the cataloguer hadn't considered.
@@ -123,12 +123,12 @@ Sample prompts that show what the AI assistant can do with this server's six too
 **Tools:** `search` (FTS), `find_artworks`, then `search_artwork` on an already connected [Rijksmuseum MCP server](https://github.com/kintopp/rijksmuseum-mcp-plus)
 
 **How the tools enable it:**
-- `search` with `query: "crucifixion"` on this server → top result is `73D6` ("the Crucifixion of Christ: the death of Christ on the cross; Golgotha") with 371 Rijksmuseum artworks
-- `find_artworks` with `notation: ["73D6", "73D64", "73D82"]` to see which collections hold these related notations — the Rijksmuseum, RKD, and Arkyves each have different coverage, and the link-out URLs let the user browse each collection's holdings directly
+- `search` with `query: "crucifixion"` on this server → `73D6` ("the Crucifixion of Christ: the death of Christ on the cross; Golgotha") appears with Rijksmuseum and RKD presence
+- `find_artworks` with `notation: ["73D6", "73D64", "73D82"]` to see which collections have artworks for these related notations — the Rijksmuseum, RKD, and Arkyves each have different coverage, and the link-out URLs let the user browse each collection's holdings directly
 - Pass `73D6` to `search_artwork(iconclass: "73D6")` on [rijksmuseum-mcp-plus](https://github.com/kintopp/rijksmuseum-mcp-plus) → returns artworks ranked by importance, with full metadata, images, and bibliography
 - For broader coverage, also try `73D64` (Christ on the cross with Mary and John) and `73D82` (instruments of the Passion) — related notations found via `browse` on `73D`
 
-**Why it matters:** A [forum question about quantitative iconographical data](https://forum.iconclass.org/t/quantitative-iconographical-data/219) highlighted a core challenge: a researcher studying hospital artworks needed to know which collections hold works tagged with specific Iconclass codes, and whether any single collection's coverage is representative. The `find_artworks` tool addresses this directly — it reveals the landscape across collections before committing to one. The RKD may have richer coverage for a notation than the Rijksmuseum, or Arkyves may surface material from smaller institutions. This cross-collection step, combined with the deep search capabilities of a collection server like [rijksmuseum-mcp-plus](https://github.com/kintopp/rijksmuseum-mcp-plus), forms the core two-server workflow the system is designed for.
+**Why it matters:** A [forum question about quantitative iconographical data](https://forum.iconclass.org/t/quantitative-iconographical-data/219) highlighted a core challenge: a researcher studying hospital artworks needed to know which collections hold works tagged with specific Iconclass codes, and whether any single collection's coverage is representative. The `find_artworks` tool addresses this directly — it reveals which collections have artworks for a notation before committing to one. The RKD may have coverage for a notation that the Rijksmuseum lacks, or Arkyves may surface material from smaller institutions. This cross-collection step, combined with the deep search capabilities of a collection server like [rijksmuseum-mcp-plus](https://github.com/kintopp/rijksmuseum-mcp-plus), forms the core two-server workflow the system is designed for.
 
 ---
 
@@ -139,8 +139,8 @@ Sample prompts that show what the AI assistant can do with this server's six too
 **Tools:** `search` (FTS), `resolve`
 
 **How the tools enable it:**
-- `search` with `query: "Last Supper"` finds `73D24` (Last Supper, 242 Rijksmuseum artworks) and related notations under `73D2` (the episode of the Last Supper) — including sub-scenes like the washing of feet and the institution of the Eucharist
-- `search` with `query: "Cana"` finds `73C611` (the marriage-feast at Cana, 74 artworks) and sub-scenes like the water-into-wine miracle
+- `search` with `query: "Last Supper"` finds `73D24` (Last Supper, present in Rijksmuseum and RKD) and related notations under `73D2` (the episode of the Last Supper) — including sub-scenes like the washing of feet and the institution of the Eucharist
+- `search` with `query: "Cana"` finds `73C611` (the marriage-feast at Cana, present in multiple collections) and sub-scenes like the water-into-wine miracle
 - `resolve` with `["73D24", "73C611"]` in a single batch call to compare both entries side-by-side: their full labels, hierarchy paths, keywords, and cross-references
 - The hierarchy paths alone are diagnostic: `73D24` sits under Passion of Christ (`73D`), while `73C611` sits under Christ's miracles (`73C6`) — placing the same visual motif (banquet with Christ) in entirely different theological contexts
 - The keywords for each notation list distinguishing iconographic elements — the presence of a chalice or bread points to `73D24`, while water jars point to `73C611`

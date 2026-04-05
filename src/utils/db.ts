@@ -112,8 +112,9 @@ export async function ensureDb(spec: DbSpec): Promise<void> {
     try {
       const { default: Database } = await import("better-sqlite3");
       const db = new Database(dbPath, { readonly: true });
-      db.prepare(spec.validationQuery).get();
+      const row = db.prepare(spec.validationQuery).get();
       db.close();
+      if (!row) throw new Error("validation query returned no rows");
       return;
     } catch {
       console.error(`${spec.name} DB invalid or outdated — will re-download`);

@@ -20,13 +20,9 @@ Go to _Settings_ → _Connectors_ → _Add custom connector_ → name it as you 
 
 Recommended: After that, follow the same procedure to install its companion resource, [rijksmuseum-mcp+](https://github.com/kintopp/rijksmuseum-mcp-plus). This allows you to explore over 830,000 artworks and metadata records from the Rijksmuseum with semantic search, provenance analysis, similarity comparisons, and spatial reasoning. 
 
-## Choosing an AI system
+## Sample Queries
 
-Technically speaking, both rijksmuseum-iconclass-mcp and rijksmuseum-mcp+ are based on the open [Model Context Protocol](https://modelcontextprotocol.io/docs/getting-started/intro) (MCP) standard. As such, they also work with generative large language models (LLMs) in other chatbots and applications which support this standard, including several which can be used **without a paid subscription** (see below). However, none beside [Claude Desktop](https://claude.com/download) and [claude.ai](https://claude.ai) support viewing, analysing, and interacting with images and visualisations in the chat timeline. If this is important to you, then your best (and currently only) choice is to use Anthropic Claude with a monthly subscription. 
-
-However, if you don't need these features, or only want to use rijksmuseum-iconclass-mcp, then you can use it just as well with many other, free to use, browser based chatbots. Mistral's [LeChat](https://chat.mistral.ai/chat) (follow [these instructions](https://help.mistral.ai/en/articles/393572-configuring-a-custom-connector)) is a fine example of a browser based chatbot with good, basic support of the MCP standard. It also offers a 'Personal Library' feature which can be used to upload research skill files (see below). In addition, many desktop 'LLM client' applications, such as [Jan.ai](https://jan.ai), are also MCP-compatible, and can even be used with many different LLM models (including local models). Most agentic coding applications (e.g. Claude Code, OpenAI Codex, Google Gemini CLI) also support the MCP standard. In contrast, OpenAI's ChatGPT still only offers limited, 'developer mode' support for MCP servers, and while Google has announced MCP support for Gemini it has not indicated when this will be ready. Currently (April, 2026) the current best, free alternative to Claude for most people is likely going to be Mistral's LeChat.
-
-Note to developers: the rijksmuseum-iconclass-mcp server can also be run locally in STDIO mode with local copies of its metadata database. Please see the [technical notes](docs/technical-guide.md) for details.
+tba. See also [docs/example-prompts.md](docs/example-prompts.md).
 
 ## Features
 
@@ -35,6 +31,51 @@ tba.
 ## How it works
 
 tba.
+
+```mermaid
+graph TB
+    Client["LLM Client<br/>(Claude, Mistral, etc.)"] --> HTTP["HTTP Server<br/>POST /mcp | GET /health"]
+
+    HTTP --> MCP["MCP Server<br/>rijksmuseum-iconclass-mcp"]
+
+    MCP --> T1["search"]
+    MCP --> T2["browse"]
+    MCP --> T3["resolve"]
+    MCP --> T4["expand_keys"]
+    MCP --> T5["search_prefix"]
+    MCP --> T6["find_artworks"]
+
+    T1 -->|"FTS keyword search"| DB["IconclassDb"]
+    T1 -->|"semantic query"| EMB["EmbeddingModel<br/>(e5-base 768d)"]
+    EMB -->|"query vector"| DB
+
+    T2 & T3 & T4 & T5 & T6 --> DB
+
+    DB -->|"SQL queries"| MAIN["iconclass.db<br/>(1.3M notations, 13 languages,<br/>FTS5, KNN embeddings)"]
+    DB -->|"ATTACH + JOIN"| COUNTS["iconclass-counts.db<br/>(collection presence:<br/>Rijksmuseum · RKD · Arkyves)"]
+
+    style Client fill:#e8f4f8,stroke:#2196F3
+    style HTTP fill:#fff3e0,stroke:#FF9800
+    style MCP fill:#f3e5f5,stroke:#9C27B0
+    style T1 fill:#e8f5e9,stroke:#4CAF50
+    style T2 fill:#e8f5e9,stroke:#4CAF50
+    style T3 fill:#e8f5e9,stroke:#4CAF50
+    style T4 fill:#e8f5e9,stroke:#4CAF50
+    style T5 fill:#e8f5e9,stroke:#4CAF50
+    style T6 fill:#e8f5e9,stroke:#4CAF50
+    style DB fill:#fce4ec,stroke:#E91E63
+    style EMB fill:#fce4ec,stroke:#E91E63
+    style MAIN fill:#fff9c4,stroke:#FFC107
+    style COUNTS fill:#fff9c4,stroke:#FFC107
+```
+
+## Choosing an AI system
+
+Technically speaking, both rijksmuseum-iconclass-mcp and rijksmuseum-mcp+ are based on the open [Model Context Protocol](https://modelcontextprotocol.io/docs/getting-started/intro) (MCP) standard. As such, they also work with generative large language models (LLMs) in other chatbots and applications which support this standard, including several which can be used **without a paid subscription** (see below). However, none beside [Claude Desktop](https://claude.com/download) and [claude.ai](https://claude.ai) support viewing, analysing, and interacting with images and visualisations in the chat timeline. If this is important to you, then your best (and currently only) choice is to use Anthropic Claude with a monthly subscription. 
+
+However, if you don't need these features, or only want to use rijksmuseum-iconclass-mcp, then you can use it just as well with many other, free to use, browser based chatbots. Mistral's [LeChat](https://chat.mistral.ai/chat) (follow [these instructions](https://help.mistral.ai/en/articles/393572-configuring-a-custom-connector)) is a fine example of a browser based chatbot with good, basic support of the MCP standard. It also offers a 'Personal Library' feature which can be used to upload research skill files (see below). In addition, many desktop 'LLM client' applications, such as [Jan.ai](https://jan.ai), are also MCP-compatible, and can even be used with many different LLM models (including local models). Most agentic coding applications (e.g. Claude Code, OpenAI Codex, Google Gemini CLI) also support the MCP standard. In contrast, OpenAI's ChatGPT still only offers limited, 'developer mode' support for MCP servers, and while Google has announced MCP support for Gemini it has not indicated when this will be ready. Currently (April, 2026) the current best, free alternative to Claude for most people is likely going to be Mistral's LeChat.
+
+Note to developers: the rijksmuseum-iconclass-mcp server can also be run locally in STDIO mode with local copies of its metadata database. Please see the [technical notes](docs/technical-guide.md) for details.
 
 ## Technical Notes
 

@@ -59,7 +59,7 @@ def build_counts_db(output_path: str, count_csvs: list[str], release_tag: str = 
             collection_id        TEXT PRIMARY KEY,
             label                TEXT NOT NULL,
             counts_as_of         TEXT,
-            total_artworks       INTEGER DEFAULT 0,
+            total_notations      INTEGER DEFAULT 0,
             search_url_template  TEXT
         )
     """)
@@ -95,7 +95,8 @@ def build_counts_db(output_path: str, count_csvs: list[str], release_tag: str = 
                     continue
                 try:
                     count = int(count_str)
-                    rows.append((collection_id, notation, count))
+                    if count > 0:
+                        rows.append((collection_id, notation, count))
                 except ValueError:
                     continue
 
@@ -105,10 +106,10 @@ def build_counts_db(output_path: str, count_csvs: list[str], release_tag: str = 
         )
         # Raw CSV row count — the server recomputes at runtime via JOIN against notations
         # to exclude malformed entries (POINT() coords, colon-composites, etc.)
-        total_artworks = len(rows)
+        total_notations = len(rows)
         conn.execute(
             "INSERT OR REPLACE INTO collection_info VALUES (?, ?, ?, ?, ?)",
-            (collection_id, label, datetime.now(timezone.utc).strftime("%Y-%m-%d"), total_artworks, url_template),
+            (collection_id, label, datetime.now(timezone.utc).strftime("%Y-%m-%d"), total_notations, url_template),
         )
 
         total_collections += 1
@@ -120,7 +121,7 @@ def build_counts_db(output_path: str, count_csvs: list[str], release_tag: str = 
 
     built_at = datetime.now(timezone.utc).isoformat()
     conn.executemany("INSERT INTO version_info VALUES (?, ?)", [
-        ("schema_version", "2"),
+        ("schema_version", "3"),
         ("release_tag", release_tag),
         ("built_at", built_at),
         ("collection_count", str(total_collections)),

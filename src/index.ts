@@ -44,7 +44,7 @@ const COUNTS_DB_SPEC: DbSpec = {
   pathEnvVar: "COUNTS_DB_PATH",
   urlEnvVar: "COUNTS_DB_URL",
   defaultFile: "iconclass-counts.db",
-  validationQuery: "SELECT 1 FROM version_info WHERE key = 'schema_version' AND CAST(value AS INTEGER) >= 2",
+  validationQuery: "SELECT 1 FROM version_info WHERE key = 'schema_version' AND CAST(value AS INTEGER) >= 3",
 };
 
 // ─── Shared instances ───────────────────────────────────────────────
@@ -82,13 +82,13 @@ function createServer(): McpServer {
         "• resolve — batch lookup of specific notation codes (up to 25)\n" +
         "• expand_keys — list all key-expanded variants of a base notation\n" +
         "• search_prefix — find all notations under a hierarchy subtree (e.g. '73D8' = Passion of Christ)\n" +
-        "• find_artworks — see which collections have artworks for given notations, with counts and links\n\n" +
+        "• find_artworks — see which collections have artworks for given notations, with links\n\n" +
 
         "Notations are hierarchical and encode left-to-right: broader → narrower. " +
         "A parent notation covers all its descendants. " +
         "Key expansions add modifiers in parentheses (e.g. 25F23(+46) = beasts of prey, sleeping).\n\n" +
 
-        "Collection counts show how many artworks in loaded collections carry each notation. " +
+        "Collection presence shows which loaded collections have artworks for each notation. " +
         "Use collectionId to filter results to a specific collection.\n\n" +
 
         "Workflow: search/browse here to find notation codes, then pass them to a collection server's " +

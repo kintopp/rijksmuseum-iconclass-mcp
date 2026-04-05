@@ -5,7 +5,7 @@
  * Requires: npm run build (imports from dist/)
  */
 import { escapeFts5, escapeFts5Terms } from "../../dist/utils/db.js";
-import { formatCounts, formatEntryLine } from "../../dist/registration.js";
+import { formatCollections, formatEntryLine } from "../../dist/registration.js";
 
 // ── Test helpers ─────────────────────────────────────────────────
 
@@ -62,24 +62,14 @@ assertEq(escapeFts5Terms("***"), null, "only operators → null");
 assertEq(escapeFts5Terms("sleeping (animal)"), '"sleeping" AND "animal"', "strips parens then splits");
 assertEq(escapeFts5Terms('say "hello" world'), '"say" AND "hello" AND "world"', "strips quotes then splits");
 
-// ── formatCounts ────────────────────────────────────────────────
+// ── formatCollections ───────────────────────────────────────────
 
-section("formatCounts");
+section("formatCollections");
 
-assertEq(formatCounts({}), "", "empty counts → empty string");
-assertEq(formatCounts({ rijksmuseum: 0 }), "", "zero count → empty string");
-assertEq(formatCounts({ rijksmuseum: 42 }), " (42 artworks)", "single collection");
-assertEq(
-  formatCounts({ rijksmuseum: 42, met: 17 }),
-  " (rijksmuseum: 42, met: 17)",
-  "multiple collections"
-);
-assertEq(formatCounts({ rijksmuseum: 0, met: 5 }), " (5 artworks)", "zero filtered out, one remains");
-assertEq(
-  formatCounts({ rijksmuseum: 10, met: 0, nga: 3 }),
-  " (rijksmuseum: 10, nga: 3)",
-  "zero filtered, two remain"
-);
+assertEq(formatCollections([]), "", "empty → empty string");
+assertEq(formatCollections(["rijksmuseum"]), " (rijksmuseum)", "single collection");
+assertEq(formatCollections(["rijksmuseum", "rkd"]), " (rijksmuseum, rkd)", "two collections");
+assertEq(formatCollections(["rijksmuseum", "rkd", "arkyves"]), " (rijksmuseum, rkd, arkyves)", "three collections");
 
 // ── formatEntryLine ─────────────────────────────────────────────
 
@@ -88,52 +78,52 @@ section("formatEntryLine");
 const entry = {
   notation: "73D6",
   text: "the crucifixion of Christ",
-  collectionCounts: { rijksmuseum: 371 },
+  collections: ["rijksmuseum"],
   path: [{ notation: "7" }, { notation: "73" }, { notation: "73D" }],
 };
 
 assertEq(
   formatEntryLine(entry),
-  '73D6 (371 artworks) "the crucifixion of Christ" [7 > 73 > 73D]',
-  "basic entry with path and counts"
+  '73D6 (rijksmuseum) "the crucifixion of Christ" [7 > 73 > 73D]',
+  "basic entry with path and collections"
 );
 
 assertEq(
   formatEntryLine(entry, "1. "),
-  '1. 73D6 (371 artworks) "the crucifixion of Christ" [7 > 73 > 73D]',
+  '1. 73D6 (rijksmuseum) "the crucifixion of Christ" [7 > 73 > 73D]',
   "with numbered prefix"
 );
 
 assertEq(
   formatEntryLine(entry, "3. [0.879] "),
-  '3. [0.879] 73D6 (371 artworks) "the crucifixion of Christ" [7 > 73 > 73D]',
+  '3. [0.879] 73D6 (rijksmuseum) "the crucifixion of Christ" [7 > 73 > 73D]',
   "with similarity prefix"
 );
 
 const noPath = {
   notation: "0",
   text: "Abstract Art",
-  collectionCounts: {},
+  collections: [],
   path: [],
 };
 
 assertEq(
   formatEntryLine(noPath),
   '0 "Abstract Art"',
-  "no path, no counts"
+  "no path, no collections"
 );
 
-const multiCount = {
+const multiCol = {
   notation: "31A33",
   text: "smell",
-  collectionCounts: { rijksmuseum: 114, met: 22 },
+  collections: ["rijksmuseum", "rkd"],
   path: [{ notation: "3" }],
 };
 
 assertEq(
-  formatEntryLine(multiCount),
-  '31A33 (rijksmuseum: 114, met: 22) "smell" [3]',
-  "multiple collection counts"
+  formatEntryLine(multiCol),
+  '31A33 (rijksmuseum, rkd) "smell" [3]',
+  "multiple collections"
 );
 
 // ── Summary ─────────────────────────────────────────────────────

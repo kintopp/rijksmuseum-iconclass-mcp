@@ -38,13 +38,11 @@ function withOutputSchema<T>(schema: T): { outputSchema: T } | Record<never, nev
 // ─── Output schemas ─────────────────────────────────────────────────
 
 /** Factory — unique Zod instances per call to prevent $ref deduplication. */
-const CollectionCountShape = () => z.record(z.string(), z.number().int());
-
 const CollectionInfoShape = () => z.object({
   collectionId: z.string(),
   label: z.string(),
   countsAsOf: z.string().nullable(),
-  totalArtworks: z.number().int(),
+  totalNotations: z.number().int(),
   searchUrlTemplate: z.string().nullable(),
 });
 
@@ -58,7 +56,7 @@ const IconclassEntryShape = () => z.object({
   isKeyExpanded: z.boolean(),
   baseNotation: z.string().nullable(),
   keyId: z.string().nullable(),
-  collectionCounts: CollectionCountShape(),
+  collections: z.array(z.string()),
 });
 
 const SearchOutput = {
@@ -111,7 +109,6 @@ const PrefixSearchOutput = {
 const ArtworkCollectionShape = () => z.object({
   collectionId: z.string(),
   label: z.string(),
-  count: z.number().int(),
   url: z.string().nullable(),
 });
 
@@ -164,7 +161,7 @@ export function registerTools(
         "Use parentNotation to restrict results to a subtree.\n" +
         "• semanticQuery — find notations by meaning (e.g. 'domestic animals' finds dogs, cats, horses)" +
         (semanticAvailable ? "" : " [currently unavailable — embeddings not loaded]") + "\n\n" +
-        "Results ranked by collection count. " +
+        "Results ranked by collection coverage. " +
         "Pass resulting notation codes to a collection server's search_artwork(iconclass=...) to find matching artworks — multiple codes are AND-combined.\n\n" +
         "For enumerating all notations under a prefix, use search_prefix instead.",
       inputSchema: z.object({
@@ -296,8 +293,8 @@ export function registerTools(
       const pathStr = entry.path.length > 0
         ? entry.path.map(p => `${p.notation} "${p.text}"`).join(" > ") + " > "
         : "";
-      const counts = formatCounts(entry.collectionCounts);
-      const sections = [`${pathStr}${entry.notation} "${entry.text}"${counts}`];
+      const colStr = formatCollections(entry.collections);
+      const sections = [`${pathStr}${entry.notation} "${entry.text}"${colStr}`];
 
       if (entry.keywords.length > 0) {
         sections.push(`Keywords: ${entry.keywords.join(", ")}`);
@@ -305,7 +302,7 @@ export function registerTools(
       if (entry.refs.length > 0) {
         const resolvedRefs = db.resolve(entry.refs, args.lang);
         const refLines = resolvedRefs.map(r => {
-          const rc = formatCounts(r.collectionCounts);
+          const rc = formatCollections(r.collections);
           return `  ${r.notation}${rc} "${r.text}"`;
         });
         const unresolvedRefs = entry.refs.filter(n => !resolvedRefs.some(r => r.notation === n));
@@ -315,7 +312,7 @@ export function registerTools(
       if (subtree.length > 0) {
         const childLines = subtree.map(c => {
           const indent = "  ".repeat(c.depth);
-          const cc = formatCounts(c.collectionCounts);
+          const cc = formatCollections(c.collections);
           const trunc = c.truncated ? ` [${c.totalChildren} children, showing 25]` : "";
           return `${indent}${c.notation}${cc} "${c.text}"${trunc}`;
         });
@@ -328,7 +325,7 @@ export function registerTools(
       }
       if (keyVariants.length > 0) {
         const keyLines = keyVariants.map(k => {
-          const kc = formatCounts(k.collectionCounts);
+          const kc = formatCollections(k.collections);
           return `  ${k.notation}${kc} "${k.text}"`;
         });
         const kvOff = args.keyOffset ?? 0;
@@ -350,7 +347,7 @@ export function registerTools(
       title: "Resolve Iconclass Notations",
       description:
         "Look up one or more Iconclass notations by code. Returns full metadata: " +
-        "text, keywords, hierarchy path, children, cross-references, key info, and collection counts. " +
+        "text, keywords, hierarchy path, children, cross-references, key info, and collection presence. " +
         "Accepts up to 25 notations in a single call.",
       inputSchema: z.object({
         notation: z.union([
@@ -370,8 +367,8 @@ export function registerTools(
       }
 
       const lines = entries.map(e => {
-        const counts = formatCounts(e.collectionCounts);
-        let line = `${e.notation}${counts} "${e.text}"`;
+        const colStr = formatCollections(e.collections);
+        let line = `${e.notation}${colStr} "${e.text}"`;
         if (e.path.length > 0) line += ` [${e.path.map(p => p.notation).join(" > ")}]`;
         if (e.keywords.length > 0) line += ` kw: ${e.keywords.join(", ")}`;
         return line;
@@ -419,13 +416,13 @@ export function registerTools(
       }
 
       const { baseEntry, keyVariants, totalKeyVariants } = result;
-      const counts = formatCounts(baseEntry.collectionCounts);
+      const colStr = formatCollections(baseEntry.collections);
       const rangeStr = totalKeyVariants > keyVariants.length
         ? ` (${(args.offset ?? 0) + 1}–${(args.offset ?? 0) + keyVariants.length} of ${totalKeyVariants})`
         : "";
-      const header = `${baseEntry.notation} "${baseEntry.text}"${counts} — ${totalKeyVariants} key variants${rangeStr}`;
+      const header = `${baseEntry.notation} "${baseEntry.text}"${colStr} — ${totalKeyVariants} key variants${rangeStr}`;
       const lines = keyVariants.map(k => {
-        const kc = formatCounts(k.collectionCounts);
+        const kc = formatCollections(k.collections);
         return `  ${k.notation} (${k.keyId})${kc} "${k.text}"`;
       });
       return structuredResponse(result, [header, ...lines].join("\n"));
@@ -468,8 +465,8 @@ export function registerTools(
 
       const header = `${result.results.length} of ${result.totalResults} notations under "${args.notation}"`;
       const lines = result.results.map(e => {
-        const counts = formatCounts(e.collectionCounts);
-        return `  ${e.notation}${counts} "${e.text}"`;
+        const colStr = formatCollections(e.collections);
+        return `  ${e.notation}${colStr} "${e.text}"`;
       });
       const hint = result.totalResults > 200
         ? `\n(Large subtree — narrow the prefix instead of paginating, e.g. "${args.notation}3" or "${args.notation}A")`
@@ -485,9 +482,11 @@ export function registerTools(
     {
       title: "Find Artworks by Notation",
       description:
-        "Given one or more Iconclass notations, find artworks across collections " +
-        "tagged with those subjects. Returns per-collection artwork counts " +
+        "Given one or more Iconclass notations, check which collections have artworks " +
+        "tagged with those subjects. Returns collection presence " +
         "and link-out URLs where available. " +
+        "An empty collections array means no loaded collection has artworks for that notation — " +
+        "the top-level 'collections' field lists all loaded collections. " +
         "Use after search or browse to discover where a subject appears across collections.",
       inputSchema: z.object({
         notation: z.union([
@@ -512,7 +511,7 @@ export function registerTools(
         }
         const cols = entry.collections.map(a => {
           const urlPart = a.url ? ` → ${a.url}` : "";
-          return `  ${a.label}: ${a.count.toLocaleString()} artworks${urlPart}`;
+          return `  ${a.label}${urlPart}`;
         });
         return `${entry.notation} "${entry.text}"\n${cols.join("\n")}`;
       });
@@ -524,17 +523,15 @@ export function registerTools(
 
 // ─── Format helpers ─────────────────────────────────────────────────
 
-export function formatCounts(counts: Record<string, number>): string {
-  const entries = Object.entries(counts).filter(([, c]) => c > 0);
-  if (entries.length === 0) return "";
-  if (entries.length === 1) return ` (${entries[0][1]} artworks)`;
-  return ` (${entries.map(([id, c]) => `${id}: ${c}`).join(", ")})`;
+export function formatCollections(collections: string[]): string {
+  if (collections.length === 0) return "";
+  return ` (${collections.join(", ")})`;
 }
 
 /** Format an entry as a compact one-liner for LLM content. */
-export function formatEntryLine(e: { notation: string; text: string; collectionCounts: Record<string, number>; path: { notation: string }[] }, prefix?: string): string {
-  const counts = formatCounts(e.collectionCounts);
-  let line = prefix ? `${prefix}${e.notation}${counts} "${e.text}"` : `${e.notation}${counts} "${e.text}"`;
+export function formatEntryLine(e: { notation: string; text: string; collections: string[]; path: { notation: string }[] }, prefix?: string): string {
+  const colStr = formatCollections(e.collections);
+  let line = prefix ? `${prefix}${e.notation}${colStr} "${e.text}"` : `${e.notation}${colStr} "${e.text}"`;
   if (e.path.length > 0) line += ` [${e.path.map(p => p.notation).join(" > ")}]`;
   return line;
 }

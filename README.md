@@ -4,7 +4,7 @@
 
 Rijksmuseum-iconclass-mcp is a tool for searching and exploring [Iconclass](https://iconclass.org) notations in natural language with an AI assistant. It was designed as a companion resource for [rijksmuseum-mcp+](https://github.com/kintopp/rijksmuseum-mcp-plus), an analogous resource for the [Rijksmuseum's](https://www.rijksmuseum.nl/en) art collections.
 
-It provides access to over 1.3 million Iconclass notations — all of the c. 39,000 base concepts and c. 1.3 million key-expanded variants that add modifiers like posture, context, or symbolism. Beside simple keyword matching, rijksmuseum-iconclass-mcp supports semantic search in natural language, so that you can discover iconclass notations related to concepts like "homesickness and exile" -> `94I2111 — Ulysses longs for home"` or "coming of age and youth" -> `31D120 — "Youth, Adolescence, 'Iuventus'; 'Adolescenza', 'Gioventù' (Ripa)"` even when these search terms don't appear in the notation text. You can also, for example, use the AI assistant to explore the Iconclass hierarchy, visualise these relationships, or provide cataloguing advice. The Rijksmuseum-iconclass-mcp database includes collection counts from the [Rijksmuseum](https://www.rijksmuseum.nl/en/collection), [Netherlands Institute for Art History](https://www.rkd.nl/en) (RKD), and [Arkyves](https://www.arkyves.org), to let you see how many artworks at these institutions carry a given notation, can provide you with a custom link to search for these notations on their respective websites. 
+It provides access to over 1.3 million Iconclass notations — all of the c. 39,000 base concepts and c. 1.3 million key-expanded variants that add modifiers like posture, context, or symbolism. Beside simple keyword matching, rijksmuseum-iconclass-mcp supports semantic search in natural language, so that you can discover iconclass notations related to concepts like "homesickness and exile" -> `94I2111 — Ulysses longs for home"` or "coming of age and youth" -> `31D120 — "Youth, Adolescence, 'Iuventus'; 'Adolescenza', 'Gioventù' (Ripa)"` even when these search terms don't appear in the notation text. You can also, for example, use the AI assistant to explore the Iconclass hierarchy, visualise these relationships, or provide cataloguing advice. The Rijksmuseum-iconclass-mcp database includes collection presence data from the [Rijksmuseum](https://www.rijksmuseum.nl/en/collection), [Netherlands Institute for Art History](https://www.rkd.nl/en) (RKD), and [Arkyves](https://www.arkyves.org), to let you see which of these institutions have artworks carrying a given notation, and can provide you with a custom link to search for these notations on their respective websites. 
 
 ## Quick start
 
@@ -87,7 +87,7 @@ notation: ["73D6", "31A33", "25F23"]  → full metadata for each
 
 ### `expand_keys` — key variant exploration
 
-Given a base notation, return all its key-expanded variants with texts and counts.
+Given a base notation, return all its key-expanded variants with texts and collection presence.
 
 ```
 notation: "25F23"  → 204 variants (swimming, sleeping, fighting, etc.)
@@ -104,15 +104,15 @@ notation: "25F"   → all animal notations
 
 ### `find_artworks` — which collections have this subject?
 
-Given one or more notations, find which external art collections have artworks tagged with those notations. Returns per-collection counts and link-out URLs.
+Given one or more notations, check which external art collections have artworks tagged with those notations. Returns collection presence and link-out URLs where available. An empty `collections` array means no loaded collection has artworks for that notation — try a parent or sibling notation instead.
 
 ```
-notation: "73B57"  → Rijksmuseum: 429, RKD: 1,390, Arkyves: 245
+notation: "73B57"  → Rijksmuseum, RKD → https://..., Arkyves → https://...
 notation: ["73D6", "92D192134"]  → batch lookup across collections
 ```
 
 Currently includes three collections:
-- **Rijksmuseum, Amsterdam** — 24,066 notations (count only; use [rijksmuseum-mcp-plus](https://github.com/kintopp/rijksmuseum-mcp-plus) for artwork search)
+- **Rijksmuseum, Amsterdam** — 24,066 notations (presence only; use [rijksmuseum-mcp-plus](https://github.com/kintopp/rijksmuseum-mcp-plus) for artwork search)
 - **RKD — Netherlands Institute for Art History** — 13,984 notations with search link-out
 - **Arkyves** — 34,721 notations with search link-out
 
@@ -120,27 +120,27 @@ Currently includes three collections:
 
 1. **Search** for a concept: `search({ semanticQuery: "religious suffering" })`
 2. **Browse** the hierarchy to find the right specificity level
-3. **Find artworks** across collections for that subject: `find_artworks({ notation: "73D6" })`
+3. **Check collections** for that subject: `find_artworks({ notation: "73D6" })`
 4. **Follow links** to browse artworks at the RKD or Arkyves, or **pass the notation** to a collection server's search (e.g., `search_artwork(iconclass: "73D6")` in [rijksmuseum-mcp-plus](https://github.com/kintopp/rijksmuseum-mcp-plus))
 
 This two-server workflow separates the classification vocabulary (this server) from collection-specific search (the Rijksmuseum server). When both servers are connected, the LLM can automatically follow up on `find_artworks` results by calling the Rijksmuseum server's `search_artwork` tool.
 
 For more detailed examples — sensory history, finding saints, navigating the hierarchy, classifying complex scenes — see [Example Prompts](docs/example-prompts.md).
 
-## Collection counts
+## Collection presence
 
-Artwork counts per notation live in a separate **sidecar database** (`iconclass-counts.db`, ~3.8 MB) so they can be updated independently of the main 3 GB notation/text/embedding database. Three collection overlays ship by default: Rijksmuseum (24,066 notations), RKD (13,984), and Arkyves (34,721) — totalling 72,771 notation counts.
+Collection presence data lives in a separate **sidecar database** (`iconclass-counts.db`, ~3.8 MB) so it can be updated independently of the main 3 GB notation/text/embedding database. Three collection overlays ship by default: Rijksmuseum (24,066 notations), RKD (13,984), and Arkyves (34,721) — totalling 72,771 notation-collection pairs. A row in the sidecar means "this collection has artworks for this notation"; absence means either no artworks or the collection hasn't been checked for that notation. The `collections` metadata returned by every tool lists all loaded collections, so consumers can distinguish "checked, not present" from "not checked."
 
-Each collection can optionally include a `search_url_template` for generating link-out URLs (e.g. `https://research.rkd.nl/en/search?q={notation}&...`). The `find_artworks` tool uses these templates to produce clickable links alongside counts.
+Each collection can optionally include a `search_url_template` for generating link-out URLs (e.g. `https://research.rkd.nl/en/search?q={notation}&...`). The `find_artworks` tool uses these templates to produce clickable links.
 
 To add or update collections, rebuild only the sidecar — no need to touch the main DB:
 
 ```bash
-# Export counts from your collection database
-# CSV format: notation,count (one per line)
+# Export presence data from your collection database
+# CSV format: notation,count (one per line; any positive count = present)
 python scripts/export-collection-counts.py --vocab-db path/to/vocab.db --output data/my-museum-counts.csv
 
-# Build the counts sidecar with multiple overlays
+# Build the sidecar with multiple overlays
 python scripts/build-counts-db.py \
   --counts-csv data/rijksmuseum-counts.csv \
   --counts-csv data/rkd-counts.csv \
@@ -148,7 +148,7 @@ python scripts/build-counts-db.py \
   --counts-csv data/my-museum-counts.csv
 ```
 
-Results then show counts per collection: `73D6 (rijksmuseum: 371, rkd: 45, my-museum: 12)`. To add search link-out URLs for a new collection, add an entry to `COLLECTION_META` in `build-counts-db.py`.
+Results then show which collections have artworks: `73D6 (rijksmuseum, rkd, my-museum)`. To add search link-out URLs for a new collection, add an entry to `COLLECTION_META` in `build-counts-db.py`.
 
 ## Building the database
 
@@ -206,9 +206,9 @@ The server's download logic auto-detects chunked assets (`.part-aa`, `.part-ab`,
 |--------|---------|---------|
 | [iconclass/data](https://github.com/iconclass/data) | 1.3M notations, texts in 13 languages, keywords, hierarchy | CC0 |
 | [iconclass](https://pypi.org/project/iconclass/) Python library | Text composition for key-expanded notations | CC0 |
-| [Rijksmuseum vocabulary.db](https://github.com/kintopp/rijksmuseum-mcp-plus) | Artwork counts per notation (24K notations) | MIT |
-| [RKD Knowledge Graph](https://triplydb.com/rkd/RKD-Knowledge-Graph) | Artwork counts per notation (14K notations) | ODC-By 1.0 |
-| [Iconclass AI Test Set](https://iconclass.org/testset/) | Arkyves artwork counts per notation (35K notations, derived from data.json) | CC0 |
+| [Rijksmuseum vocabulary.db](https://github.com/kintopp/rijksmuseum-mcp-plus) | Artwork presence per notation (24K notations) | MIT |
+| [RKD Knowledge Graph](https://triplydb.com/rkd/RKD-Knowledge-Graph) | Artwork presence per notation (14K notations) | ODC-By 1.0 |
+| [Iconclass AI Test Set](https://iconclass.org/testset/) | Arkyves artwork presence per notation (35K notations, derived from data.json) | CC0 |
 
 ## Environment variables
 
@@ -217,8 +217,8 @@ The server's download logic auto-detects chunked assets (`.part-aa`, `.part-ab`,
 | `PORT` | — | Set to enable HTTP mode (e.g. `3000`) |
 | `ICONCLASS_DB_PATH` | `data/iconclass.db` | Main database (notations, texts, keywords, embeddings) |
 | `ICONCLASS_DB_URL` | — | URL to download main DB if missing (supports `.gz`) |
-| `COUNTS_DB_PATH` | `data/iconclass-counts.db` | Sidecar database (collection counts) |
-| `COUNTS_DB_URL` | — | URL to download counts DB if missing (supports `.gz`) |
+| `COUNTS_DB_PATH` | `data/iconclass-counts.db` | Sidecar database (collection presence) |
+| `COUNTS_DB_URL` | — | URL to download sidecar DB if missing (supports `.gz`) |
 | `EMBEDDING_MODEL_ID` | `Xenova/multilingual-e5-base` | HuggingFace model for query embedding |
 | `HF_HOME` | — | HuggingFace cache directory |
 | `ALLOWED_ORIGINS` | `*` | CORS origins for HTTP mode |
@@ -235,7 +235,7 @@ The server's download logic auto-detects chunked assets (`.part-aa`, `.part-ab`,
 | Browse | ~1ms | ~54ms | B-tree lookup + child resolution |
 | Browse with key variants | ~1ms | ~58ms | Default page of 25 key variants |
 | Resolve (batch of 15) | ~1ms | ~54ms | 15 notations with full metadata |
-| Find artworks | ~1ms | — | Per-notation count lookup across 3 collections |
+| Find artworks | ~1ms | — | Per-notation presence lookup across 3 collections |
 | Prefix search | ~113ms | ~196ms | Depends on subtree size; accurate COUNT query |
 | Server cold start | ~8s | ~77s | Local: embedding model only. Production: chunked DB download + decompression |
 
@@ -265,7 +265,7 @@ The constants below were chosen by profiling the Iconclass database, balancing r
 
 A resolved Iconclass entry averages ~350 bytes of JSON (median). At the default page size of 25, a typical `search` response is ~8 KB (~2,300 tokens) — roughly 1% of a 200K-token context window. At the maximum of 50 results, responses reach ~16 KB (~4,600 tokens). Both leave ample room for LLM reasoning.
 
-FTS queries return anywhere from ~800 unique notations ("crucifixion") to ~30,000 ("portrait"). Results are sorted by total collection count so the most relevant notations appear first regardless of page size. The fixed cost of the FTS scan dominates — returning 10 or 50 results takes roughly the same time.
+FTS queries return anywhere from ~800 unique notations ("crucifixion") to ~30,000 ("portrait"). Results are sorted by collection coverage (number of collections with artworks) so widely-represented notations appear first regardless of page size. The fixed cost of the FTS scan dominates — returning 10 or 50 results takes roughly the same time.
 
 `search_prefix` allows up to 100 results per page (default 25). Broad prefixes can match very large subtrees — e.g. `7%` spans ~89K notations, of which ~3K have Rijksmuseum artworks. To discourage LLMs from exhaustively paginating these, the tool description and response text nudge the caller to narrow the prefix rather than page through thousands of results. The `totalResults` count is always accurate (computed via SQL `COUNT` for unfiltered queries, or batch-filtered for collection-scoped queries).
 
@@ -291,7 +291,7 @@ At ~350 bytes per entry, a full 250-entry subtree is ~85 KB (~25K tokens) — su
 
 #### Semantic search with collection filters
 
-When `collectionId` or `onlyWithArtworks` is set, the semantic path over-fetches from the KNN index (up to `k × 20`, capped at 4,096 candidates) and then batch-filters by collection count before resolving entries. This ensures the requested page fills reliably even when the target collection covers a small fraction of the embedding space. Without a filter, the index returns exactly `k` neighbors with no over-fetch.
+When `collectionId` or `onlyWithArtworks` is set, the semantic path over-fetches from the KNN index (up to `k × 20`, capped at 4,096 candidates) and then batch-filters by collection presence before resolving entries. This ensures the requested page fills reliably even when the target collection covers a small fraction of the embedding space. Without a filter, the index returns exactly `k` neighbors with no over-fetch.
 
 #### Resolve batch limit
 
@@ -301,9 +301,9 @@ The resolve tool accepts up to 25 notations per call (default 15). This is inten
 
 The per-notation keyword limit of 40 matches the observed maximum in the database, so no keywords are truncated. The 99th percentile is 9 keywords; only 705 notations (0.04%) exceed 20. These are concentrated in a few keyword-heavy base notations — notably `46C1313` ("equestrian statue", 28 keywords listing famous statues by name), `23K` ("labours of the months", 30 keywords), and saint notations like `11H(THOMAS AQUINAS)`. Key-expanded variants of these inherit the base keywords and add modifier keywords on top, reaching up to 40.
 
-#### Collection count sparsity
+#### Collection presence sparsity
 
-With three collection overlays, ~5.6% of notations have artwork counts (73K of 1.3M). The `collectionCounts` field is empty for the vast majority of entries, adding negligible overhead. The `onlyWithArtworks` and `collectionId` filters are aggressive narrowers — useful when the caller only needs notations that appear in a specific collection. Each collection's `totalArtworks` in the sidecar DB reflects the number of distinct notations with artworks in that collection (not the number of artworks themselves, which cannot be derived from notation-level counts).
+With three collection overlays, ~5.6% of notations have collection presence (73K of 1.3M). The `collections` field is empty for the vast majority of entries, adding negligible overhead. The `onlyWithArtworks` and `collectionId` filters are aggressive narrowers — useful when the caller only needs notations that appear in a specific collection. Each collection's `totalNotations` reflects the number of distinct notations with artworks in that collection (computed at runtime by joining against the main notations table to exclude malformed entries).
 
 #### FTS multi-word fallback
 
@@ -315,7 +315,7 @@ If you use rijksmuseum-iconclass-mcp in your research, please cite it as follows
 
 **APA (7th ed.)**
 
-> Bosse, A. (2026). *rijksmuseum-iconclass-mcp* (Version 0.1.0) [Software]. Research and Infrastructure Support (RISE), University of Basel. https://github.com/kintopp/rijksmuseum-iconclass-mcp
+> Bosse, A. (2026). *rijksmuseum-iconclass-mcp* (Version 0.2.0) [Software]. Research and Infrastructure Support (RISE), University of Basel. https://github.com/kintopp/rijksmuseum-iconclass-mcp
 
 **BibTeX**
 ```bibtex
@@ -323,7 +323,7 @@ If you use rijksmuseum-iconclass-mcp in your research, please cite it as follows
   author    = {Bosse, Arno},
   title     = {{rijksmuseum-iconclass-mcp}},
   year      = {2026},
-  version   = {0.1.0},
+  version   = {0.2.0},
   publisher = {Research and Infrastructure Support (RISE), University of Basel},
   url       = {https://github.com/kintopp/rijksmuseum-iconclass-mcp},
   orcid     = {0000-0003-3681-1289},

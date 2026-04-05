@@ -26,9 +26,9 @@ DISCOVER  ->  NARROW  ->  RESOLVE  ->  FIND ARTWORKS  ->  HAND OFF
 
 Iconclass is a retrieval tool, not a descriptive language. A notation's meaning comes from its position in the hierarchy, not just its label. Complex artworks carry many codes (often 30+) across different branches because a single image contains multiple subjects — a scene, its setting, its actors, their attributes, symbolic objects. The goal is not to find *the one right code* but to identify the set of codes that carve out the search space you need.
 
-Most of the ~40K base notations are "theoretical" — they exist in the taxonomy but no museum has tagged artworks with them. Always check `collectionCounts` before handing a code to a collection server: a code with 0 artworks returns nothing, and a code with 371 vs 2 signals very different curatorial depth.
+Most of the ~40K base notations are "theoretical" — they exist in the taxonomy but no museum has tagged artworks with them. Always check the `collections` array before handing a code to a collection server: an empty array means no loaded collection has artworks for that notation. The `collections` metadata (returned by every tool) lists all loaded collections, so you can distinguish "checked and not present" from "collection not loaded."
 
-**Never truncate discovery queries.** When searching for notation codes, use the default `maxResults` (25) or higher — never set a lower value. You need to see the full result set with collection counts to evaluate which codes are useful. Cutting results short means you miss relevant notations and can't make informed handoff decisions.
+**Never truncate discovery queries.** When searching for notation codes, use the default `maxResults` (25) or higher — never set a lower value. You need to see the full result set with collection presence to evaluate which codes are useful. Cutting results short means you miss relevant notations and can't make informed handoff decisions.
 
 ---
 
@@ -110,7 +110,7 @@ Start with keyword search. If the term is unknown or the concept is atmospheric/
 ```
 # Known term
 search(query: "crucifixion")
-# -> 73D6 (371 artworks) "the Crucifixion of Christ" [7 > 73 > 73D]
+# -> 73D6 (rijksmuseum, rkd) "the Crucifixion of Christ" [7 > 73 > 73D]
 
 # Unknown vocabulary — concept search
 search(semanticQuery: "domestic animals")
@@ -193,54 +193,54 @@ When no notation exactly captures a nuanced concept (e.g., a broken lute string 
 
 ### 6. Find Which Collections Use a Notation
 
-After discovering notation codes via `search` or `browse`, use `find_artworks` to see which external collections have artworks tagged with those codes. This answers "where does this subject appear in the real world?" — essential for gauging a notation's practical usefulness beyond its aggregate `collectionCounts`.
+After discovering notation codes via `search` or `browse`, use `find_artworks` to check which external collections have artworks tagged with those codes. This answers "where does this subject appear in the real world?" — essential for gauging a notation's practical usefulness beyond its `collections` array.
 
 ```
 # Single notation
 find_artworks(notation: "73D64")
 # -> 73D64 "the Crucifixion of Christ"
-#      RKD: 126 artworks → https://...
-#      Rijksmuseum: 85 artworks
-#      Arkyves: 18 artworks → https://...
+#      Arkyves → https://...
+#      RKD → https://...
+#      Rijksmuseum, Amsterdam
 
-# Batch: compare counts across multiple notations (up to 25)
+# Batch: compare presence across multiple notations (up to 25)
 find_artworks(notation: ["34B11", "25F23", "11H(FRANCIS)32"])
-# -> per-notation breakdown with counts and link-out URLs per collection
+# -> per-notation breakdown with collection presence and link-out URLs
 ```
 
-**When to use `find_artworks` vs `collectionCounts`:**
-- `collectionCounts` (returned by `search`, `browse`, `resolve`) gives you a quick aggregate total per collection, useful for filtering during discovery — "does anything use this code?"
-- `find_artworks` gives you the full per-collection breakdown with direct link-out URLs. Use it when you need to actually navigate to a collection's artworks for a notation, or when comparing coverage across notations.
+**When to use `find_artworks` vs `collections`:**
+- `collections` (returned by `search`, `browse`, `resolve`) gives a quick list of which collections have artworks for each notation, useful for filtering during discovery — "does anything use this code?"
+- `find_artworks` gives the full per-collection breakdown with direct link-out URLs. Use it when you need to navigate to a collection's artworks for a notation, or when comparing coverage across notations.
 
 **Practical patterns:**
 
-- **After narrowing to a handful of codes:** Run `find_artworks` on your shortlist to see which collections have the richest coverage, then hand off to the collection with the most artworks.
-- **Comparing sibling notations:** When two notations seem interchangeable (e.g. `73D64` vs `73D641`), `find_artworks` reveals which one museums actually tag with — the one with higher counts is usually the better handoff code.
+- **After narrowing to a handful of codes:** Run `find_artworks` on your shortlist to see which collections cover them, then hand off to the collection with the best coverage or follow the link-out URL.
+- **Comparing sibling notations:** When two notations seem interchangeable (e.g. `73D64` vs `73D641`), `find_artworks` reveals which one museums actually tag with — the one appearing in more collections is usually the better handoff code.
 - **Checking before handoff:** A notation with 0 collections returns `"no collections"` — don't pass it to a collection server, it will return nothing. Look for a parent or sibling notation instead.
 
 The `lang` parameter controls the language of notation labels in the response (default: `"en"`). The link-out URLs are collection-specific search links that open results in the collection's own interface.
 
 ### 7. Cross-Server Handoff
 
-Once you have notation codes, use `find_artworks` to check which collections have artworks, then hand off to the richest collection:
+Once you have notation codes, use `find_artworks` to check which collections have artworks, then hand off:
 
 ```
 # Step 1: discover the code
 search(query: "Jerome")
-# -> 11H(JEROME) "the monk and hermit Jerome (Hieronymus)"
+# -> 11H(JEROME) (rijksmuseum, rkd, arkyves) "the monk and hermit Jerome (Hieronymus)"
 
-# Step 2: check collection coverage (optional but recommended)
+# Step 2: check collection coverage and get link-out URLs
 find_artworks(notation: "11H(JEROME)")
-# -> Rijksmuseum: 238 artworks
-#    RKD: 210 artworks → https://...
-#    Arkyves: 57 artworks → https://...
+# -> Arkyves → https://...
+#    RKD → https://...
+#    Rijksmuseum, Amsterdam
 
 # Step 3: hand off to the collection server
 search_artwork(iconclass: ["11H(JEROME)"])
 # -> artworks depicting St. Jerome
 ```
 
-Multiple codes AND-combine on the collection server. Use `find_artworks` or `collectionCounts` to predict result volume before making the handoff call — a notation with 0 counts in a collection will return nothing.
+Multiple codes AND-combine on the collection server. Use `find_artworks` or the `collections` array to verify a notation is present before making the handoff call — a notation with no collections will return nothing.
 
 ---
 
@@ -254,7 +254,7 @@ Multiple codes AND-combine on the collection server. Use `find_artworks` or `col
 | `parentNotation` returns 0 but concept exists | The concept may live in a different branch. Remove the scope and search globally. |
 | Key expansion labels can mislead | Always verify a key's meaning in context. The `(+4...)` group is about artistic production, not depicted object condition. See Notation Syntax. |
 | `find_artworks` batch limit of 25 | Sufficient for most workflows — you should have narrowed to a shortlist before calling. |
-| `find_artworks` covers 3 collections only | Rijksmuseum, RKD, and Arkyves. ~18K of ~40K base notations (~46%) have at least one count. More collections will be added over time. |
+| `find_artworks` covers 3 collections only | Rijksmuseum, RKD, and Arkyves. ~18K of ~40K base notations (~46%) are present in at least one collection. More collections will be added over time. |
 | `find_artworks` returns "no collections" | The notation exists but no loaded collection has tagged artworks with it. Try a parent or sibling notation. |
 
 ---
@@ -262,9 +262,9 @@ Multiple codes AND-combine on the collection server. Use `find_artworks` or `col
 ## Output Conventions
 
 - Always show notation codes (e.g. `73D82`) — they are the stable identifiers across all tools and the handoff format to collection servers
-- Include collection counts when available — they signal whether a code is useful for artwork retrieval
+- Include collection presence when available — it signals whether a code is useful for artwork retrieval
 - Show hierarchy paths (e.g. `7 > 73 > 73D > 73D8`) — they help the user understand where a notation sits in the classification system
-- When presenting multiple notations, lead with highest collection count — these are the most practically useful codes
+- When presenting multiple notations, lead with broadest collection coverage — these are the most practically useful codes
 - Distinguish explicitly between what was found via keyword search vs semantic search — the confidence levels differ
 
 ---

@@ -10,7 +10,7 @@ export interface CollectionInfo {
   collectionId: string;
   label: string;
   countsAsOf: string | null;
-  totalArtworks: number;
+  totalNotations: number;
   searchUrlTemplate: string | null;
 }
 
@@ -24,7 +24,7 @@ export interface IconclassEntry {
   isKeyExpanded: boolean;
   baseNotation: string | null;
   keyId: string | null;
-  collectionCounts: Record<string, number>;
+  collections: string[];
 }
 
 export interface IconclassSearchResult {
@@ -74,7 +74,6 @@ export interface IconclassKeyExpansionResult {
 export interface ArtworkCollectionInfo {
   collectionId: string;
   label: string;
-  count: number;
   url: string | null;
 }
 
@@ -121,7 +120,7 @@ export class IconclassDb {
   private stmtPrefixCount!: Statement;
   private stmtKeyVariantsPage!: Statement;
   private stmtKeyVariantsCount!: Statement;
-  private stmtGetCollectionCounts: Statement | null = null;
+  private stmtGetCollectionPresence: Statement | null = null;
   private stmtQuantize: Statement | null = null;
   private stmtKnn: Statement | null = null;
   private stmtFilteredKnn: Statement | null = null;
@@ -144,25 +143,25 @@ export class IconclassDb {
           this.db.exec(`ATTACH DATABASE '${countsPath}' AS counts`);
           this.db.prepare("SELECT 1 FROM counts.collection_counts LIMIT 1").get();
 
-          this.stmtGetCollectionCounts = this.db.prepare(
-            "SELECT collection_id, count FROM counts.collection_counts WHERE notation = ?"
+          this.stmtGetCollectionPresence = this.db.prepare(
+            "SELECT collection_id FROM counts.collection_counts WHERE notation = ?"
           );
 
           const rows = this.db.prepare(`
             SELECT ci.collection_id, ci.label, ci.counts_as_of, ci.search_url_template,
-                   COUNT(cc.notation) AS total_artworks
+                   COUNT(cc.notation) AS total_notations
             FROM counts.collection_info ci
             LEFT JOIN counts.collection_counts cc ON cc.collection_id = ci.collection_id
             INNER JOIN notations n ON cc.notation = n.notation
             GROUP BY ci.collection_id
           `).all() as {
-            collection_id: string; label: string; counts_as_of: string | null; total_artworks: number; search_url_template: string | null;
+            collection_id: string; label: string; counts_as_of: string | null; total_notations: number; search_url_template: string | null;
           }[];
           this._collections = rows.map(r => ({
             collectionId: r.collection_id,
             label: r.label,
             countsAsOf: r.counts_as_of,
-            totalArtworks: r.total_artworks,
+            totalNotations: r.total_notations,
             searchUrlTemplate: r.search_url_template,
           }));
           this._collectionsMap = new Map(this._collections.map(c => [c.collectionId, c]));
@@ -204,12 +203,12 @@ export class IconclassDb {
           ORDER BY distance
         `);
 
-        if (this.stmtGetCollectionCounts) {
+        if (this.stmtGetCollectionPresence) {
           this.stmtFilteredKnn = this.db.prepare(`
             SELECT ie.notation,
                    vec_distance_cosine(vec_int8(ie.embedding), vec_int8(?)) as distance
             FROM iconclass_embeddings ie
-            WHERE ie.notation IN (SELECT DISTINCT notation FROM counts.collection_counts WHERE count > 0)
+            WHERE ie.notation IN (SELECT DISTINCT notation FROM counts.collection_counts)
             ORDER BY distance LIMIT ?
           `);
         }
@@ -316,11 +315,11 @@ export class IconclassDb {
       if (notationSet.size === 0) return empty;
     }
 
-    const countsCache = new Map<string, Record<string, number>>();
-    const countedNotations = this.fetchCountsForSort([...notationSet], countsCache, collectionId, onlyWithArtworks);
+    const presenceCache = new Map<string, Set<string>>();
+    const countedNotations = this.fetchPresenceForSort([...notationSet], presenceCache, collectionId, onlyWithArtworks);
 
     countedNotations.sort((a, b) => {
-      if (b.total !== a.total) return b.total - a.total;
+      if (b.coverage !== a.coverage) return b.coverage - a.coverage;
       return a.notation.localeCompare(b.notation);
     });
 
@@ -329,7 +328,7 @@ export class IconclassDb {
 
     const textCache = new Map<string, string | null>();
     const results = page
-      .map(({ notation }) => this.resolveEntry(notation, lang, textCache, countsCache))
+      .map(({ notation }) => this.resolveEntry(notation, lang, textCache, presenceCache))
       .filter((e): e is IconclassEntry => e !== null);
 
     return { query, totalResults, results, collections: this._collections };
@@ -426,13 +425,13 @@ export class IconclassDb {
     if (!clean) return empty;
 
     const likePattern = `${clean}%`;
-    const countsCache = new Map<string, Record<string, number>>();
+    const presenceCache = new Map<string, Set<string>>();
 
     if (collectionId) {
       // Collection filter: fetch ALL matching notations, filter, then paginate
       const allRows = this.stmtPrefixSearch.all(likePattern, -1, 0) as { notation: string }[];
       const allNotations = allRows.map(r => r.notation);
-      const counted = this.fetchCountsForSort(allNotations, countsCache, collectionId);
+      const counted = this.fetchPresenceForSort(allNotations, presenceCache, collectionId);
       const filteredNotations = counted.map(c => c.notation).sort();
 
       const totalResults = filteredNotations.length;
@@ -440,7 +439,7 @@ export class IconclassDb {
 
       const textCache = new Map<string, string | null>();
       const results = page
-        .map((n) => this.resolveEntry(n, lang, textCache, countsCache))
+        .map((n) => this.resolveEntry(n, lang, textCache, presenceCache))
         .filter((e): e is IconclassEntry => e !== null);
 
       return { prefix, totalResults, results, collections: this._collections };
@@ -452,7 +451,7 @@ export class IconclassDb {
 
     const textCache = new Map<string, string | null>();
     const results = rows
-      .map((r) => this.resolveEntry(r.notation, lang, textCache, countsCache))
+      .map((r) => this.resolveEntry(r.notation, lang, textCache, presenceCache))
       .filter((e): e is IconclassEntry => e !== null);
 
     return { prefix, totalResults, results, collections: this._collections };
@@ -510,11 +509,11 @@ export class IconclassDb {
 
     // Batch-filter by collectionId using temp table + JOIN (same pattern as
     // FTS search and prefix search) instead of N+1 per-row queries.
-    const countsCache = new Map<string, Record<string, number>>();
+    const presenceCache = new Map<string, Set<string>>();
     let candidates = rows;
     if (collectionId || onlyWithArtworks) {
       const kept = new Set(
-        this.fetchCountsForSort(rows.map(r => r.notation), countsCache, collectionId, onlyWithArtworks)
+        this.fetchPresenceForSort(rows.map(r => r.notation), presenceCache, collectionId, onlyWithArtworks)
           .map(c => c.notation)
       );
       candidates = rows.filter(r => kept.has(r.notation));
@@ -524,7 +523,7 @@ export class IconclassDb {
     const textCache = new Map<string, string | null>();
     const results = candidates
       .map((row) => {
-        const entry = this.resolveEntry(row.notation, lang, textCache, countsCache);
+        const entry = this.resolveEntry(row.notation, lang, textCache, presenceCache);
         if (!entry) return null;
         return { ...entry, similarity: Math.round((1 - row.distance) * 1000) / 1000 };
       })
@@ -550,19 +549,18 @@ export class IconclassDb {
       const text = this.getText(notation, lang) ?? notation;
       const cols: ArtworkCollectionInfo[] = [];
 
-      if (this.stmtGetCollectionCounts) {
-        const rows = this.stmtGetCollectionCounts.all(notation) as { collection_id: string; count: number }[];
+      if (this.stmtGetCollectionPresence) {
+        const rows = this.stmtGetCollectionPresence.all(notation) as { collection_id: string }[];
         for (const row of rows) {
           const info = this._collectionsMap.get(row.collection_id);
           const template = info?.searchUrlTemplate;
           cols.push({
             collectionId: row.collection_id,
             label: info?.label ?? row.collection_id,
-            count: row.count,
             url: template ? template.replace("{notation}", encodeURIComponent(notation)) : null,
           });
         }
-        cols.sort((a, b) => b.count - a.count);
+        cols.sort((a, b) => a.label.localeCompare(b.label));
       }
 
       results.push({ notation, text, collections: cols });
@@ -581,18 +579,18 @@ export class IconclassDb {
   }
 
   /**
-   * Batch-fetch counts for sorting. Uses a temp table + JOIN instead of N+1
-   * individual queries — ~200x faster for broad FTS result sets.
-   * Populates countsCache for later reuse by resolveEntry.
+   * Batch-fetch collection presence for sorting. Uses a temp table + JOIN
+   * instead of N+1 individual queries — ~200x faster for broad FTS result sets.
+   * Populates presenceCache for later reuse by resolveEntry.
    */
-  private fetchCountsForSort(
+  private fetchPresenceForSort(
     notations: string[],
-    countsCache: Map<string, Record<string, number>>,
+    presenceCache: Map<string, Set<string>>,
     collectionId?: string,
     onlyWithArtworks: boolean = false,
-  ): { notation: string; total: number }[] {
-    if (!this.stmtGetCollectionCounts || !this.db) {
-      return (collectionId || onlyWithArtworks) ? [] : notations.map(n => ({ notation: n, total: 0 }));
+  ): { notation: string; coverage: number }[] {
+    if (!this.stmtGetCollectionPresence || !this.db) {
+      return (collectionId || onlyWithArtworks) ? [] : notations.map(n => ({ notation: n, coverage: 0 }));
     }
 
     // Batch: insert all notations into a temp table, then JOIN against counts
@@ -605,36 +603,33 @@ export class IconclassDb {
     });
     insertAll(notations);
 
-    const countRows = this.db.prepare(`
-      SELECT cc.notation, cc.collection_id, cc.count
+    const presenceRows = this.db.prepare(`
+      SELECT cc.notation, cc.collection_id
       FROM counts.collection_counts cc
       INNER JOIN _batch_notations bn ON cc.notation = bn.notation
-    `).all() as { notation: string; collection_id: string; count: number }[];
+    `).all() as { notation: string; collection_id: string }[];
 
-    // Build counts map
-    for (const cr of countRows) {
-      let counts = countsCache.get(cr.notation);
-      if (!counts) {
-        counts = {};
-        countsCache.set(cr.notation, counts);
+    // Build presence map
+    for (const pr of presenceRows) {
+      let cols = presenceCache.get(pr.notation);
+      if (!cols) {
+        cols = new Set();
+        presenceCache.set(pr.notation, cols);
       }
-      counts[cr.collection_id] = cr.count;
+      cols.add(pr.collection_id);
     }
 
-    // Build sorted result with totals
-    const results: { notation: string; total: number }[] = [];
+    // Build sorted result — coverage = number of collections with artworks
+    const results: { notation: string; coverage: number }[] = [];
     for (const notation of notations) {
-      const counts = countsCache.get(notation);
-      if (!counts) {
-        if (!collectionId && !onlyWithArtworks) results.push({ notation, total: 0 });
+      const cols = presenceCache.get(notation);
+      if (!cols) {
+        if (!collectionId && !onlyWithArtworks) results.push({ notation, coverage: 0 });
         continue;
       }
-      let total = 0;
-      for (const [cid, count] of Object.entries(counts)) {
-        if (!collectionId || cid === collectionId) total += count;
-      }
-      if ((collectionId || onlyWithArtworks) && total === 0) continue;
-      results.push({ notation, total });
+      const matches = collectionId ? (cols.has(collectionId) ? 1 : 0) : cols.size;
+      if ((collectionId || onlyWithArtworks) && matches === 0) continue;
+      results.push({ notation, coverage: matches });
     }
     return results;
   }
@@ -646,7 +641,7 @@ export class IconclassDb {
       .filter((e): e is IconclassEntry => e !== null);
   }
 
-  private resolveEntry(notation: string, lang: string, textCache: Map<string, string | null>, countsCache?: Map<string, Record<string, number>>): IconclassEntry | null {
+  private resolveEntry(notation: string, lang: string, textCache: Map<string, string | null>, presenceCache?: Map<string, Set<string>>): IconclassEntry | null {
     if (!this.db) return null;
 
     const row = this.stmtGetNotation.get(notation) as {
@@ -664,15 +659,15 @@ export class IconclassDb {
       text: this.getTextCached(n, lang, textCache) ?? n,
     }));
 
-    let collectionCounts = countsCache?.get(notation);
-    if (!collectionCounts) {
-      collectionCounts = {};
-      if (this.stmtGetCollectionCounts) {
-        const countRows = this.stmtGetCollectionCounts.all(notation) as { collection_id: string; count: number }[];
-        for (const cr of countRows) {
-          collectionCounts[cr.collection_id] = cr.count;
-        }
-      }
+    let collections: string[];
+    const cached = presenceCache?.get(notation);
+    if (cached) {
+      collections = [...cached];
+    } else if (this.stmtGetCollectionPresence) {
+      const rows = this.stmtGetCollectionPresence.all(notation) as { collection_id: string }[];
+      collections = rows.map(r => r.collection_id);
+    } else {
+      collections = [];
     }
 
     return {
@@ -685,7 +680,7 @@ export class IconclassDb {
       isKeyExpanded: row.is_key_expanded === 1,
       baseNotation: row.base_notation,
       keyId: row.key_id,
-      collectionCounts,
+      collections,
     };
   }
 

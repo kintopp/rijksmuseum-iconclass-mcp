@@ -109,8 +109,7 @@ const s2 = sc(r2);
 assertEq(s2.query, "crucifixion", "query echoed back");
 assert(s2.totalResults > 50, `totalResults > 50 (got ${s2.totalResults})`);
 assertEq(s2.results.length, 5, "5 results returned");
-assertEq(s2.results[0].notation, "73D6", "top result is 73D6 (crucifixion)");
-assert(s2.results[0].collectionCounts.rijksmuseum > 0, "has Rijksmuseum count");
+assert(s2.results[0].collections.length > 0, "top result has collection presence");
 assert(s2.results[0].path.length > 0, "has path");
 assert(s2.results[0].keywords.length > 0, "has keywords");
 assert(Array.isArray(s2.collections), "collections array present");
@@ -131,7 +130,7 @@ const r2c = await client.callTool({
 });
 const s2c = sc(r2c);
 for (const entry of s2c.results) {
-  assert(entry.collectionCounts.rijksmuseum > 0, `collectionId filter: ${entry.notation} has rijksmuseum count`);
+  assert(entry.collections.includes("rijksmuseum"), `collectionId filter: ${entry.notation} has rijksmuseum presence`);
 }
 
 // Empty query
@@ -172,8 +171,7 @@ if (r3.isError) {
   if (!r3b.isError) {
     const s3b = sc(r3b);
     for (const entry of s3b.results) {
-      const total = Object.values(entry.collectionCounts).reduce((a, b) => a + b, 0);
-      assert(total > 0, `onlyWithArtworks: ${entry.notation} has artworks (${total})`);
+      assert(entry.collections.length > 0, `onlyWithArtworks: ${entry.notation} has artworks (${entry.collections.length})`);
     }
   }
 }
@@ -348,7 +346,7 @@ const r7b = await client.callTool({
 });
 const s7b = sc(r7b);
 for (const entry of s7b.results) {
-  assert(entry.collectionCounts.rijksmuseum > 0, `prefix+collection: ${entry.notation} has count`);
+  assert(entry.collections.includes("rijksmuseum"), `prefix+collection: ${entry.notation} has rijksmuseum`);
 }
 
 // Broad prefix
@@ -431,7 +429,7 @@ const s10 = sc(r10);
 assert(!r10.isError, "no error");
 assert(s10.results.length >= 3, `collection-scoped semantic: should fill page (got ${s10.results.length})`);
 for (const entry of s10.results) {
-  assert(entry.collectionCounts.rijksmuseum > 0, `semantic+collection: ${entry.notation} has rijksmuseum count`);
+  assert(entry.collections.includes("rijksmuseum"), `semantic+collection: ${entry.notation} has rijksmuseum`);
 }
 
 // ══════════════════════════════════════════════════════════════════
@@ -455,12 +453,12 @@ const r11b = await client.callTool({
 assert(r11b.isError === true, "expand_keys rejects partial parenthesis");
 
 // ══════════════════════════════════════════════════════════════════
-//  12. Regression: totalArtworks is non-zero (P2)
+//  12. Regression: totalNotations is non-zero (P2)
 // ══════════════════════════════════════════════════════════════════
 
-section("12. Regression: totalArtworks non-zero (P2)");
+section("12. Regression: totalNotations non-zero (P2)");
 
-// Every tool response includes collections[]. Check that totalArtworks > 0.
+// Every tool response includes collections[]. Check that totalNotations > 0.
 const r12 = await client.callTool({
   name: "search_prefix",
   arguments: { notation: "11H", maxResults: 1 },
@@ -469,7 +467,7 @@ const s12 = sc(r12);
 assert(s12.collections.length > 0, "collections array present");
 const rij = s12.collections.find(c => c.collectionId === "rijksmuseum");
 assert(rij !== undefined, "rijksmuseum collection present");
-assert(rij.totalArtworks > 0, `totalArtworks > 0 (got ${rij?.totalArtworks})`);
+assert(rij.totalNotations > 0, `totalNotations > 0 (got ${rij?.totalNotations})`);
 
 // ══════════════════════════════════════════════════════════════════
 //  13. find_artworks
@@ -493,7 +491,6 @@ assert(s13a.notations[0].collections.length > 0, `has collections (got ${s13a.no
 const rijEntry = s13a.notations[0].collections.find(a => a.collectionId === "rijksmuseum");
 if (rijEntry) {
   assert(rijEntry.url === null, "rijksmuseum has no URL");
-  assert(rijEntry.count > 0, `rijksmuseum count > 0 (got ${rijEntry.count})`);
 }
 
 // Check RKD/Arkyves have URLs
@@ -508,10 +505,10 @@ if (arkEntry) {
   assert(arkEntry.url.includes("73D6"), "arkyves URL contains notation");
 }
 
-// Collections sorted by count descending
-const counts13 = s13a.notations[0].collections.map(a => a.count);
-for (let i = 1; i < counts13.length; i++) {
-  assert(counts13[i] <= counts13[i - 1], `collections sorted desc: ${counts13[i - 1]} >= ${counts13[i]}`);
+// Collections sorted alphabetically by label
+const labels13 = s13a.notations[0].collections.map(a => a.label);
+for (let i = 1; i < labels13.length; i++) {
+  assert(labels13[i] >= labels13[i - 1], `collections sorted alpha: "${labels13[i - 1]}" <= "${labels13[i]}"`);
 }
 
 // Collections metadata present

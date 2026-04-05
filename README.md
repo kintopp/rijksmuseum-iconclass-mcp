@@ -162,6 +162,10 @@ graph TB
     style COUNTS fill:#fff9c4,stroke:#FFC107
 ```
 
+## Authors
+
+[Arno Bosse](https://orcid.org/0000-0003-3681-1289) — [RISE](https://rise.unibas.ch/), University of Basel with [Claude Code](https://claude.com/product/claude-code), Anthropic.
+
 ## Citation
 
 If you use rijksmuseum-iconclass-mcp in your research, please cite it as follows. A `CITATION.cff` file is included for use with Zotero, GitHub's "Cite this repository" button, and other reference managers.

@@ -28,7 +28,7 @@ Sample prompts that show what the AI assistant can do with this server's six too
 - `browse` on `31A33` with `includeKeys: true` to discover key-expanded variants like `31A33(+1)` (smell, outdoors) that add situational modifiers
 - The `collections` array on each result reveals which smell-related notations have artworks in the Rijksmuseum — `31A33` is present, but deeper variants may not be
 
-**Why it matters:** Sensory history is a growing research field, but olfactory experience is underrepresented in art classification systems. A [discussion on the Iconclass forum](https://forum.iconclass.org/t/iconclass-and-sensory-history/15) proposed expanding `31A33` with sub-codes for smell sources, odour carriers, and fragrant spaces. This prompt maps the current landscape — what exists, what has artworks, and where the gaps are — giving a researcher a concrete starting point before proposing new notations.
+**Why it matters:** Sensory history is a growing research field, but olfactory experience is underrepresented in art classification systems. A [discussion on the Iconclass forum](https://forum.iconclass.org/t/iconclass-and-sensory-history/15) proposed expanding `31A33` with sub-codes for smell sources, odour carriers, and fragrant spaces. This prompt maps the current Iconclass landscape for olfaction.
 
 ---
 
@@ -44,7 +44,7 @@ Sample prompts that show what the AI assistant can do with this server's six too
 - Each result includes a `collections` array showing which collections have artworks for that notation — Jerome appears in both the Rijksmuseum and RKD, reflecting his popularity as a subject in Northern European art
 - Searching for a name not in the database (e.g. "Euphemia" or "Balbina") returns zero results — confirming the saint is missing and needs to be proposed
 
-**Why it matters:** The Iconclass forum maintains a [collaborative list of saints missing from the system](https://forum.iconclass.org/t/list-saints-missing-in-iconclass/148). Researchers cataloguing religious art need to verify whether a saint already has an Iconclass notation before proposing a new one. The FTS search across all languages is essential because a saint may have a notation with labels only in Italian or German, not English. The collection presence immediately tells the researcher whether the notation is actively used.
+**Why it matters:** The Iconclass forum maintains a [collaborative list of saints missing from the system](https://forum.iconclass.org/t/list-saints-missing-in-iconclass/148). Researchers cataloguing religious art need to verify whether a saint already has an Iconclass notation before proposing a new one. The FTS search across all languages is essential because a saint may have a notation with labels only in Italian or German, not English. The collection presence tells the researcher where the notation is actively used.
 
 ---
 
@@ -60,7 +60,7 @@ Sample prompts that show what the AI assistant can do with this server's six too
 - The `refs` array would reveal cross-references to related notations elsewhere in the hierarchy — but in this case it is empty, meaning Iconclass does not formally link alchemy to religion or magic despite the conceptual overlap
 - Use `search` with `query: "alchemy"` to find notations *outside* `49E39` that mention alchemy in their keywords or labels — this may surface connections the hierarchy itself does not encode
 
-**Why it matters:** A [critique on the Iconclass forum](https://forum.iconclass.org/t/what-bothers-me-about-iconclass/16) argued that alchemy's placement under science misrepresents its historical character — for most of its history, alchemy was inseparable from mystical and religious practice. The `browse` tool makes Iconclass's structural decisions transparent: the path reveals the editorial choice, the absence of cross-references reveals a gap in the system's internal linking, and keyword search can find connections the hierarchy misses. This is essential for any researcher deciding which notations to assign to an artwork with alchemical imagery.
+**Why it matters:** A [critique on the Iconclass forum](https://forum.iconclass.org/t/what-bothers-me-about-iconclass/16) argued that alchemy's placement under science misrepresents its historical character — for most of its history, alchemy was inseparable from mystical and religious practice. The `browse` tool makes Iconclass's structural decisions transparent: the path reveals the editorial choice, the absence of cross-references reveals a gap in the system's internal linking, and keyword search can find connections the hierarchy misses. 
 
 ---
 
@@ -143,7 +143,7 @@ Sample prompts that show what the AI assistant can do with this server's six too
 - The hierarchy paths alone are diagnostic: `73D24` sits under Passion of Christ (`73D`), while `73C611` sits under Christ's miracles (`73C6`) — placing the same visual motif (banquet with Christ) in entirely different theological contexts
 - The keywords for each notation list distinguishing iconographic elements — the presence of a chalice or bread points to `73D24`, while water jars point to `73C611`
 
-**Why it matters:** A [forum discussion about a mysterious Mannerist drawing](https://forum.iconclass.org/t/mannerist-drawing-mysterious-iconography/264) debated exactly this question — was the scene the Last Supper or the Wedding at Cana? The presence of women among the guests, the exact number of diners, and the absence of water jars were all cited as evidence. This kind of disambiguation is a daily challenge in art cataloguing. The `resolve` tool's side-by-side comparison gives the cataloguer the full Iconclass description for both candidates, with hierarchy context that frames the theological distinction.
+**Why it matters:** A [forum discussion about a mysterious Mannerist drawing](https://forum.iconclass.org/t/mannerist-drawing-mysterious-iconography/264) debated exactly this question — was the scene the Last Supper or the Wedding at Cana? The presence of women among the guests, the exact number of diners, and the absence of water jars were all cited as evidence. The `resolve` tool's side-by-side comparison gives the cataloguer the full Iconclass description for both candidates, with hierarchy context that frames the theological distinction.
 
 ---
 
@@ -160,7 +160,7 @@ Sample prompts that show what the AI assistant can do with this server's six too
 - `search` with `query: "vanitas"` to find all vanitas-related notations and confirm the gap
 - The result: there is no single notation for "broken string as vanitas," nor does the key expansion system provide one. The cataloguer should assign `11R7` (vanitas symbols) and `48C7323` (lute), with the broken string recorded in a scope note or catalogue description
 
-**Why it matters:** A [forum discussion on broken strings as vanitas symbols](https://forum.iconclass.org/t/broken-strings-as-symbol-of-vanitas/302) raised this exact classification gap. The broken string as a vanitas motif is a well-known art-historical convention, but the classification system has no notation for it. The `(+42)` key expansion is a tempting false match that illustrates why key meanings must be verified in context: "damage to a work of art" is about the artwork-as-object, not about depicted objects within a scene. The correct approach is multi-code assignment (`11R7` + `48C7323`) with the interpretive nuance captured in prose.
+**Why it matters:** A [forum discussion on broken strings as vanitas symbols](https://forum.iconclass.org/t/broken-strings-as-symbol-of-vanitas/302) raised this classification gap. The broken string as a vanitas motif is a well-known art-historical convention, but the classification system has no notation for it. The `(+42)` key expansion is a tempting false match that illustrates why key meanings must be verified in context: "damage to a work of art" is about the artwork-as-object, not about depicted objects within a scene. The correct approach is multi-code assignment (`11R7` + `48C7323`) with the interpretive nuance captured in prose.
 
 ---
 
@@ -177,4 +177,4 @@ Sample prompts that show what the AI assistant can do with this server's six too
 - `browse` on `85` (fables) and `29A` (animals acting as human beings) to see alternative classification paths — Baloo could go under `82B(BALOO)` as a named fictional animal, or under `29A` as an animal acting as a human
 - `search` with `query: "Jungle Book"` to find any existing notations across all branches
 
-**Why it matters:** A [forum discussion about Jungle Book prints](https://forum.iconclass.org/t/prints-from-kiplings-jungle-book/150) wrestled with a genuine classification dilemma: is Baloo a literary animal (`82B`) or an anthropomorphic animal (`29A`)? Should the whole set be tagged with a work-level notation (`83`)? The answer depends on whether you're cataloguing the *character*, the *literary source*, or the *visual motif*. This prompt demonstrates how the Iconclass hierarchy offers multiple valid classification paths for the same subject — and why browsing several branches before deciding is better than picking the first match.
+**Why it matters:** A [forum discussion about Jungle Book prints](https://forum.iconclass.org/t/prints-from-kiplings-jungle-book/150) wrestled with a classification dilemma: is Baloo a literary animal (`82B`) or an anthropomorphic animal (`29A`)? Should the whole set be tagged with a work-level notation (`83`)? The answer depends on whether you're cataloguing the *character*, the *literary source*, or the *visual motif*. The Iconclass hierarchy offers multiple valid classification paths for the same subject — browsing several branches before deciding is better than picking the first match.

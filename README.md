@@ -53,7 +53,7 @@ graph TB
     MCP --> T5["search_prefix"]
     MCP --> T6["find_artworks"]
 
-    T1 -->|"FTS keyword search"| DB["IconclassDb"]
+    T1 -->|"FTS keyword search"| DB["Iconclass DB"]
     T1 -->|"semantic query"| EMB["EmbeddingModel<br/>(e5-base 768d)"]
     EMB -->|"query vector"| DB
 

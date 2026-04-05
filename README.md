@@ -102,7 +102,7 @@ notation: "73D8"  → 8 notations under "instruments of the Passion"
 notation: "25F"   → all animal notations
 ```
 
-### `find_adopters` — which collections have this subject?
+### `find_artworks` — which collections have this subject?
 
 Given one or more notations, find which external art collections have artworks tagged with those notations. Returns per-collection counts and link-out URLs.
 
@@ -120,10 +120,10 @@ Currently includes three collections:
 
 1. **Search** for a concept: `search({ semanticQuery: "religious suffering" })`
 2. **Browse** the hierarchy to find the right specificity level
-3. **Find adopters** to see which collections have artworks with that subject: `find_adopters({ notation: "73D6" })`
+3. **Find artworks** across collections for that subject: `find_artworks({ notation: "73D6" })`
 4. **Follow links** to browse artworks at the RKD or Arkyves, or **pass the notation** to a collection server's search (e.g., `search_artwork(iconclass: "73D6")` in [rijksmuseum-mcp-plus](https://github.com/kintopp/rijksmuseum-mcp-plus))
 
-This two-server workflow separates the classification vocabulary (this server) from collection-specific search (the Rijksmuseum server). When both servers are connected, the LLM can automatically follow up on `find_adopters` results by calling the Rijksmuseum server's `search_artwork` tool.
+This two-server workflow separates the classification vocabulary (this server) from collection-specific search (the Rijksmuseum server). When both servers are connected, the LLM can automatically follow up on `find_artworks` results by calling the Rijksmuseum server's `search_artwork` tool.
 
 For more detailed examples — sensory history, finding saints, navigating the hierarchy, classifying complex scenes — see [Example Prompts](docs/example-prompts.md).
 
@@ -131,7 +131,7 @@ For more detailed examples — sensory history, finding saints, navigating the h
 
 Artwork counts per notation live in a separate **sidecar database** (`iconclass-counts.db`, ~3.8 MB) so they can be updated independently of the main 3 GB notation/text/embedding database. Three collection overlays ship by default: Rijksmuseum (24,066 notations), RKD (13,984), and Arkyves (34,721) — totalling 72,771 notation counts.
 
-Each collection can optionally include a `search_url_template` for generating link-out URLs (e.g. `https://research.rkd.nl/en/search?q={notation}&...`). The `find_adopters` tool uses these templates to produce clickable links alongside counts.
+Each collection can optionally include a `search_url_template` for generating link-out URLs (e.g. `https://research.rkd.nl/en/search?q={notation}&...`). The `find_artworks` tool uses these templates to produce clickable links alongside counts.
 
 To add or update collections, rebuild only the sidecar — no need to touch the main DB:
 
@@ -235,7 +235,7 @@ The server's download logic auto-detects chunked assets (`.part-aa`, `.part-ab`,
 | Browse | ~1ms | ~54ms | B-tree lookup + child resolution |
 | Browse with key variants | ~1ms | ~58ms | Default page of 25 key variants |
 | Resolve (batch of 15) | ~1ms | ~54ms | 15 notations with full metadata |
-| Find adopters | ~1ms | — | Per-notation count lookup across 3 collections |
+| Find artworks | ~1ms | — | Per-notation count lookup across 3 collections |
 | Prefix search | ~113ms | ~196ms | Depends on subtree size; accurate COUNT query |
 | Server cold start | ~8s | ~77s | Local: embedding model only. Production: chunked DB download + decompression |
 

@@ -108,18 +108,18 @@ const PrefixSearchOutput = {
   error: z.string().optional(),
 };
 
-const AdopterShape = () => z.object({
+const ArtworkCollectionShape = () => z.object({
   collectionId: z.string(),
   label: z.string(),
   count: z.number().int(),
   url: z.string().nullable(),
 });
 
-const FindAdoptersOutput = {
+const FindArtworksOutput = {
   notations: z.array(z.object({
     notation: z.string(),
     text: z.string(),
-    adopters: z.array(AdopterShape()),
+    collections: z.array(ArtworkCollectionShape()),
   })),
   collections: z.array(CollectionInfoShape()),
   error: z.string().optional(),
@@ -131,7 +131,7 @@ const TOOL_LIMITS = {
   search:         { max: 50, default: 25 },
   resolve:        { max: 25, default: 15 },
   search_prefix:  { max: 100, default: 25 },
-  find_adopters:  { max: 25 },
+  find_artworks:  { max: 25 },
 } as const;
 
 // ─── Language codes ─────────────────────────────────────────────────
@@ -478,39 +478,39 @@ export function registerTools(
     }
   );
 
-  // ─── find_adopters ────────────────────────────────────────────────
+  // ─── find_artworks ────────────────────────────────────────────────
 
   server.registerTool(
-    "find_adopters",
+    "find_artworks",
     {
-      title: "Find Collection Adopters",
+      title: "Find Artworks by Notation",
       description:
-        "Given one or more Iconclass notations, find which external art collections " +
-        "have artworks tagged with those notations. Returns per-notation artwork counts " +
+        "Given one or more Iconclass notations, find artworks across collections " +
+        "tagged with those subjects. Returns per-collection artwork counts " +
         "and link-out URLs where available. " +
         "Use after search or browse to discover where a subject appears across collections.",
       inputSchema: z.object({
         notation: z.union([
           z.string().min(1),
-          z.array(z.string().min(1)).min(1).max(TOOL_LIMITS.find_adopters.max),
-        ]).describe(`One notation or array of notations (max ${TOOL_LIMITS.find_adopters.max}).`),
+          z.array(z.string().min(1)).min(1).max(TOOL_LIMITS.find_artworks.max),
+        ]).describe(`One notation or array of notations (max ${TOOL_LIMITS.find_artworks.max}).`),
         lang: optStr().default("en").describe(LANG_DESC),
       }).strict(),
-      ...withOutputSchema(FindAdoptersOutput),
+      ...withOutputSchema(FindArtworksOutput),
     },
     async (args) => {
       const notations = Array.isArray(args.notation) ? args.notation : [args.notation];
-      const result = db.findAdopters(notations, args.lang);
+      const result = db.findArtworks(notations, args.lang);
 
       if (result.notations.length === 0) {
         return errorResponse("None of the requested notations were found.");
       }
 
       const lines = result.notations.map(entry => {
-        if (entry.adopters.length === 0) {
+        if (entry.collections.length === 0) {
           return `${entry.notation} "${entry.text}" — no collections`;
         }
-        const cols = entry.adopters.map(a => {
+        const cols = entry.collections.map(a => {
           const urlPart = a.url ? ` → ${a.url}` : "";
           return `  ${a.label}: ${a.count.toLocaleString()} artworks${urlPart}`;
         });

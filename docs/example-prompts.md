@@ -1,6 +1,6 @@
 ## Example Prompts
 
-Sample prompts that show what an LLM can do with this server's five tools. Each prompt is designed around a real research question drawn from the [Iconclass community](https://forum.iconclass.org).
+Sample prompts that show what the AI assistant can do with this server's six tools. Each prompt is designed around a real research question drawn from the [Iconclass community](https://forum.iconclass.org).
 
 - [Smell and the Senses in Art](#1-smell-and-the-senses-in-art)
 - [Finding Saints by Name](#2-finding-saints-by-name)
@@ -28,7 +28,7 @@ Sample prompts that show what an LLM can do with this server's five tools. Each 
 - `browse` on `31A33` with `includeKeys: true` to discover key-expanded variants like `31A33(+1)` (smell, outdoors) that add situational modifiers
 - The `collectionCounts` on each result reveal which smell-related notations actually have artworks in the Rijksmuseum — `31A33` has 114, but deeper variants may have none
 
-**Why it matters:** Sensory history is a growing research field, but olfactory experience is underrepresented in art classification systems. A [discussion on the Iconclass forum](https://forum.iconclass.org) proposed expanding `31A33` with sub-codes for smell sources, odour carriers, and fragrant spaces. This prompt maps the current landscape — what exists, what has artworks, and where the gaps are — giving a researcher a concrete starting point before proposing new notations.
+**Why it matters:** Sensory history is a growing research field, but olfactory experience is underrepresented in art classification systems. A [discussion on the Iconclass forum](https://forum.iconclass.org/t/iconclass-and-sensory-history/15) proposed expanding `31A33` with sub-codes for smell sources, odour carriers, and fragrant spaces. This prompt maps the current landscape — what exists, what has artworks, and where the gaps are — giving a researcher a concrete starting point before proposing new notations.
 
 ---
 
@@ -44,7 +44,7 @@ Sample prompts that show what an LLM can do with this server's five tools. Each 
 - Each result includes `collectionCounts` showing how many artworks in the Rijksmuseum carry that notation — Jerome (238) far outpaces most saints, reflecting the Rijksmuseum's strength in Northern European art where Jerome was a favourite subject
 - Searching for a name not in the database (e.g. "Euphemia" or "Balbina") returns zero results — confirming the saint is missing and needs to be proposed
 
-**Why it matters:** The Iconclass forum maintains a [collaborative list of saints missing from the system](https://forum.iconclass.org). Researchers cataloguing religious art need to verify whether a saint already has an Iconclass notation before proposing a new one. The FTS search across all languages is essential because a saint may have a notation with labels only in Italian or German, not English. The collection count immediately tells the researcher whether the notation is actively used.
+**Why it matters:** The Iconclass forum maintains a [collaborative list of saints missing from the system](https://forum.iconclass.org/t/list-saints-missing-in-iconclass/148). Researchers cataloguing religious art need to verify whether a saint already has an Iconclass notation before proposing a new one. The FTS search across all languages is essential because a saint may have a notation with labels only in Italian or German, not English. The collection count immediately tells the researcher whether the notation is actively used.
 
 ---
 
@@ -60,7 +60,7 @@ Sample prompts that show what an LLM can do with this server's five tools. Each 
 - The `refs` array would reveal cross-references to related notations elsewhere in the hierarchy — but in this case it is empty, meaning Iconclass does not formally link alchemy to religion or magic despite the conceptual overlap
 - Use `search` with `query: "alchemy"` to find notations *outside* `49E39` that mention alchemy in their keywords or labels — this may surface connections the hierarchy itself does not encode
 
-**Why it matters:** A [critique on the Iconclass forum](https://forum.iconclass.org) argued that alchemy's placement under science misrepresents its historical character — for most of its history, alchemy was inseparable from mystical and religious practice. The `browse` tool makes Iconclass's structural decisions transparent: the path reveals the editorial choice, the absence of cross-references reveals a gap in the system's internal linking, and keyword search can find connections the hierarchy misses. This is essential for any researcher deciding which notations to assign to an artwork with alchemical imagery.
+**Why it matters:** A [critique on the Iconclass forum](https://forum.iconclass.org/t/what-bothers-me-about-iconclass/16) argued that alchemy's placement under science misrepresents its historical character — for most of its history, alchemy was inseparable from mystical and religious practice. The `browse` tool makes Iconclass's structural decisions transparent: the path reveals the editorial choice, the absence of cross-references reveals a gap in the system's internal linking, and keyword search can find connections the hierarchy misses. This is essential for any researcher deciding which notations to assign to an artwork with alchemical imagery.
 
 ---
 
@@ -77,7 +77,7 @@ Sample prompts that show what an LLM can do with this server's five tools. Each 
 - `search_prefix` on `11H(FRANCIS)` to retrieve all 48 notations in the Francis sub-tree at once, with collection counts showing which scenes the Rijksmuseum holds (176 artworks for Francis overall, concentrated in the stigmatization and preaching to the birds)
 - Compare with `browse` on `11H(...)` to see the generic template that all saints share — the same lifecycle structure (early life → devotion → miracles → death → posthumous events) applies to every saint in the system
 
-**Why it matters:** Iconclass encodes the lives of saints as structured narratives following a common lifecycle template. A [forum discussion on missing saints](https://forum.iconclass.org) revealed the depth of this system — each named saint has a unique sub-tree with specific scenes, while the generic template `11H(...)` defines the slots available. For a researcher studying Franciscan iconography, the `browse` tool makes the full catalogue of classifiable scenes visible in seconds, and the collection counts immediately show which scenes were most popular with artists.
+**Why it matters:** Iconclass encodes the lives of saints as structured narratives following a common lifecycle template. A [forum discussion on missing saints](https://forum.iconclass.org/t/list-saints-missing-in-iconclass/148) revealed the depth of this system — each named saint has a unique sub-tree with specific scenes, while the generic template `11H(...)` defines the slots available. For a researcher studying Franciscan iconography, the `browse` tool makes the full catalogue of classifiable scenes visible in seconds, and the collection counts immediately show which scenes were most popular with artists.
 
 ---
 
@@ -95,7 +95,7 @@ Sample prompts that show what an LLM can do with this server's five tools. Each 
 - `expand_keys` on `25F44(SALAMANDER)` to see its modifiers: `+11` (bestiaries, Physiologus), `+12` (heraldic), `+13` (as attribute), `+46` (sleeping), and so on — the same 204 modifier codes apply uniformly across all animal notations
 - `browse` on `25FF412` to see the fabulous-animal branch, where the salamander's mythological identity as a fire spirit is explicitly encoded
 
-**Why it matters:** Prefix search exploits Iconclass's left-to-right hierarchical encoding — everything under `25F3` is a bird, everything under `25F44` is a tortoise or turtle. But the salamander shows that a single creature can straddle multiple branches: the real animal under `25F44`, the mythical fire spirit under `25FF412`, and a saint's attribute under `11I62`. An FTS search surfaces all three in one query, while `browse` and `expand_keys` reveal the distinct classification logic in each branch. A [forum discussion on specifying musicians in ensembles](https://forum.iconclass.org) revealed that many users don't know what modifiers are available for a given notation — the same is true for animals, where the Physiologus modifier `+11` is easy to miss.
+**Why it matters:** Prefix search exploits Iconclass's left-to-right hierarchical encoding — everything under `25F3` is a bird, everything under `25F44` is a tortoise or turtle. But the salamander shows that a single creature can straddle multiple branches: the real animal under `25F44`, the mythical fire spirit under `25FF412`, and a saint's attribute under `11I62`. An FTS search surfaces all three in one query, while `browse` and `expand_keys` reveal the distinct classification logic in each branch. A [forum discussion on specifying musicians in ensembles](https://forum.iconclass.org/t/specifying-the-number-of-musicians-in-music-ensembles/199) revealed that many users don't know what modifiers are available for a given notation — the same is true for animals, where the Physiologus modifier `+11` is easy to miss.
 
 ---
 
@@ -112,22 +112,23 @@ Sample prompts that show what an LLM can do with this server's five tools. Each 
 - `resolve` with all candidate notations in a single batch call — e.g. `["73B732", "11F4212", "49MM32", "25G41(LILY)"]` — to retrieve full metadata for each: labels, keywords, hierarchy path, cross-references, and collection counts
 - The resolved entries let the LLM compare and recommend: `73B732` captures the primary scene, `49MM32` adds the open book as a distinct iconographic element, and `25G41(LILY)` records the symbolic flower
 
-**Why it matters:** Complex images require multiple Iconclass notations — this is a point the Iconclass community [emphasises repeatedly](https://forum.iconclass.org). The batch `resolve` tool lets the LLM present all candidate notations side by side with full context, so the cataloguer can make an informed decision rather than guessing from notation codes alone. The cross-references on each notation may also reveal related codes the cataloguer hadn't considered.
+**Why it matters:** Complex images require multiple Iconclass notations — this is a point the Iconclass community [emphasises repeatedly](https://forum.iconclass.org/t/what-bothers-me-about-iconclass/16). The batch `resolve` tool lets the LLM present all candidate notations side by side with full context, so the cataloguer can make an informed decision rather than guessing from notation codes alone. The cross-references on each notation may also reveal related codes the cataloguer hadn't considered.
 
 ---
 
 ### 7. From Notation to Artwork
 
-*"Find the Iconclass notation for 'the Crucifixion of Christ', then search the Rijksmuseum collection for artworks depicting it. How many are there, and which are the most important?"*
+*"Find the Iconclass notation for 'the Crucifixion of Christ', then check which collections have artworks for it, and search the Rijksmuseum collection for the most important ones."*
 
-**Tools:** `search` (FTS), then `search_artwork` on the Rijksmuseum server
+**Tools:** `search` (FTS), `find_artworks`, then `search_artwork` on an already connected [Rijksmuseum MCP server](https://github.com/kintopp/rijksmuseum-mcp-plus)
 
 **How the tools enable it:**
 - `search` with `query: "crucifixion"` on this server → top result is `73D6` ("the Crucifixion of Christ: the death of Christ on the cross; Golgotha") with 371 Rijksmuseum artworks
+- `find_artworks` with `notation: ["73D6", "73D64", "73D82"]` to see which collections hold these related notations — the Rijksmuseum, RKD, and Arkyves each have different coverage, and the link-out URLs let the user browse each collection's holdings directly
 - Pass `73D6` to `search_artwork(iconclass: "73D6")` on [rijksmuseum-mcp-plus](https://github.com/kintopp/rijksmuseum-mcp-plus) → returns artworks ranked by importance, with full metadata, images, and bibliography
 - For broader coverage, also try `73D64` (Christ on the cross with Mary and John) and `73D82` (instruments of the Passion) — related notations found via `browse` on `73D`
 
-**Why it matters:** This is the core two-server workflow the system is designed for. The Iconclass server provides the vocabulary — precise notation codes with hierarchy context and multilingual labels — while the Rijksmuseum server provides the collection — artworks searchable by those codes. Neither server alone can answer "show me Crucifixion paintings" as effectively: a text search on the collection server would miss works whose titles don't mention "crucifixion", while this server alone has no artworks. Together, they combine the precision of controlled vocabulary with the richness of collection metadata.
+**Why it matters:** A [forum question about quantitative iconographical data](https://forum.iconclass.org/t/quantitative-iconographical-data/219) highlighted a core challenge: a researcher studying hospital artworks needed to know which collections hold works tagged with specific Iconclass codes, and whether any single collection's coverage is representative. The `find_artworks` tool addresses this directly — it reveals the landscape across collections before committing to one. The RKD may have richer coverage for a notation than the Rijksmuseum, or Arkyves may surface material from smaller institutions. This cross-collection step, combined with the deep search capabilities of a collection server like [rijksmuseum-mcp-plus](https://github.com/kintopp/rijksmuseum-mcp-plus), forms the core two-server workflow the system is designed for.
 
 ---
 
@@ -144,7 +145,7 @@ Sample prompts that show what an LLM can do with this server's five tools. Each 
 - The hierarchy paths alone are diagnostic: `73D24` sits under Passion of Christ (`73D`), while `73C611` sits under Christ's miracles (`73C6`) — placing the same visual motif (banquet with Christ) in entirely different theological contexts
 - The keywords for each notation list distinguishing iconographic elements — the presence of a chalice or bread points to `73D24`, while water jars point to `73C611`
 
-**Why it matters:** A [forum discussion about a mysterious Mannerist drawing](https://forum.iconclass.org) debated exactly this question — was the scene the Last Supper or the Wedding at Cana? The presence of women among the guests, the exact number of diners, and the absence of water jars were all cited as evidence. This kind of disambiguation is a daily challenge in art cataloguing. The `resolve` tool's side-by-side comparison gives the cataloguer the full Iconclass description for both candidates, with hierarchy context that frames the theological distinction.
+**Why it matters:** A [forum discussion about a mysterious Mannerist drawing](https://forum.iconclass.org/t/mannerist-drawing-mysterious-iconography/264) debated exactly this question — was the scene the Last Supper or the Wedding at Cana? The presence of women among the guests, the exact number of diners, and the absence of water jars were all cited as evidence. This kind of disambiguation is a daily challenge in art cataloguing. The `resolve` tool's side-by-side comparison gives the cataloguer the full Iconclass description for both candidates, with hierarchy context that frames the theological distinction.
 
 ---
 
@@ -161,7 +162,7 @@ Sample prompts that show what an LLM can do with this server's five tools. Each 
 - `search` with `query: "vanitas"` to find all vanitas-related notations and confirm the gap
 - The result: there is no single notation for "broken string as vanitas," nor does the key expansion system provide one. The cataloguer should assign `11R7` (vanitas symbols) and `48C7323` (lute), with the broken string recorded in a scope note or catalogue description
 
-**Why it matters:** This prompt demonstrates a real gap in Iconclass — the broken string as a vanitas motif is a well-known art-historical convention, but the classification system has no notation for it. The `(+42)` key expansion is a tempting false match that illustrates why key meanings must be verified in context: "damage to a work of art" is about the artwork-as-object, not about depicted objects within a scene. The correct approach is multi-code assignment (`11R7` + `48C7323`) with the interpretive nuance captured in prose.
+**Why it matters:** A [forum discussion on broken strings as vanitas symbols](https://forum.iconclass.org/t/broken-strings-as-symbol-of-vanitas/302) raised this exact classification gap. The broken string as a vanitas motif is a well-known art-historical convention, but the classification system has no notation for it. The `(+42)` key expansion is a tempting false match that illustrates why key meanings must be verified in context: "damage to a work of art" is about the artwork-as-object, not about depicted objects within a scene. The correct approach is multi-code assignment (`11R7` + `48C7323`) with the interpretive nuance captured in prose.
 
 ---
 
@@ -178,4 +179,4 @@ Sample prompts that show what an LLM can do with this server's five tools. Each 
 - `browse` on `85` (fables) and `29A` (animals acting as human beings) to see alternative classification paths — Baloo could go under `82B(BALOO)` as a named fictional animal, or under `29A` as an animal acting as a human
 - `search` with `query: "Jungle Book"` to find any existing notations across all branches
 
-**Why it matters:** A [forum discussion about Jungle Book prints](https://forum.iconclass.org) wrestled with a genuine classification dilemma: is Baloo a literary animal (`82B`) or an anthropomorphic animal (`29A`)? Should the whole set be tagged with a work-level notation (`83`)? The answer depends on whether you're cataloguing the *character*, the *literary source*, or the *visual motif*. This prompt demonstrates how the Iconclass hierarchy offers multiple valid classification paths for the same subject — and why browsing several branches before deciding is better than picking the first match.
+**Why it matters:** A [forum discussion about Jungle Book prints](https://forum.iconclass.org/t/prints-from-kiplings-jungle-book/150) wrestled with a genuine classification dilemma: is Baloo a literary animal (`82B`) or an anthropomorphic animal (`29A`)? Should the whole set be tagged with a work-level notation (`83`)? The answer depends on whether you're cataloguing the *character*, the *literary source*, or the *visual motif*. This prompt demonstrates how the Iconclass hierarchy offers multiple valid classification paths for the same subject — and why browsing several branches before deciding is better than picking the first match.

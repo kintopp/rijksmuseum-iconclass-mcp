@@ -71,18 +71,23 @@ export interface IconclassKeyExpansionResult {
   collections: CollectionInfo[];
 }
 
-export interface AdopterInfo {
+export interface ArtworkCollectionInfo {
   collectionId: string;
   label: string;
   count: number;
   url: string | null;
 }
 
-export interface FindAdoptersResult {
+export interface CountsDbVersion {
+  releaseTag: string;
+  builtAt: string;
+}
+
+export interface FindArtworksResult {
   notations: {
     notation: string;
     text: string;
-    adopters: AdopterInfo[];
+    collections: ArtworkCollectionInfo[];
   }[];
   collections: CollectionInfo[];
 }
@@ -104,6 +109,7 @@ export class IconclassDb {
   private _embeddingDimensions = 0;
   private _collections: CollectionInfo[] = [];
   private _collectionsMap: Map<string, CollectionInfo> = new Map();
+  private _countsDbVersion: CountsDbVersion | null = null;
   private stmtTextFts!: Statement;
   private stmtKwFts!: Statement;
   private stmtGetNotation!: Statement;
@@ -160,7 +166,20 @@ export class IconclassDb {
             searchUrlTemplate: r.search_url_template,
           }));
           this._collectionsMap = new Map(this._collections.map(c => [c.collectionId, c]));
-          console.error(`  Counts DB attached: ${countsPath} (${this._collections.length} collections)`);
+
+          // Read counts DB version metadata
+          try {
+            const versionRows = this.db.prepare(
+              "SELECT key, value FROM counts.version_info"
+            ).all() as { key: string; value: string }[];
+            const vMap = new Map(versionRows.map(r => [r.key, r.value]));
+            this._countsDbVersion = {
+              releaseTag: vMap.get("release_tag") ?? "unknown",
+              builtAt: vMap.get("built_at") ?? "unknown",
+            };
+          } catch { /* version_info may not exist in older DBs */ }
+
+          console.error(`  Counts DB attached: ${countsPath} (${this._collections.length} collections, ${this._countsDbVersion?.releaseTag ?? "no tag"})`);
         } catch (err) {
           console.error(`  Counts DB not available: ${err instanceof Error ? err.message : err}`);
         }
@@ -259,6 +278,10 @@ export class IconclassDb {
 
   get collections(): CollectionInfo[] {
     return this._collections;
+  }
+
+  get countsDbVersion(): CountsDbVersion | null {
+    return this._countsDbVersion;
   }
 
   get hasKeyExpansion(): boolean {
@@ -515,34 +538,34 @@ export class IconclassDb {
     };
   }
 
-  // ─── Find adopters ────────────────────────────────────────────────
+  // ─── Find artworks ────────────────────────────────────────────────
 
-  findAdopters(notations: string[], lang: string = "en"): FindAdoptersResult {
-    const empty: FindAdoptersResult = { notations: [], collections: this._collections };
+  findArtworks(notations: string[], lang: string = "en"): FindArtworksResult {
+    const empty: FindArtworksResult = { notations: [], collections: this._collections };
     if (!this.db) return empty;
 
-    const results: FindAdoptersResult["notations"] = [];
+    const results: FindArtworksResult["notations"] = [];
 
     for (const notation of notations) {
       const text = this.getText(notation, lang) ?? notation;
-      const adopters: AdopterInfo[] = [];
+      const cols: ArtworkCollectionInfo[] = [];
 
       if (this.stmtGetCollectionCounts) {
         const rows = this.stmtGetCollectionCounts.all(notation) as { collection_id: string; count: number }[];
         for (const row of rows) {
           const info = this._collectionsMap.get(row.collection_id);
           const template = info?.searchUrlTemplate;
-          adopters.push({
+          cols.push({
             collectionId: row.collection_id,
             label: info?.label ?? row.collection_id,
             count: row.count,
             url: template ? template.replace("{notation}", encodeURIComponent(notation)) : null,
           });
         }
-        adopters.sort((a, b) => b.count - a.count);
+        cols.sort((a, b) => b.count - a.count);
       }
 
-      results.push({ notation, text, adopters });
+      results.push({ notation, text, collections: cols });
     }
 
     return { notations: results, collections: this._collections };

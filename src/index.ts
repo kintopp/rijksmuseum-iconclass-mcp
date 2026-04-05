@@ -82,7 +82,7 @@ function createServer(): McpServer {
         "• resolve — batch lookup of specific notation codes (up to 25)\n" +
         "• expand_keys — list all key-expanded variants of a base notation\n" +
         "• search_prefix — find all notations under a hierarchy subtree (e.g. '73D8' = Passion of Christ)\n" +
-        "• find_adopters — see which collections have artworks for given notations, with counts and links\n\n" +
+        "• find_artworks — see which collections have artworks for given notations, with counts and links\n\n" +
 
         "Notations are hierarchical and encode left-to-right: broader → narrower. " +
         "A parent notation covers all its descendants. " +
@@ -165,6 +165,7 @@ async function runHttp(): Promise<void> {
       notations: iconclassDb?.available ? "loaded" : "unavailable",
       embeddings: iconclassDb?.embeddingsAvailable ? "loaded" : "unavailable",
       collections: iconclassDb?.collections.map(c => c.collectionId) ?? [],
+      countsDb: iconclassDb?.countsDbVersion ?? null,
     });
   });
 

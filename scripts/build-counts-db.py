@@ -36,7 +36,7 @@ COLLECTION_META: dict[str, tuple[str, str | None]] = {
 }
 
 
-def build_counts_db(output_path: str, count_csvs: list[str]):
+def build_counts_db(output_path: str, count_csvs: list[str], release_tag: str = "dev"):
     os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
     if os.path.exists(output_path):
         os.remove(output_path)
@@ -103,7 +103,8 @@ def build_counts_db(output_path: str, count_csvs: list[str]):
             "INSERT OR REPLACE INTO collection_counts VALUES (?, ?, ?)",
             rows,
         )
-        # total_artworks = number of distinct notations with artworks in this collection
+        # Raw CSV row count — the server recomputes at runtime via JOIN against notations
+        # to exclude malformed entries (POINT() coords, colon-composites, etc.)
         total_artworks = len(rows)
         conn.execute(
             "INSERT OR REPLACE INTO collection_info VALUES (?, ?, ?, ?, ?)",
@@ -119,6 +120,8 @@ def build_counts_db(output_path: str, count_csvs: list[str]):
 
     built_at = datetime.now(timezone.utc).isoformat()
     conn.executemany("INSERT INTO version_info VALUES (?, ?)", [
+        ("schema_version", "2"),
+        ("release_tag", release_tag),
         ("built_at", built_at),
         ("collection_count", str(total_collections)),
         ("total_notation_counts", str(total_notation_counts)),
@@ -146,6 +149,10 @@ if __name__ == "__main__":
         "--counts-csv", action="append", default=[], required=True,
         help="Collection count CSV file (notation,count). Can be specified multiple times.",
     )
+    parser.add_argument(
+        "--release-tag", default="dev",
+        help="Release tag to embed in version_info (e.g. 'counts-latest', 'v0.2.0')",
+    )
     args = parser.parse_args()
 
-    build_counts_db(args.output, args.counts_csv)
+    build_counts_db(args.output, args.counts_csv, args.release_tag)

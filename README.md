@@ -38,7 +38,92 @@ However, if you don't need these features, or only want to use rijksmuseum-iconc
 
 ## How it works
 
-tba.
+introduction tba.
+
+### `search` — keyword or semantic search
+
+Find notations by text or concept.
+
+```
+query: "crucifixion"          → 844 FTS matches across labels and keywords
+semanticQuery: "domestic animals" → top matches by embedding similarity
+```
+
+| Parameter | Description |
+|-----------|-------------|
+| `query` | FTS keyword search (13 languages, multi-word fallback) |
+| `semanticQuery` | Semantic concept search (finds by meaning, not exact words) |
+| `parentNotation` | Restrict results to a subtree (e.g. `"11F"` for Virgin Mary) |
+| `onlyWithArtworks` | Filter to notations with artworks in any loaded collection |
+| `collectionId` | Filter to a specific collection (e.g. `"rijksmuseum"`) |
+| `lang` | Preferred language for labels (default: `en`) |
+| `maxResults` | 1–50 (default 25) |
+
+Provide exactly one of `query` or `semanticQuery`.
+
+### `browse` — navigate the hierarchy
+
+Explore a notation's place in the tree: path, children (expandable to depth 1–3), cross-references, key variants.
+
+```
+notation: "73D", depth: 2  → Passion of Christ, children + grandchildren
+notation: "25F23", includeKeys: true  → 204 key-expanded variants
+```
+
+### `resolve` — batch notation lookup
+
+Look up one or more notations by code. Accepts a single string or an array of up to 25.
+
+```
+notation: ["73D6", "31A33", "25F23"]  → full metadata for each
+```
+
+### `expand_keys` — key variant exploration
+
+Given a base notation, return all its key-expanded variants with texts and collection presence.
+
+```
+notation: "25F23"  → 204 variants (swimming, sleeping, fighting, etc.)
+```
+
+### `search_prefix` — hierarchical subtree search
+
+Find all notations under a hierarchy prefix. Leverages Iconclass's left-to-right encoding.
+
+```
+notation: "73D8"  → 8 notations under "instruments of the Passion"
+notation: "25F"   → all animal notations
+```
+
+### `find_artworks` — which collections have this subject?
+
+Given one or more notations, check which external art collections have artworks tagged with those notations. Returns collection presence and link-out URLs where available. An empty `collections` array means no loaded collection has artworks for that notation — try a parent or sibling notation instead.
+
+```
+notation: "73B57"  → Rijksmuseum, RKD → https://..., Arkyves → https://...
+notation: ["73D6", "92D192134"]  → batch lookup across collections
+```
+
+Currently includes three collections:
+
+- **Rijksmuseum, Amsterdam** — use [rijksmuseum-mcp-plus](https://github.com/kintopp/rijksmuseum-mcp-plus) for artwork search
+- **RKD — Netherlands Institute for Art History** — with search link-out
+- **Arkyves** — with search link-out
+
+## Typical workflow
+
+1. **Search** for a concept: `search({ semanticQuery: "religious suffering" })`
+2. **Browse** the hierarchy to find the right specificity level
+3. **Check collections** for that subject: `find_artworks({ notation: "73D6" })`
+4. **Follow links** to browse artworks at the RKD or Arkyves, or **pass the notation** to a collection server's search (e.g., `search_artwork(iconclass: "73D6")` in [rijksmuseum-mcp-plus](https://github.com/kintopp/rijksmuseum-mcp-plus))
+
+This two-server workflow separates the classification vocabulary (this server) from collection-specific search (the Rijksmuseum server). When both servers are connected, the LLM can automatically follow up on `find_artworks` results by calling the Rijksmuseum server's `search_artwork` tool.
+
+For more detailed examples — sensory history, finding saints, navigating the hierarchy, classifying complex scenes — see [Example Prompts](docs/example-prompts.md).
+
+## Technical Notes
+
+Introduction tba. For local setup (stdio or HTTP), deployment, architecture, data sources, and configuration, please see the [technical guide](/docs/technical-guide.md).
 
 ```mermaid
 graph TB
@@ -76,10 +161,6 @@ graph TB
     style MAIN fill:#fff9c4,stroke:#FFC107
     style COUNTS fill:#fff9c4,stroke:#FFC107
 ```
-
-## Technical Notes
-
-For local setup (stdio or HTTP), deployment, architecture, data sources, and configuration, please see the [technical guide](/docs/technical-guide.md).
 
 ## Citation
 

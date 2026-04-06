@@ -174,6 +174,18 @@ if (r3.isError) {
       assert(entry.collections.length > 0, `onlyWithArtworks: ${entry.notation} has artworks (${entry.collections.length})`);
     }
   }
+
+  // Pagination: offset should return different results
+  const r3p = await client.callTool({
+    name: "search",
+    arguments: { semanticQuery: "domestic animals", maxResults: 3, offset: 3 },
+  });
+  if (!r3p.isError) {
+    const s3p = sc(r3p);
+    assertEq(s3p.results.length, 3, "semantic pagination: 3 results at offset 3");
+    assert(s3p.results[0].notation !== s3.results[0].notation,
+      `semantic pagination: offset 3 differs from offset 0 (${s3p.results[0].notation} vs ${s3.results[0].notation})`);
+  }
 }
 
 // Error: both query and semanticQuery

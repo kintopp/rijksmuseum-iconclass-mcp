@@ -222,10 +222,14 @@ export function registerTools(
           );
         }
 
+        // Fetch enough results to satisfy offset + maxResults, then slice.
+        const offset = args.offset ?? 0;
+        const needed = offset + args.maxResults;
+
         // Iteratively expand when parentNotation will filter down results;
         // sparse subtrees need large overfetch to fill the requested page.
         const MAX_K = 4096;
-        let fetchK = args.parentNotation ? Math.min(args.maxResults * 20, MAX_K) : args.maxResults;
+        let fetchK = args.parentNotation ? Math.min(needed * 20, MAX_K) : needed;
         let result: NonNullable<ReturnType<typeof db.semanticSearch>> | null = null;
 
         while (fetchK <= MAX_K) {
@@ -238,7 +242,7 @@ export function registerTools(
           }
           if (!args.parentNotation) break;
           result.results = result.results.filter(e => e.notation.startsWith(args.parentNotation!));
-          if (result.results.length >= args.maxResults || fetchK >= MAX_K) break;
+          if (result.results.length >= needed || fetchK >= MAX_K) break;
           fetchK = Math.min(fetchK * 4, MAX_K);
         }
         // result is guaranteed non-null: the loop always executes at least once,
@@ -247,8 +251,8 @@ export function registerTools(
 
         if (args.parentNotation) {
           result.totalResults = result.results.length;
-          result.results = result.results.slice(0, args.maxResults);
         }
+        result.results = result.results.slice(offset, offset + args.maxResults);
 
         const header = `${result.results.length} semantic matches for "${args.semanticQuery}"`;
         const lines = result.results.map((e, i) =>

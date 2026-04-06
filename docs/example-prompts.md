@@ -118,7 +118,7 @@ Sample prompts that show what the AI assistant can do with this server's six too
 
 ### 7. From Notation to Artwork
 
-*"Find the Iconclass notation for 'the deposition from the cross', then check whether the Rijksmuseum has have artworks with this notation."* [link](https://claude.ai/share/a87d2b5b-a7f4-4d65-b973-9cd7eeba2069)
+*"Find the Iconclass notation for 'the deposition from the cross', then check whether the Rijksmuseum has artworks with this notation."* [link](https://claude.ai/share/a87d2b5b-a7f4-4d65-b973-9cd7eeba2069) [link](https://claude.ai/share/6b2dfed6-bbbb-411c-9da6-2949fe273f54)
 
 **Tools:** `search` (FTS), `find_artworks`, then `search_artwork`
 

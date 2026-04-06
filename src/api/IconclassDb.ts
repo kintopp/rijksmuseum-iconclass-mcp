@@ -74,6 +74,7 @@ export interface IconclassKeyExpansionResult {
 export interface ArtworkCollectionInfo {
   collectionId: string;
   label: string;
+  count: number;
   url: string | null;
 }
 
@@ -120,7 +121,7 @@ export class IconclassDb {
   private stmtPrefixCount!: Statement;
   private stmtKeyVariantsPage!: Statement;
   private stmtKeyVariantsCount!: Statement;
-  private stmtGetCollectionPresence: Statement | null = null;
+  private stmtGetCollectionCounts: Statement | null = null;
   private stmtQuantize: Statement | null = null;
   private stmtKnn: Statement | null = null;
   private stmtFilteredKnn: Statement | null = null;
@@ -143,8 +144,8 @@ export class IconclassDb {
           this.db.exec(`ATTACH DATABASE '${countsPath}' AS counts`);
           this.db.prepare("SELECT 1 FROM counts.collection_counts LIMIT 1").get();
 
-          this.stmtGetCollectionPresence = this.db.prepare(
-            "SELECT collection_id FROM counts.collection_counts WHERE notation = ?"
+          this.stmtGetCollectionCounts = this.db.prepare(
+            "SELECT collection_id, count FROM counts.collection_counts WHERE notation = ?"
           );
 
           const rows = this.db.prepare(`
@@ -203,7 +204,7 @@ export class IconclassDb {
           ORDER BY distance
         `);
 
-        if (this.stmtGetCollectionPresence) {
+        if (this.stmtGetCollectionCounts) {
           this.stmtFilteredKnn = this.db.prepare(`
             SELECT ie.notation,
                    vec_distance_cosine(vec_int8(ie.embedding), vec_int8(?)) as distance
@@ -549,18 +550,19 @@ export class IconclassDb {
       const text = this.getText(notation, lang) ?? notation;
       const cols: ArtworkCollectionInfo[] = [];
 
-      if (this.stmtGetCollectionPresence) {
-        const rows = this.stmtGetCollectionPresence.all(notation) as { collection_id: string }[];
+      if (this.stmtGetCollectionCounts) {
+        const rows = this.stmtGetCollectionCounts.all(notation) as { collection_id: string; count: number }[];
         for (const row of rows) {
           const info = this._collectionsMap.get(row.collection_id);
           const template = info?.searchUrlTemplate;
           cols.push({
             collectionId: row.collection_id,
             label: info?.label ?? row.collection_id,
+            count: row.count,
             url: template ? template.replace("{notation}", encodeURIComponent(notation)) : null,
           });
         }
-        cols.sort((a, b) => a.label.localeCompare(b.label));
+        cols.sort((a, b) => b.count - a.count);
       }
 
       results.push({ notation, text, collections: cols });
@@ -589,7 +591,7 @@ export class IconclassDb {
     collectionId?: string,
     onlyWithArtworks: boolean = false,
   ): { notation: string; coverage: number }[] {
-    if (!this.stmtGetCollectionPresence || !this.db) {
+    if (!this.stmtGetCollectionCounts || !this.db) {
       return (collectionId || onlyWithArtworks) ? [] : notations.map(n => ({ notation: n, coverage: 0 }));
     }
 
@@ -663,8 +665,8 @@ export class IconclassDb {
     const cached = presenceCache?.get(notation);
     if (cached) {
       collections = [...cached];
-    } else if (this.stmtGetCollectionPresence) {
-      const rows = this.stmtGetCollectionPresence.all(notation) as { collection_id: string }[];
+    } else if (this.stmtGetCollectionCounts) {
+      const rows = this.stmtGetCollectionCounts.all(notation) as { collection_id: string }[];
       collections = rows.map(r => r.collection_id);
     } else {
       collections = [];

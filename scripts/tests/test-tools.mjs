@@ -487,34 +487,17 @@ assertEq(s13a.notations[0].notation, "73D6", "notation echoed");
 assert(s13a.notations[0].text.length > 0, "text present");
 assert(s13a.notations[0].collections.length > 0, `has collections (got ${s13a.notations[0].collections.length})`);
 
-// Check Rijksmuseum has no URL
+// Rijksmuseum entry present with count and no URL
 const rijEntry = s13a.notations[0].collections.find(a => a.collectionId === "rijksmuseum");
-if (rijEntry) {
-  assert(rijEntry.url === null, "rijksmuseum has no URL");
-}
+assert(rijEntry, "rijksmuseum collection present");
+assert(rijEntry.url === null, "rijksmuseum has no URL");
+assert(typeof rijEntry.count === "number" && rijEntry.count > 0, `rijksmuseum has count > 0 (got ${rijEntry?.count})`);
 
-// Check RKD/Arkyves have URLs
-const rkdEntry = s13a.notations[0].collections.find(a => a.collectionId === "rkd");
-if (rkdEntry) {
-  assert(typeof rkdEntry.url === "string", "rkd has URL");
-  assert(rkdEntry.url.includes("73D6"), "rkd URL contains notation");
-}
-const arkEntry = s13a.notations[0].collections.find(a => a.collectionId === "arkyves");
-if (arkEntry) {
-  assert(typeof arkEntry.url === "string", "arkyves has URL");
-  assert(arkEntry.url.includes("73D6"), "arkyves URL contains notation");
-}
+// Only Rijksmuseum in sidecar DB (RKD/Arkyves removed)
+assertEq(s13a.notations[0].collections.length, 1, "only 1 collection (Rijksmuseum)");
 
-// Collections sorted alphabetically by label
-const labels13 = s13a.notations[0].collections.map(a => a.label);
-for (let i = 1; i < labels13.length; i++) {
-  assert(labels13[i] >= labels13[i - 1], `collections sorted alpha: "${labels13[i - 1]}" <= "${labels13[i]}"`);
-}
-
-// Collections metadata present
-assert(s13a.collections.length >= 3, `collections >= 3 (got ${s13a.collections.length})`);
-const rkdCol = s13a.collections.find(c => c.collectionId === "rkd");
-assert(rkdCol?.searchUrlTemplate != null, "rkd has searchUrlTemplate");
+// Collections metadata present — only Rijksmuseum
+assertEq(s13a.collections.length, 1, `exactly 1 collection loaded`);
 const rijCol = s13a.collections.find(c => c.collectionId === "rijksmuseum");
 assert(rijCol?.searchUrlTemplate === null, "rijksmuseum searchUrlTemplate is null");
 

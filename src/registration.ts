@@ -109,6 +109,7 @@ const PrefixSearchOutput = {
 const ArtworkCollectionShape = () => z.object({
   collectionId: z.string(),
   label: z.string(),
+  count: z.number().int(),
   url: z.string().nullable(),
 });
 
@@ -482,8 +483,8 @@ export function registerTools(
     {
       title: "Find Artworks by Notation",
       description:
-        "Given one or more Iconclass notations, check which collections have artworks " +
-        "tagged with those subjects. Returns collection presence " +
+        "Given one or more Iconclass notations, find artworks across collections " +
+        "tagged with those subjects. Returns per-collection artwork counts " +
         "and link-out URLs where available. " +
         "An empty collections array means no loaded collection has artworks for that notation — " +
         "the top-level 'collections' field lists all loaded collections. " +
@@ -511,7 +512,7 @@ export function registerTools(
         }
         const cols = entry.collections.map(a => {
           const urlPart = a.url ? ` → ${a.url}` : "";
-          return `  ${a.label}${urlPart}`;
+          return `  ${a.label}: ${a.count.toLocaleString()} artworks${urlPart}`;
         });
         return `${entry.notation} "${entry.text}"\n${cols.join("\n")}`;
       });

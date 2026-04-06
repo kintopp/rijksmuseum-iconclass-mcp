@@ -181,6 +181,13 @@ export class IconclassDb {
 
           console.error(`  Counts DB attached: ${countsPath} (${this._collections.length} collections, ${this._countsDbVersion?.releaseTag ?? "no tag"})`);
         } catch (err) {
+          // Schema mismatch or missing tables — fully discard the sidecar so tools
+          // don't expose stale/inconsistent collection data.
+          this.stmtGetCollectionCounts = null;
+          this._collections = [];
+          this._collectionsMap = new Map();
+          this._countsDbVersion = null;
+          try { this.db!.exec("DETACH DATABASE counts"); } catch { /* already detached or never attached */ }
           console.error(`  Counts DB not available: ${err instanceof Error ? err.message : err}`);
         }
       }
@@ -220,14 +227,18 @@ export class IconclassDb {
       } catch { /* no embeddings */ }
 
       this.stmtTextFts = this.db.prepare(
-        `SELECT DISTINCT t.notation
-         FROM texts t
-         WHERE t.rowid IN (SELECT rowid FROM texts_fts WHERE texts_fts MATCH ?)`
+        `SELECT t.notation, MIN(f.rank) as rank
+         FROM texts_fts f
+         JOIN texts t ON t.rowid = f.rowid
+         WHERE texts_fts MATCH ?
+         GROUP BY t.notation`
       );
       this.stmtKwFts = this.db.prepare(
-        `SELECT DISTINCT k.notation
-         FROM keywords k
-         WHERE k.rowid IN (SELECT rowid FROM keywords_fts WHERE keywords_fts MATCH ?)`
+        `SELECT k.notation, MIN(f.rank) as rank
+         FROM keywords_fts f
+         JOIN keywords k ON k.rowid = f.rowid
+         WHERE keywords_fts MATCH ?
+         GROUP BY k.notation`
       );
       this.stmtGetNotation = this.db.prepare(
         "SELECT notation, path, children, refs, base_notation, key_id, is_key_expanded FROM notations WHERE notation = ?"
@@ -260,6 +271,11 @@ export class IconclassDb {
       console.error(`Iconclass DB loaded: ${dbPath} (${count.toLocaleString()} notations, ${this._collections.length} collection overlays)`);
     } catch (err) {
       console.error(`Failed to open Iconclass DB: ${err instanceof Error ? err.message : err}`);
+      this.stmtGetCollectionCounts = null;
+      this._collections = [];
+      this._collectionsMap = new Map();
+      this._countsDbVersion = null;
+      try { this.db?.exec("DETACH DATABASE counts"); } catch { /* ignore */ }
       this.db = null;
     }
   }
@@ -297,30 +313,34 @@ export class IconclassDb {
     const ftsPhrase = escapeFts5(query);
     if (!ftsPhrase) return empty;
 
-    const notationSet = this.runFtsQueries(ftsPhrase);
+    let rankMap = this.runFtsQueries(ftsPhrase);
 
     // Auto-fallback: if phrase match returns 0, retry with individual AND-ed terms
-    if (notationSet.size === 0) {
+    if (rankMap.size === 0) {
       const ftsTerms = escapeFts5Terms(query);
       if (!ftsTerms) return empty;
-      for (const n of this.runFtsQueries(ftsTerms)) notationSet.add(n);
+      rankMap = this.runFtsQueries(ftsTerms);
     }
 
-    if (notationSet.size === 0) return empty;
+    if (rankMap.size === 0) return empty;
 
     // Post-filter: restrict to subtree if parentNotation specified
     if (parentNotation) {
-      for (const n of notationSet) {
-        if (!n.startsWith(parentNotation)) notationSet.delete(n);
+      for (const n of rankMap.keys()) {
+        if (!n.startsWith(parentNotation)) rankMap.delete(n);
       }
-      if (notationSet.size === 0) return empty;
+      if (rankMap.size === 0) return empty;
     }
 
     const presenceCache = new Map<string, Set<string>>();
-    const countedNotations = this.fetchPresenceForSort([...notationSet], presenceCache, collectionId, onlyWithArtworks);
+    const countedNotations = this.fetchPresenceForSort([...rankMap.keys()], presenceCache, collectionId, onlyWithArtworks);
 
     countedNotations.sort((a, b) => {
       if (b.coverage !== a.coverage) return b.coverage - a.coverage;
+      // Within same coverage tier, sort by FTS rank (lower = more relevant)
+      const rankA = rankMap.get(a.notation) ?? 0;
+      const rankB = rankMap.get(b.notation) ?? 0;
+      if (rankA !== rankB) return rankA - rankB;
       return a.notation.localeCompare(b.notation);
     });
 
@@ -573,11 +593,18 @@ export class IconclassDb {
 
   // ─── Internal ─────────────────────────────────────────────────────
 
-  private runFtsQueries(ftsExpr: string): Set<string> {
-    const set = new Set<string>();
-    for (const r of this.stmtTextFts.all(ftsExpr) as { notation: string }[]) set.add(r.notation);
-    for (const r of this.stmtKwFts.all(ftsExpr) as { notation: string }[]) set.add(r.notation);
-    return set;
+  private runFtsQueries(ftsExpr: string): Map<string, number> {
+    const map = new Map<string, number>();
+    // FTS5 rank is negative BM25 (lower = more relevant). Keep the best (lowest) rank per notation.
+    for (const r of this.stmtTextFts.all(ftsExpr) as { notation: string; rank: number }[]) {
+      const prev = map.get(r.notation);
+      if (prev === undefined || r.rank < prev) map.set(r.notation, r.rank);
+    }
+    for (const r of this.stmtKwFts.all(ftsExpr) as { notation: string; rank: number }[]) {
+      const prev = map.get(r.notation);
+      if (prev === undefined || r.rank < prev) map.set(r.notation, r.rank);
+    }
+    return map;
   }
 
   /**

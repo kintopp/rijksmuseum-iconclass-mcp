@@ -15,6 +15,7 @@ Collection ID and label are derived from the filename (e.g. "rijksmuseum-counts.
 
 import argparse
 import csv
+import json
 import os
 import sqlite3
 import sys
@@ -140,9 +141,16 @@ if __name__ == "__main__":
         "--counts-csv", action="append", default=[], required=True,
         help="Collection count CSV file (notation,count). Can be specified multiple times.",
     )
+    # Default release tag from package.json version
+    pkg_path = os.path.join(os.path.dirname(__file__), "..", "package.json")
+    default_tag = "dev"
+    if os.path.exists(pkg_path):
+        with open(pkg_path) as f:
+            default_tag = json.load(f).get("version", "dev")
+
     parser.add_argument(
-        "--release-tag", default="dev",
-        help="Release tag to embed in version_info (e.g. 'counts-latest', 'v0.2.0')",
+        "--release-tag", default=default_tag,
+        help=f"Release tag to embed in version_info (default: from package.json, currently '{default_tag}')",
     )
     args = parser.parse_args()
 

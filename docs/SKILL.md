@@ -10,7 +10,7 @@ description: >
   iconography, or art-historical taxonomy — even if they don't name the server.
 metadata:
   version: "0.2.1"
-  last_updated: "2026-04-05"
+  last_updated: "2026-04-06"
 ---
 
 # Iconclass MCP Research Skill

@@ -106,17 +106,6 @@ Currently includes:
 
 - **Rijksmuseum, Amsterdam** — artwork counts per notation; use [rijksmuseum-mcp-plus](https://github.com/kintopp/rijksmuseum-mcp-plus) for artwork search
 
-### Typical workflow
-
-1. **Search** for a concept: `search({ semanticQuery: "religious suffering" })`
-2. **Browse** the hierarchy to find the right specificity level
-3. **Check collections** for that subject: `find_artworks({ notation: "73D6" })`
-4. **Pass the notation** to a collection server's search (e.g., `search_artwork(iconclass: "73D6")` in [rijksmuseum-mcp-plus](https://github.com/kintopp/rijksmuseum-mcp-plus))
-
-This two-server workflow separates the classification vocabulary (this server) from collection-specific search (the Rijksmuseum server). When both servers are connected, the LLM can automatically follow up on `find_artworks` results by calling the Rijksmuseum server's `search_artwork` tool.
-
-For more detailed examples — sensory history, finding saints, navigating the hierarchy, classifying complex scenes — see [Example Prompts](docs/example-prompts.md).
-
 ## Technical Notes
 
 Introduction tba. For local setup (stdio or HTTP), deployment, architecture, data sources, and configuration, please see the [technical guide](/docs/technical-guide.md).

@@ -17,7 +17,7 @@ Sample prompts that show what the AI assistant can do with this server's six too
 
 ### 1. Smell and the Senses in Art
 
-*"How does Iconclass classify the sense of smell? What notations exist for odours, fragrant objects, and olfactory experience — and which of these actually appear in the Rijksmuseum's collections?"* 
+*"How does Iconclass classify the sense of smell? What notations exist for odours, fragrant objects, and olfactory experience — and which of these actually appear in the Rijksmuseum's collections?"*  [link](https://claude.ai/share/b3d67cc5-7d46-4e6b-aade-b50481c24943)
 
 **Tools:** `search` (semantic + FTS), `browse`
 
@@ -34,7 +34,7 @@ Sample prompts that show what the AI assistant can do with this server's six too
 
 ### 2. Finding Saints by Name
 
-*"I need to find Iconclass notations for St. Jerome and St. Catherine of Siena. Do they exist? What are their attributes, and how many artworks does the Rijksmuseum hold for each?"* 
+*"I need to find Iconclass notations for St. Jerome and St. Catherine of Siena. Do they exist? What are their attributes, and how many artworks does the Rijksmuseum hold for each?"*  [link](https://claude.ai/share/0267d320-e26e-4fdc-9ad0-aa4b8fa4a186)
 
 **Tools:** `search` (FTS)
 
@@ -50,7 +50,7 @@ Sample prompts that show what the AI assistant can do with this server's six too
 
 ### 3. Where Does Alchemy Belong?
 
-*"Alchemy sits under 'science' in Iconclass (49E39), but its symbolism overlaps with religion and magic. Show me the full hierarchy around alchemy — its parent path, siblings, children, and cross-references — so I can understand and evaluate how Iconclass positions it."* 
+*"Alchemy sits under 'science' in Iconclass (49E39), but its symbolism overlaps with religion and magic. Show me the full hierarchy around alchemy — its parent path, siblings, children, and cross-references — so I can understand and evaluate how Iconclass positions it."* [link](https://claude.ai/share/eeb8f2dc-867f-4d87-aebe-b64466908d93)
 
 **Tools:** `browse`
 
@@ -66,7 +66,7 @@ Sample prompts that show what the AI assistant can do with this server's six too
 
 ### 4. The Life and Miracles of St. Francis
 
-*"What scenes from the life of St. Francis of Assisi does Iconclass cover? Show me the full narrative structure — his early life, visions, miracles, martyrdom, and posthumous events — and which scenes have artworks in the Rijksmuseum."* 
+*"What scenes from the life of St. Francis of Assisi does Iconclass cover? Show me the full narrative structure — his early life, visions, miracles, martyrdom, and posthumous events — and which scenes have artworks in the Rijksmuseum."* [link](https://claude.ai/share/0f24e16d-6718-4040-ab37-b5661038b6cb)
 
 **Tools:** `browse`, `search_prefix`
 
@@ -83,7 +83,7 @@ Sample prompts that show what the AI assistant can do with this server's six too
 
 ### 5. Mapping All Animal Notations
 
-*"How many notations exist under 'animals' in Iconclass? Give me an overview of the major sub-branches — mammals, birds, reptiles, fish, insects — with counts of notations and artworks in each. For the salamander specifically, show me where it appears in the hierarchy and what modifiers are available — is it classified as a real animal, a fabulous creature, or both?"* 
+*"How many notations exist under 'animals' in Iconclass? Give me an overview of the major sub-branches — mammals, birds, reptiles, fish, insects — with counts of notations and artworks in each. For the salamander specifically, show me where it appears in the hierarchy and what modifiers are available — is it classified as a real animal, a fabulous creature, or both?"* [link](https://claude.ai/share/44471243-7409-494d-b753-41bcf6a0ab48)
 
 **Tools:** `search_prefix`, `browse`, `search` (FTS), `expand_keys`
 
@@ -101,7 +101,7 @@ Sample prompts that show what the AI assistant can do with this server's six too
 
 ### 6. Classifying a Complex Scene
 
-*"I'm cataloguing a painting that shows the Virgin Mary seated with the Christ Child on her lap, reading from an open book, with a vase of lilies on a table beside her. What Iconclass notations should I assign? Show me the full metadata for each so I can verify they fit."* 
+*"I'm cataloguing a painting that shows the Virgin Mary seated with the Christ Child on her lap, reading from an open book, with a vase of lilies on a table beside her. What Iconclass notations should I assign? Show me the full metadata for each so I can verify they fit."* [link](https://claude.ai/share/f6a6bdad-d678-42b4-aff8-676fde9e5dbb)
 
 **Tools:** `search` (FTS + semantic), `resolve`
 
@@ -118,7 +118,7 @@ Sample prompts that show what the AI assistant can do with this server's six too
 
 ### 7. From Notation to Artwork
 
-*"Find the Iconclass notation for 'the deposition from the cross', then check whether the Rijksmuseum has artworks with this notation."* 
+*"Find the Iconclass notation for 'the deposition from the cross', then check whether the Rijksmuseum has artworks with this notation."* [link](https://claude.ai/share/d2399d9f-41c5-4472-9044-2f108ce08347)
 
 **Tools:** `search` (FTS), `find_artworks`, then `search_artwork`
 
@@ -132,7 +132,7 @@ Sample prompts that show what the AI assistant can do with this server's six too
 
 ### 8. Last Supper or Wedding at Cana?
 
-*"I'm looking at a painting of a banquet scene with Christ at a long table surrounded by guests. It could be the Last Supper or the Marriage at Cana — both are large gatherings around a table. What are the Iconclass notations for each, and what distinguishing features does the classification record?"* 
+*"I'm looking at a painting of a banquet scene with Christ at a long table surrounded by guests. It could be the Last Supper or the Marriage at Cana — both are large gatherings around a table. What are the Iconclass notations for each, and what distinguishing features does the classification record?"* [link](https://claude.ai/share/8964aa74-3709-4c3b-8462-64c2f8863915)
 
 **Tools:** `search` (FTS), `resolve`, `browse`
 
@@ -149,7 +149,7 @@ Sample prompts that show what the AI assistant can do with this server's six too
 
 ### 9. A Broken Lute String as Vanitas
 
-*"A still-life painting includes a lute with a broken string — a classic vanitas motif. How should I classify this in Iconclass? Is the broken string a vanitas symbol, a damaged musical instrument, or both?"* 
+*"A still-life painting includes a lute with a broken string — a classic vanitas motif. How should I classify this in Iconclass? Is the broken string a vanitas symbol, a damaged musical instrument, or both?"* [link](https://claude.ai/share/4dcede23-f498-49d0-a3fb-90e033ac3a70)
 
 **Tools:** `browse`, `search` (FTS), `expand_keys`
 
@@ -166,7 +166,7 @@ Sample prompts that show what the AI assistant can do with this server's six too
 
 ### 10. Classifying Jungle Book Illustrations
 
-*"I'm cataloguing a set of prints illustrating Kipling's Jungle Book. How do I classify Mowgli, Baloo, and Bagheera in Iconclass? Are they literary characters, animals, or something else?"* 
+*"I'm cataloguing a set of prints illustrating Kipling's Jungle Book. How do I classify Mowgli, Baloo, and Bagheera in Iconclass? Are they literary characters, animals, or something else?"* [link](https://claude.ai/share/b3192d43-d187-486f-8cb1-39fb29e5fbb0)
 
 **Tools:** `search` (FTS), `browse`
 

@@ -23,16 +23,6 @@ from datetime import datetime, timezone
 
 COLLECTION_META: dict[str, tuple[str, str | None]] = {
     "rijksmuseum": ("Rijksmuseum, Amsterdam", None),
-    "rkd": (
-        "RKD \u2014 Netherlands Institute for Art History",
-        "https://research.rkd.nl/en/search?q={notation}"
-        "&filters%5B0%5D%5Bfield%5D=db"
-        "&filters%5B0%5D%5Bvalues%5D%5B0%5D=rkdimages",
-    ),
-    "arkyves": (
-        "Arkyves",
-        "https://www.arkyves.org/r/section/all/?&q={notation}",
-    ),
 }
 
 

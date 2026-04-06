@@ -4,7 +4,7 @@
 
 **rijksmuseum-iconclass-mcp** is a tool for searching and exploring [Iconclass](https://iconclass.org) notations in natural language with an AI assistant. It was designed as a companion resource for [rijksmuseum-mcp+](https://github.com/kintopp/rijksmuseum-mcp-plus), an analogous resource for the [Rijksmuseum's](https://www.rijksmuseum.nl/en) art collections.
 
-The tool provides access to over 1.3 million Iconclass notations — all of the c. 39,000 base concepts and c. 1.3 million key-expanded variants that add modifiers like posture, context, or symbolism. Beside simple keyword matching, rijksmuseum-iconclass-mcp supports semantic search in natural language, so that you can discover iconclass notations related to concepts like "homesickness and exile" -> `94I2111 — "Ulysses longs for home"` even when the search term doesn't appear in the notation text. You can also, for example, use the AI assistant to explore the Iconclass hierarchy, visualise their relationships, or prompt it for cataloguing advice. The database includes collection presence data from the [Rijksmuseum](https://www.rijksmuseum.nl/en/collection), [Netherlands Institute for Art History](https://www.rkd.nl/en) (RKD), and [Arkyves](https://www.arkyves.org), to let you see which of these institutions have artworks carrying a given notation. 
+The tool provides access to over 1.3 million Iconclass notations — all of the c. 39,000 base concepts and c. 1.3 million key-expanded variants that add modifiers like posture, context, or symbolism. Beside simple keyword matching, rijksmuseum-iconclass-mcp supports semantic search in natural language, so that you can discover iconclass notations related to concepts like "homesickness and exile" -> `94I2111 — "Ulysses longs for home"` even when the search term doesn't appear in the notation text. You can also, for example, use the AI assistant to explore the Iconclass hierarchy, visualise their relationships, or prompt it for cataloguing advice. The database includes artwork count data from the [Rijksmuseum](https://www.rijksmuseum.nl/en/collection), showing how many artworks are tagged with each notation. 
 
 The resource was developed as a technology demo by the [Research and Infrastructure Support](https://rise.unibas.ch/en/) (RISE) group at the University of Basel and complements our ongoing work on [benchmarking](https://github.com/RISE-UNIBAS/humanities_data_benchmark) and [optimizing](https://github.com/kintopp/dspy-rise-humbench) humanities research tasks carried out by large language models (LLMs). We are particularly interested in exploring the research opportunities, methodological risks, and technical challenges posed by retrieving and analysing data with LLMs. If you are interested in collaborating with us in this area, please [get in touch](mailto:rise@unibas.ch).
 
@@ -80,7 +80,7 @@ notation: ["73D6", "31A33", "25F23"]  → full metadata for each
 
 ### `expand_keys` — key variant exploration
 
-Given a base notation, return all its key-expanded variants with texts and collection presence.
+Given a base notation, return all its key-expanded variants with texts and collection data.
 
 ```
 notation: "25F23"  → 204 variants (swimming, sleeping, fighting, etc.)
@@ -95,27 +95,25 @@ notation: "73D8"  → 8 notations under "instruments of the Passion"
 notation: "25F"   → all animal notations
 ```
 
-### `find_artworks` — which collections have this subject?
+### `find_artworks` — how many artworks use this subject?
 
-Given one or more notations, check which external art collections have artworks tagged with those notations. Returns collection presence and link-out URLs where available. An empty `collections` array means no loaded collection has artworks for that notation — try a parent or sibling notation instead.
+Given one or more notations, check which collections have artworks tagged with those notations. Returns per-collection artwork counts and link-out URLs where available. An empty `collections` array means no loaded collection has artworks for that notation — try a parent or sibling notation instead.
 
 ```
-notation: "73B57"  → Rijksmuseum, RKD → https://..., Arkyves → https://...
-notation: ["73D6", "92D192134"]  → batch lookup across collections
+notation: "73B57"  → Rijksmuseum: 24 artworks
+notation: ["73D6", "92D192134"]  → batch lookup with counts
 ```
 
-Currently includes three collections:
+Currently includes:
 
-- **Rijksmuseum, Amsterdam** — use [rijksmuseum-mcp-plus](https://github.com/kintopp/rijksmuseum-mcp-plus) for artwork search
-- **RKD — Netherlands Institute for Art History** — with search link-out
-- **Arkyves** — with search link-out
+- **Rijksmuseum, Amsterdam** — artwork counts per notation; use [rijksmuseum-mcp-plus](https://github.com/kintopp/rijksmuseum-mcp-plus) for artwork search
 
 ## Typical workflow
 
 1. **Search** for a concept: `search({ semanticQuery: "religious suffering" })`
 2. **Browse** the hierarchy to find the right specificity level
 3. **Check collections** for that subject: `find_artworks({ notation: "73D6" })`
-4. **Follow links** to browse artworks at the RKD or Arkyves, or **pass the notation** to a collection server's search (e.g., `search_artwork(iconclass: "73D6")` in [rijksmuseum-mcp-plus](https://github.com/kintopp/rijksmuseum-mcp-plus))
+4. **Pass the notation** to a collection server's search (e.g., `search_artwork(iconclass: "73D6")` in [rijksmuseum-mcp-plus](https://github.com/kintopp/rijksmuseum-mcp-plus))
 
 This two-server workflow separates the classification vocabulary (this server) from collection-specific search (the Rijksmuseum server). When both servers are connected, the LLM can automatically follow up on `find_artworks` results by calling the Rijksmuseum server's `search_artwork` tool.
 
@@ -145,7 +143,7 @@ graph TB
     T2 & T3 & T4 & T5 & T6 --> DB
 
     DB -->|"SQL queries"| MAIN["iconclass.db<br/>(1.3M notations, 13 languages,<br/>FTS5, KNN embeddings)"]
-    DB -->|"ATTACH + JOIN"| COUNTS["iconclass-counts.db<br/>(collection presence:<br/>Rijksmuseum · RKD · Arkyves)"]
+    DB -->|"ATTACH + JOIN"| COUNTS["iconclass-counts.db<br/>(artwork counts:<br/>Rijksmuseum)"]
 
     style Client fill:#e8f4f8,stroke:#2196F3
     style HTTP fill:#fff3e0,stroke:#FF9800

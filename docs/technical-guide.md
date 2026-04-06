@@ -27,28 +27,24 @@ To use the local server with Claude Desktop (stdio), add to your `claude_desktop
 }
 ```
 
-## Collection presence
+## Artwork counts
 
-Collection presence data lives in a separate **sidecar database** (`iconclass-counts.db`, ~3.8 MB) so it can be updated independently of the main 3 GB notation/text/embedding database. Three collection overlays ship by default: Rijksmuseum (24,066 notations), RKD (13,984), and Arkyves (34,721) — totalling 72,771 notation-collection pairs. A row in the sidecar means "this collection has artworks for this notation"; absence means either no artworks or the collection hasn't been checked for that notation. The `collections` metadata returned by every tool lists all loaded collections, so consumers can distinguish "checked, not present" from "not checked."
+Artwork count data lives in a separate **sidecar database** (`iconclass-counts.db`, ~1.4 MB) so it can be updated independently of the main 3 GB notation/text/embedding database. The Rijksmuseum collection overlay ships by default with 24,066 notations and per-notation artwork counts. The `find_artworks` tool returns these counts; the other tools use the sidecar for presence filtering (`onlyWithArtworks`, `collectionId`).
 
-Each collection can optionally include a `search_url_template` for generating link-out URLs (e.g. `https://research.rkd.nl/en/search?q={notation}&...`). The `find_artworks` tool uses these templates to produce clickable links.
+Each collection can optionally include a `search_url_template` for generating link-out URLs. The `find_artworks` tool uses these templates to produce clickable links.
 
-To add or update collections, rebuild only the sidecar — no need to touch the main DB:
+To update the Rijksmuseum counts or add a new collection, rebuild only the sidecar — no need to touch the main DB:
 
 ```bash
-# Export presence data from your collection database
-# CSV format: notation,count (one per line; any positive count = present)
-python scripts/export-collection-counts.py --vocab-db path/to/vocab.db --output data/my-museum-counts.csv
+# Export counts from the Rijksmuseum vocabulary database
+python scripts/export-collection-counts.py --vocab-db path/to/vocab.db --output data/rijksmuseum-counts.csv
 
-# Build the sidecar with multiple overlays
+# Build the sidecar
 python scripts/build-counts-db.py \
-  --counts-csv data/rijksmuseum-counts.csv \
-  --counts-csv data/rkd-counts.csv \
-  --counts-csv data/arkyves-counts.csv \
-  --counts-csv data/my-museum-counts.csv
+  --counts-csv data/rijksmuseum-counts.csv
 ```
 
-Results then show which collections have artworks: `73D6 (rijksmuseum, rkd, my-museum)`. To add search link-out URLs for a new collection, add an entry to `COLLECTION_META` in `build-counts-db.py`.
+To add a new collection, create a CSV (`notation,count`), add an entry to `COLLECTION_META` in `build-counts-db.py`, and pass the CSV as an additional `--counts-csv` argument.
 
 ## Building the database
 
@@ -68,9 +64,7 @@ python scripts/build-iconclass-db.py \
 
 # Build the counts sidecar (~instant)
 python scripts/build-counts-db.py \
-  --counts-csv data/rijksmuseum-counts.csv \
-  --counts-csv data/rkd-counts.csv \
-  --counts-csv data/arkyves-counts.csv
+  --counts-csv data/rijksmuseum-counts.csv
 ```
 
 ### Adding semantic embeddings
@@ -106,9 +100,7 @@ The server's download logic auto-detects chunked assets (`.part-aa`, `.part-ab`,
 |--------|---------|---------|
 | [iconclass/data](https://github.com/iconclass/data) | 1.3M notations, texts in 13 languages, keywords, hierarchy | CC0 |
 | [iconclass](https://pypi.org/project/iconclass/) Python library | Text composition for key-expanded notations | CC0 |
-| [Rijksmuseum vocabulary.db](https://github.com/kintopp/rijksmuseum-mcp-plus) | Artwork presence per notation (24K notations) | MIT |
-| [RKD Knowledge Graph](https://triplydb.com/rkd/RKD-Knowledge-Graph) | Artwork presence per notation (14K notations) | ODC-By 1.0 |
-| [Iconclass AI Test Set](https://iconclass.org/testset/) | Arkyves artwork presence per notation (35K notations, derived from data.json) | CC0 |
+| [Rijksmuseum vocabulary.db](https://github.com/kintopp/rijksmuseum-mcp-plus) | Artwork counts per notation (24K notations) | MIT |
 
 ## Environment variables
 
@@ -117,7 +109,7 @@ The server's download logic auto-detects chunked assets (`.part-aa`, `.part-ab`,
 | `PORT` | — | Set to enable HTTP mode (e.g. `3000`) |
 | `ICONCLASS_DB_PATH` | `data/iconclass.db` | Main database (notations, texts, keywords, embeddings) |
 | `ICONCLASS_DB_URL` | — | URL to download main DB if missing (supports `.gz`) |
-| `COUNTS_DB_PATH` | `data/iconclass-counts.db` | Sidecar database (collection presence) |
+| `COUNTS_DB_PATH` | `data/iconclass-counts.db` | Sidecar database (artwork counts) |
 | `COUNTS_DB_URL` | — | URL to download sidecar DB if missing (supports `.gz`) |
 | `EMBEDDING_MODEL_ID` | `Xenova/multilingual-e5-base` | HuggingFace model for query embedding |
 | `HF_HOME` | — | HuggingFace cache directory |
@@ -135,7 +127,7 @@ The server's download logic auto-detects chunked assets (`.part-aa`, `.part-ab`,
 | Browse | ~1ms | ~54ms | B-tree lookup + child resolution |
 | Browse with key variants | ~1ms | ~58ms | Default page of 25 key variants |
 | Resolve (batch of 15) | ~1ms | ~54ms | 15 notations with full metadata |
-| Find artworks | ~1ms | — | Per-notation presence lookup across 3 collections |
+| Find artworks | ~1ms | — | Per-notation artwork count lookup (Rijksmuseum) |
 | Prefix search | ~113ms | ~196ms | Depends on subtree size; accurate COUNT query |
 | Server cold start | ~8s | ~77s | Local: embedding model only. Production: chunked DB download + decompression |
 
@@ -201,9 +193,9 @@ The resolve tool accepts up to 25 notations per call (default 15). This is inten
 
 The per-notation keyword limit of 40 matches the observed maximum in the database, so no keywords are truncated. The 99th percentile is 9 keywords; only 705 notations (0.04%) exceed 20. These are concentrated in a few keyword-heavy base notations — notably `46C1313` ("equestrian statue", 28 keywords listing famous statues by name), `23K` ("labours of the months", 30 keywords), and saint notations like `11H(THOMAS AQUINAS)`. Key-expanded variants of these inherit the base keywords and add modifier keywords on top, reaching up to 40.
 
-#### Collection presence sparsity
+#### Artwork count sparsity
 
-With three collection overlays, ~5.6% of notations have collection presence (73K of 1.3M). The `collections` field is empty for the vast majority of entries, adding negligible overhead. The `onlyWithArtworks` and `collectionId` filters are aggressive narrowers — useful when the caller only needs notations that appear in a specific collection. Each collection's `totalNotations` reflects the number of distinct notations with artworks in that collection (computed at runtime by joining against the main notations table to exclude malformed entries).
+With the Rijksmuseum collection overlay, ~1.5% of notations have artwork counts (20K of 1.3M). The `collections` field is empty for the vast majority of entries, adding negligible overhead. The `onlyWithArtworks` and `collectionId` filters are aggressive narrowers — useful when the caller only needs notations that appear in the Rijksmuseum. The collection's `totalNotations` reflects the number of distinct notations with artworks (computed at runtime by joining against the main notations table to exclude malformed entries).
 
 #### FTS multi-word fallback
 

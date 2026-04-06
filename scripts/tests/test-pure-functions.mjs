@@ -68,8 +68,8 @@ section("formatCollections");
 
 assertEq(formatCollections([]), "", "empty → empty string");
 assertEq(formatCollections(["rijksmuseum"]), " (rijksmuseum)", "single collection");
-assertEq(formatCollections(["rijksmuseum", "rkd"]), " (rijksmuseum, rkd)", "two collections");
-assertEq(formatCollections(["rijksmuseum", "rkd", "arkyves"]), " (rijksmuseum, rkd, arkyves)", "three collections");
+assertEq(formatCollections(["rijksmuseum", "met"]), " (rijksmuseum, met)", "two collections");
+assertEq(formatCollections(["rijksmuseum", "met", "louvre"]), " (rijksmuseum, met, louvre)", "three collections");
 
 // ── formatEntryLine ─────────────────────────────────────────────
 
@@ -116,13 +116,13 @@ assertEq(
 const multiCol = {
   notation: "31A33",
   text: "smell",
-  collections: ["rijksmuseum", "rkd"],
+  collections: ["rijksmuseum", "met"],
   path: [{ notation: "3" }],
 };
 
 assertEq(
   formatEntryLine(multiCol),
-  '31A33 (rijksmuseum, rkd) "smell" [3]',
+  '31A33 (rijksmuseum, met) "smell" [3]',
   "multiple collections"
 );
 

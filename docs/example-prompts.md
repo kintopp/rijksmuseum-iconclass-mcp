@@ -25,7 +25,7 @@ Sample prompts that show what the AI assistant can do with this server's six too
 - `search` with `semanticQuery: "smell and olfactory experience"` finds notations by meaning — it surfaces `31A33` (smell) and related concepts even when the exact word doesn't appear in the notation text
 - `search` with `query: "smell"` for precise FTS matches across all 13 languages — picks up notations that mention smell in keywords or labels
 - `browse` on `31A3` (the five senses) to see the full hierarchy: `31A31` sight, `31A32` hearing, `31A33` smell, `31A34` taste, `31A35` touch — plus their children and cross-references
-- `browse` on `31A33` with `includeKeys: true` to discover key-expanded variants like `31A33(+1)` (smell, outdoors) that add situational modifiers
+- `browse` on `31A33` with `includeKeys: true` to discover 116 key-expanded variants like `31A33(+1)` (front view), `31A33(+72)` (in the open air) that add situational modifiers
 - The `collections` array on each result reveals which smell-related notations have artworks in the Rijksmuseum — `31A33` is present, but deeper variants may not be
 
 **Why it matters:** Sensory history is a growing research field, but olfactory experience is underrepresented in art classification systems. A [discussion on the Iconclass forum](https://forum.iconclass.org/t/iconclass-and-sensory-history/15) proposed expanding `31A33` with sub-codes for smell sources, odour carriers, and fragrant spaces. This prompt maps the current Iconclass landscape for olfaction.
@@ -83,7 +83,7 @@ Sample prompts that show what the AI assistant can do with this server's six too
 
 ### 5. Mapping All Animal Notations
 
-*"How many notations exist under 'animals' in Iconclass? Give me an overview of the major sub-branches — mammals, birds, reptiles, fish, insects — with counts of notations and artworks in each. For the salamander specifically, show me where it appears in the hierarchy and what modifiers are available — can I specify a salamander as a bestiary creature, a heraldic device, or a spirit of fire?"* [link](https://claude.ai/share/6bbd38a7-729f-4c57-8403-5471d674f896)
+*"How many notations exist under 'animals' in Iconclass? Give me an overview of the major sub-branches — mammals, birds, reptiles, fish, insects — with counts of notations and artworks in each. For the salamander specifically, show me where it appears in the hierarchy and what modifiers are available — is it classified as a real animal, a fabulous creature, or both?"* [link](https://claude.ai/share/6bbd38a7-729f-4c57-8403-5471d674f896)
 
 **Tools:** `search_prefix`, `browse`, `search` (FTS), `expand_keys`
 
@@ -91,11 +91,11 @@ Sample prompts that show what the AI assistant can do with this server's six too
 - `browse` on `25F` (animals) to see the top-level structure: `25F2` (mammals), `25F3` (birds), `25F4` (reptiles), etc.
 - `search_prefix` on `25F2` to count all mammal notations (base + key-expanded), `25F3` for birds, `25F4` for reptiles, and so on
 - The `totalResults` in each prefix search gives the size of each sub-branch — showing that mammals and birds dominate while insects are sparse
-- `search` with `query: "salamander"` reveals that the salamander appears in *two* places: `25F44(SALAMANDER)` (the real animal, under tortoises/turtles) and `25FF412` ("salamander as spirit of fire", under fabulous animals) — plus as an *attribute* of Ananias/Shadrach (`11I62(ANANIAS)`), linking it to the story of the three youths in the fiery furnace
-- `expand_keys` on `25F44(SALAMANDER)` to see its modifiers: `+11` (bestiaries, Physiologus), `+12` (heraldic), `+13` (as attribute), `+46` (sleeping), and so on — the same 204 modifier codes apply uniformly across all animal notations
-- `browse` on `25FF412` to see the fabulous-animal branch, where the salamander's mythological identity as a fire spirit is explicitly encoded
+- `search` with `query: "salamander"` reveals the salamander under fabulous animals: `25FF412` ("salamander as spirit of fire") and its 204 key-expanded variants — the salamander also appears as an *attribute* of Ananias/Shadrach (`11I62(ANANIAS)`, discoverable via `resolve`), linking it to the story of the three youths in the fiery furnace
+- `expand_keys` on `25FF412` to see its modifiers: `+11` (bestiaries, Physiologus), `+12` (heraldic), `+13` (as attribute), `+46` (sleeping), and so on — the same 204 modifier codes apply uniformly across all animal notations
+- `browse` on `25FF412` to see the fabulous-animal branch, where the salamander's mythological identity as a fire spirit is explicitly encoded — its path runs through `25FF` (fabulous animals) → `25FF4` (fabulous reptiles) → `25FF41` (fabulous lizards)
 
-**Why it matters:** Prefix search exploits Iconclass's left-to-right hierarchical encoding — everything under `25F3` is a bird, everything under `25F44` is a tortoise or turtle. But the salamander shows that a single creature can straddle multiple branches: the real animal under `25F44`, the mythical fire spirit under `25FF412`, and a saint's attribute under `11I62`. An FTS search surfaces all three in one query, while `browse` and `expand_keys` reveal the distinct classification logic in each branch. A [forum discussion on specifying musicians in ensembles](https://forum.iconclass.org/t/specifying-the-number-of-musicians-in-music-ensembles/199) revealed that many users don't know what modifiers are available for a given notation — the same is true for animals, where the Physiologus modifier `+11` is easy to miss.
+**Why it matters:** Prefix search exploits Iconclass's left-to-right hierarchical encoding — everything under `25F3` is a bird, everything under `25F44` is a tortoise or turtle. The salamander is classified solely as a fabulous animal (`25FF412`), not as a real reptile — reflecting Iconclass's editorial judgment that the salamander's cultural significance is primarily mythological. It also appears as a saint's attribute (`11I62(ANANIAS)`), discoverable via `resolve` rather than keyword search. A [forum discussion on specifying musicians in ensembles](https://forum.iconclass.org/t/specifying-the-number-of-musicians-in-music-ensembles/199) revealed that many users don't know what modifiers are available for a given notation — the same is true for animals, where the Physiologus modifier `+11` is easy to miss.
 
 ---
 
@@ -134,14 +134,14 @@ Sample prompts that show what the AI assistant can do with this server's six too
 
 *"I'm looking at a painting of a banquet scene with Christ at a long table surrounded by guests. It could be the Last Supper or the Marriage at Cana — both are large gatherings around a table. What are the Iconclass notations for each, and what distinguishing features does the classification record?"* [link](https://claude.ai/share/d695c60a-826f-4d36-9f29-36e875d4ee2f)
 
-**Tools:** `search` (FTS), `resolve`
+**Tools:** `search` (FTS), `resolve`, `browse`
 
 **How the tools enable it:**
 - `search` with `query: "Last Supper"` finds `73D24` (Last Supper, with artworks in the Rijksmuseum) and related notations under `73D2` (the episode of the Last Supper) — including sub-scenes like the washing of feet and the institution of the Eucharist
 - `search` with `query: "Cana"` finds `73C611` (the marriage-feast at Cana, with artworks in the Rijksmuseum) and sub-scenes like the water-into-wine miracle
 - `resolve` with `["73D24", "73C611"]` in a single batch call to compare both entries side-by-side: their full labels, hierarchy paths, keywords, and cross-references
 - The hierarchy paths alone are diagnostic: `73D24` sits under Passion of Christ (`73D`), while `73C611` sits under Christ's miracles (`73C6`) — placing the same visual motif (banquet with Christ) in entirely different theological contexts
-- The keywords for each notation list distinguishing iconographic elements — the presence of a chalice or bread points to `73D24`, while water jars point to `73C611`
+- Browsing into the sub-scenes reveals distinguishing iconographic elements in their keywords — `73D244` (institution of the Eucharist) lists bread and wine, while `73C6113` (Christ orders jars filled with water) lists jar and water
 
 **Why it matters:** A [forum discussion about a mysterious Mannerist drawing](https://forum.iconclass.org/t/mannerist-drawing-mysterious-iconography/264) debated exactly this question — was the scene the Last Supper or the Wedding at Cana? The presence of women among the guests, the exact number of diners, and the absence of water jars were all cited as evidence. The `resolve` tool's side-by-side comparison gives the cataloguer the full Iconclass description for both candidates, with hierarchy context that frames the theological distinction.
 

@@ -38,7 +38,7 @@ However, if you don't need these features, or only want to use rijksmuseum-iconc
 
 introduction tba.
 
-### `search` — keyword or semantic search
+#### `search` — keyword or semantic search
 
 Find notations by text or concept.
 
@@ -59,7 +59,7 @@ semanticQuery: "domestic animals" → top matches by embedding similarity
 
 Provide exactly one of `query` or `semanticQuery`.
 
-### `browse` — navigate the hierarchy
+#### `browse` — navigate the hierarchy
 
 Explore a notation's place in the tree: path, children (expandable to depth 1–3), cross-references, key variants.
 
@@ -68,7 +68,7 @@ notation: "73D", depth: 2  → Passion of Christ, children + grandchildren
 notation: "25F23", includeKeys: true  → 204 key-expanded variants
 ```
 
-### `resolve` — batch notation lookup
+#### `resolve` — batch notation lookup
 
 Look up one or more notations by code. Accepts a single string or an array of up to 25.
 
@@ -76,7 +76,7 @@ Look up one or more notations by code. Accepts a single string or an array of up
 notation: ["73D6", "31A33", "25F23"]  → full metadata for each
 ```
 
-### `expand_keys` — key variant exploration
+#### `expand_keys` — key variant exploration
 
 Given a base notation, return all its key-expanded variants with texts and collection data.
 
@@ -84,7 +84,7 @@ Given a base notation, return all its key-expanded variants with texts and colle
 notation: "25F23"  → 204 variants (swimming, sleeping, fighting, etc.)
 ```
 
-### `search_prefix` — hierarchical subtree search
+#### `search_prefix` — hierarchical subtree search
 
 Find all notations under a hierarchy prefix. Leverages Iconclass's left-to-right encoding.
 
@@ -93,7 +93,7 @@ notation: "73D8"  → 8 notations under "instruments of the Passion"
 notation: "25F"   → all animal notations
 ```
 
-### `find_artworks` — how many artworks use this subject?
+#### `find_artworks` — how many artworks use this subject?
 
 Given one or more notations, check which collections have artworks tagged with those notations. Returns per-collection artwork counts and link-out URLs where available. An empty `collections` array means no loaded collection has artworks for that notation — try a parent or sibling notation instead.
 

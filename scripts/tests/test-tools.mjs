@@ -433,10 +433,57 @@ for (const entry of s10.results) {
 }
 
 // ══════════════════════════════════════════════════════════════════
-//  11. Regression: FTS search ranks by relevance, not alphabetically
+//  11. Regression: semantic parentNotation subtree underfill (P1)
 // ══════════════════════════════════════════════════════════════════
 
-section("11. Regression: FTS relevance ranking (P1)");
+section("11. Regression: semantic parentNotation subtree (P1)");
+
+// Before the fix, search({ semanticQuery: 'religious suffering',
+// parentNotation: '73D', maxResults: 5 }) returned 0 results because
+// the fixed 5x overfetch (25 global neighbors) contained no 73D matches.
+// The iterative expansion loop now widens to 4096 to fill sparse subtrees.
+
+const r11sub = await client.callTool({
+  name: "search",
+  arguments: { semanticQuery: "religious suffering", parentNotation: "73D", maxResults: 5 },
+});
+if (r11sub.isError) {
+  console.log(`  ⚠ Semantic search unavailable: ${txt(r11sub)}`);
+} else {
+  const s11sub = sc(r11sub);
+  assert(s11sub.results.length >= 3, `parentNotation 73D: should fill page (got ${s11sub.results.length})`);
+  assert(s11sub.results.every(r => r.notation.startsWith("73D")), "all results in 73D subtree");
+  assert(s11sub.results.every(r => typeof r.similarity === "number"), "all results have similarity scores");
+
+  // A broader subtree should also work — "11" (Christian iconography) is large
+  const r11broad = await client.callTool({
+    name: "search",
+    arguments: { semanticQuery: "mother and child", parentNotation: "11F", maxResults: 5 },
+  });
+  if (!r11broad.isError) {
+    const s11broad = sc(r11broad);
+    assert(s11broad.results.length >= 3, `parentNotation 11F: should fill page (got ${s11broad.results.length})`);
+    assert(s11broad.results.every(r => r.notation.startsWith("11F")), "all results in 11F subtree");
+  }
+
+  // A very narrow subtree may legitimately have few matches —
+  // verify it returns what it can without error
+  const r11narrow = await client.callTool({
+    name: "search",
+    arguments: { semanticQuery: "angels", parentNotation: "73D64", maxResults: 5 },
+  });
+  assert(!r11narrow.isError, "narrow parentNotation does not error");
+  const s11narrow = sc(r11narrow);
+  if (s11narrow.results.length > 0) {
+    assert(s11narrow.results.every(r => r.notation.startsWith("73D64")), "narrow subtree results all match prefix");
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  12. Regression: FTS search ranks by relevance, not alphabetically
+// ══════════════════════════════════════════════════════════════════
+
+section("12. Regression: FTS relevance ranking (P1)");
 
 // Before the fix, FTS results lost BM25 rank scores and sorted
 // alphabetically within the same coverage tier. The first page was
@@ -491,10 +538,10 @@ const notations11c = s11c.results.map(r => r.notation);
 assert(notations11c.includes("73D"), `73D (Passion of Christ) in top 10 for "Passion"`);
 
 // ══════════════════════════════════════════════════════════════════
-//  12. Regression: expand_keys rejects key-expanded input (P2)
+//  13. Regression: expand_keys rejects key-expanded input (P2)
 // ══════════════════════════════════════════════════════════════════
 
-section("12. Regression: expand_keys rejects parentheses (P2)");
+section("13. Regression: expand_keys rejects parentheses (P2)");
 
 const r12a = await client.callTool({
   name: "expand_keys",
@@ -511,10 +558,10 @@ const r12b = await client.callTool({
 assert(r12b.isError === true, "expand_keys rejects partial parenthesis");
 
 // ══════════════════════════════════════════════════════════════════
-//  13. Regression: totalNotations is non-zero (P2)
+//  14. Regression: totalNotations is non-zero (P2)
 // ══════════════════════════════════════════════════════════════════
 
-section("13. Regression: totalNotations non-zero (P2)");
+section("14. Regression: totalNotations non-zero (P2)");
 
 // Every tool response includes collections[]. Check that totalNotations > 0.
 const r13a = await client.callTool({
@@ -528,10 +575,10 @@ assert(rij13 !== undefined, "rijksmuseum collection present");
 assert(rij13.totalNotations > 0, `totalNotations > 0 (got ${rij13?.totalNotations})`);
 
 // ══════════════════════════════════════════════════════════════════
-//  14. find_artworks
+//  15. find_artworks
 // ══════════════════════════════════════════════════════════════════
 
-section("14. find_artworks");
+section("15. find_artworks");
 
 // Single notation — 73D6 (crucifixion, known to be in Rijksmuseum)
 const r14a = await client.callTool({

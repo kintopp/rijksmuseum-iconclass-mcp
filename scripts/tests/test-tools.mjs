@@ -1,5 +1,5 @@
 /**
- * Integration tests for all 5 Iconclass MCP tools via stdio transport.
+ * Integration tests for all 6 Iconclass MCP tools via stdio transport.
  *
  * Run:  node scripts/tests/test-tools.mjs
  * Requires: npm run build, data/iconclass.db present
@@ -433,93 +433,151 @@ for (const entry of s10.results) {
 }
 
 // ══════════════════════════════════════════════════════════════════
-//  11. Regression: expand_keys rejects key-expanded input (P2)
+//  11. Regression: FTS search ranks by relevance, not alphabetically
 // ══════════════════════════════════════════════════════════════════
 
-section("11. Regression: expand_keys rejects parentheses (P2)");
+section("11. Regression: FTS relevance ranking (P1)");
 
-const r11 = await client.callTool({
+// Before the fix, FTS results lost BM25 rank scores and sorted
+// alphabetically within the same coverage tier. The first page was
+// dominated by low-relevance alphabetically-early notations like
+// 11B312, while the exact subject (73D6, 371 artworks) was buried.
+
+// Verify results are NOT alphabetical — top result should NOT be the
+// alphabetically-first notation in the 844-hit result set.
+const r11rel = await client.callTool({
+  name: "search",
+  arguments: { query: "crucifixion", maxResults: 25 },
+});
+const s11rel = sc(r11rel);
+const notations11 = s11rel.results.map(r => r.notation);
+
+// With alphabetical sorting, the first result would be something like
+// "0(+1)..." or "11...". BM25 should push relevant results to the top.
+// 31E2356 "violent death by crucifixion" is a strong BM25 match.
+assert(notations11[0] !== notations11.slice().sort()[0],
+  `top result is not alphabetically first (got ${notations11[0]}, alpha-first would be ${notations11.slice().sort()[0]})`);
+
+// 73D6 "the crucifixion of Christ" should appear in the top 25
+// (BM25 ranks it ~16th due to longer text, but that's relevance-based,
+// not the 100+ position it had under alphabetical sort)
+const idx73D6 = notations11.indexOf("73D6");
+assert(idx73D6 !== -1, `73D6 in top 25 for "crucifixion" (position ${idx73D6 + 1})`);
+
+// Results with collection presence should come before those without
+// (coverage is the primary sort key)
+const firstWithout = s11rel.results.findIndex(r => r.collections.length === 0);
+const lastWith = s11rel.results.map((r, i) => r.collections.length > 0 ? i : -1).filter(i => i >= 0).pop() ?? -1;
+if (firstWithout !== -1 && lastWith !== -1) {
+  assert(lastWith < firstWithout, `collection-present results precede absent ones (last-with: ${lastWith}, first-without: ${firstWithout})`);
+}
+
+// Second query: "Last Supper" should surface 73D24 in the top results
+const r11b = await client.callTool({
+  name: "search",
+  arguments: { query: "Last Supper", maxResults: 10 },
+});
+const s11b = sc(r11b);
+const notations11b = s11b.results.map(r => r.notation);
+assert(notations11b.includes("73D24"), `73D24 (Last Supper) in top 10 for "Last Supper"`);
+
+// Third query: "Passion" should surface 73D (Passion of Christ) in top results
+const r11c = await client.callTool({
+  name: "search",
+  arguments: { query: "Passion", maxResults: 10 },
+});
+const s11c = sc(r11c);
+const notations11c = s11c.results.map(r => r.notation);
+assert(notations11c.includes("73D"), `73D (Passion of Christ) in top 10 for "Passion"`);
+
+// ══════════════════════════════════════════════════════════════════
+//  12. Regression: expand_keys rejects key-expanded input (P2)
+// ══════════════════════════════════════════════════════════════════
+
+section("12. Regression: expand_keys rejects parentheses (P2)");
+
+const r12a = await client.callTool({
   name: "expand_keys",
   arguments: { notation: "25F23(+46)" },
 });
-assert(r11.isError === true, "expand_keys rejects key-expanded notation");
-assert(txt(r11).includes("base notation"), `error message mentions base notation: "${txt(r11).slice(0, 80)}"`);
+assert(r12a.isError === true, "expand_keys rejects key-expanded notation");
+assert(txt(r12a).includes("base notation"), `error message mentions base notation: "${txt(r12a).slice(0, 80)}"`);
 
 // Also test with just opening paren
-const r11b = await client.callTool({
+const r12b = await client.callTool({
   name: "expand_keys",
   arguments: { notation: "25F23(" },
 });
-assert(r11b.isError === true, "expand_keys rejects partial parenthesis");
+assert(r12b.isError === true, "expand_keys rejects partial parenthesis");
 
 // ══════════════════════════════════════════════════════════════════
-//  12. Regression: totalNotations is non-zero (P2)
+//  13. Regression: totalNotations is non-zero (P2)
 // ══════════════════════════════════════════════════════════════════
 
-section("12. Regression: totalNotations non-zero (P2)");
+section("13. Regression: totalNotations non-zero (P2)");
 
 // Every tool response includes collections[]. Check that totalNotations > 0.
-const r12 = await client.callTool({
+const r13a = await client.callTool({
   name: "search_prefix",
   arguments: { notation: "11H", maxResults: 1 },
 });
-const s12 = sc(r12);
-assert(s12.collections.length > 0, "collections array present");
-const rij = s12.collections.find(c => c.collectionId === "rijksmuseum");
-assert(rij !== undefined, "rijksmuseum collection present");
-assert(rij.totalNotations > 0, `totalNotations > 0 (got ${rij?.totalNotations})`);
+const s13a = sc(r13a);
+assert(s13a.collections.length > 0, "collections array present");
+const rij13 = s13a.collections.find(c => c.collectionId === "rijksmuseum");
+assert(rij13 !== undefined, "rijksmuseum collection present");
+assert(rij13.totalNotations > 0, `totalNotations > 0 (got ${rij13?.totalNotations})`);
 
 // ══════════════════════════════════════════════════════════════════
-//  13. find_artworks
+//  14. find_artworks
 // ══════════════════════════════════════════════════════════════════
 
-section("13. find_artworks");
+section("14. find_artworks");
 
 // Single notation — 73D6 (crucifixion, known to be in Rijksmuseum)
-const r13a = await client.callTool({
+const r14a = await client.callTool({
   name: "find_artworks",
   arguments: { notation: "73D6" },
 });
-const s13a = sc(r13a);
-assert(!s13a.error, "no error");
-assertEq(s13a.notations.length, 1, "1 notation returned");
-assertEq(s13a.notations[0].notation, "73D6", "notation echoed");
-assert(s13a.notations[0].text.length > 0, "text present");
-assert(s13a.notations[0].collections.length > 0, `has collections (got ${s13a.notations[0].collections.length})`);
+const s14a = sc(r14a);
+assert(!s14a.error, "no error");
+assertEq(s14a.notations.length, 1, "1 notation returned");
+assertEq(s14a.notations[0].notation, "73D6", "notation echoed");
+assert(s14a.notations[0].text.length > 0, "text present");
+assert(s14a.notations[0].collections.length > 0, `has collections (got ${s14a.notations[0].collections.length})`);
 
 // Rijksmuseum entry present with count and no URL
-const rijEntry = s13a.notations[0].collections.find(a => a.collectionId === "rijksmuseum");
-assert(rijEntry, "rijksmuseum collection present");
-assert(rijEntry.url === null, "rijksmuseum has no URL");
-assert(typeof rijEntry.count === "number" && rijEntry.count > 0, `rijksmuseum has count > 0 (got ${rijEntry?.count})`);
+const rijEntry14 = s14a.notations[0].collections.find(a => a.collectionId === "rijksmuseum");
+assert(rijEntry14, "rijksmuseum collection present");
+assert(rijEntry14.url === null, "rijksmuseum has no URL");
+assert(typeof rijEntry14.count === "number" && rijEntry14.count > 0, `rijksmuseum has count > 0 (got ${rijEntry14?.count})`);
 
 // Only Rijksmuseum in sidecar DB (RKD/Arkyves removed)
-assertEq(s13a.notations[0].collections.length, 1, "only 1 collection (Rijksmuseum)");
+assertEq(s14a.notations[0].collections.length, 1, "only 1 collection (Rijksmuseum)");
 
 // Collections metadata present — only Rijksmuseum
-assertEq(s13a.collections.length, 1, `exactly 1 collection loaded`);
-const rijCol = s13a.collections.find(c => c.collectionId === "rijksmuseum");
-assert(rijCol?.searchUrlTemplate === null, "rijksmuseum searchUrlTemplate is null");
+assertEq(s14a.collections.length, 1, `exactly 1 collection loaded`);
+const rijCol14 = s14a.collections.find(c => c.collectionId === "rijksmuseum");
+assert(rijCol14?.searchUrlTemplate === null, "rijksmuseum searchUrlTemplate is null");
 
 // Batch notations — mix of found and not-found
-const r13b = await client.callTool({
+const r14b = await client.callTool({
   name: "find_artworks",
   arguments: { notation: ["73D6", "25F23(+46)", "NONEXISTENT_ZZZZZ"] },
 });
-const s13b = sc(r13b);
-assertEq(s13b.notations.length, 3, "3 notations returned");
-assertEq(s13b.notations[0].notation, "73D6", "first is 73D6");
-assertEq(s13b.notations[2].notation, "NONEXISTENT_ZZZZZ", "third is nonexistent");
-assertEq(s13b.notations[2].collections.length, 0, "nonexistent has 0 collections");
+const s14b = sc(r14b);
+assertEq(s14b.notations.length, 3, "3 notations returned");
+assertEq(s14b.notations[0].notation, "73D6", "first is 73D6");
+assertEq(s14b.notations[2].notation, "NONEXISTENT_ZZZZZ", "third is nonexistent");
+assertEq(s14b.notations[2].collections.length, 0, "nonexistent has 0 collections");
 
 // Key-expanded notation URL encoding
-const keyEntry = s13b.notations[1];
-assertEq(keyEntry.notation, "25F23(+46)", "key-expanded notation");
-if (keyEntry.collections.length > 0) {
-  const urlCol = keyEntry.collections.find(a => a.url);
-  if (urlCol) {
-    assert(urlCol.url.includes("25F23"), "URL contains base notation");
-    assert(urlCol.url.includes("%28"), "URL encodes parentheses");
+const keyEntry14 = s14b.notations[1];
+assertEq(keyEntry14.notation, "25F23(+46)", "key-expanded notation");
+if (keyEntry14.collections.length > 0) {
+  const urlCol14 = keyEntry14.collections.find(a => a.url);
+  if (urlCol14) {
+    assert(urlCol14.url.includes("25F23"), "URL contains base notation");
+    assert(urlCol14.url.includes("%28"), "URL encodes parentheses");
   }
 }
 

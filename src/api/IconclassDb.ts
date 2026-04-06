@@ -150,10 +150,10 @@ export class IconclassDb {
 
           const rows = this.db.prepare(`
             SELECT ci.collection_id, ci.label, ci.counts_as_of, ci.search_url_template,
-                   COUNT(cc.notation) AS total_notations
+                   COUNT(n.notation) AS total_notations
             FROM counts.collection_info ci
             LEFT JOIN counts.collection_counts cc ON cc.collection_id = ci.collection_id
-            INNER JOIN notations n ON cc.notation = n.notation
+            LEFT JOIN notations n ON cc.notation = n.notation
             GROUP BY ci.collection_id
           `).all() as {
             collection_id: string; label: string; counts_as_of: string | null; total_notations: number; search_url_template: string | null;

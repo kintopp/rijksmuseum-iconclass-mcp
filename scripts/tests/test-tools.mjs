@@ -541,21 +541,22 @@ assert(notations11c.includes("73D"), `73D (Passion of Christ) in top 10 for "Pas
 //  13. Regression: expand_keys rejects key-expanded input (P2)
 // ══════════════════════════════════════════════════════════════════
 
-section("13. Regression: expand_keys rejects parentheses (P2)");
+section("13. Regression: expand_keys input validation (P2)");
 
 const r12a = await client.callTool({
   name: "expand_keys",
   arguments: { notation: "25F23(+46)" },
 });
-assert(r12a.isError === true, "expand_keys rejects key-expanded notation");
+assert(r12a.isError === true, "expand_keys rejects key-expanded (+) notation");
 assert(txt(r12a).includes("base notation"), `error message mentions base notation: "${txt(r12a).slice(0, 80)}"`);
 
-// Also test with just opening paren
+// Named variants like 73D82(CROSS) are NOT key-expanded — they should be accepted
 const r12b = await client.callTool({
   name: "expand_keys",
-  arguments: { notation: "25F23(" },
+  arguments: { notation: "73D82(CROSS)" },
 });
-assert(r12b.isError === true, "expand_keys rejects partial parenthesis");
+assert(r12b.isError !== true || !txt(r12b).includes("key-expanded"),
+  "expand_keys accepts named variant 73D82(CROSS) (not misidentified as key-expanded)");
 
 // ══════════════════════════════════════════════════════════════════
 //  14. Regression: totalNotations is non-zero (P2)

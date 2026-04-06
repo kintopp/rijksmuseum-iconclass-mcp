@@ -107,6 +107,10 @@ function createServer(): McpServer {
 
 async function runStdio(): Promise<void> {
   await initDatabase();
+  if (!iconclassDb?.available) {
+    console.error("FATAL: Iconclass DB is not available — cannot register tools. Exiting.");
+    process.exit(1);
+  }
   const server = createServer();
   const transport = new StdioServerTransport();
   await server.connect(transport);
@@ -119,6 +123,10 @@ let httpServer: import("node:http").Server | undefined;
 
 async function runHttp(): Promise<void> {
   await initDatabase();
+  if (!iconclassDb?.available) {
+    console.error("FATAL: Iconclass DB is not available — cannot register tools. Exiting.");
+    process.exit(1);
+  }
   const port = getHttpPort();
   const app = express();
   app.set("trust proxy", 1);

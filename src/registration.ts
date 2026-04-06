@@ -405,7 +405,7 @@ export function registerTools(
         "use browse with includeKeys for a quick preview alongside children." +
         (keysAvailable ? "" : " [currently unavailable — DB does not include key-expanded notations]"),
       inputSchema: z.object({
-        notation: z.string().min(1).describe("Base notation to expand (e.g. '25F23'). Must not contain parentheses."),
+        notation: z.string().min(1).describe("Base notation to expand (e.g. '25F23'). Must not be a key-expanded notation like '25F23(+46)'."),
         lang: z.string().default("en").describe(LANG_DESC),
         maxResults: z.number().int().min(1).max(335).default(25)
           .describe("Maximum key variants to return (1-335, default 25)."),
@@ -418,9 +418,9 @@ export function registerTools(
       if (!keysAvailable) {
         return errorResponse("Key expansion is not available — the loaded DB does not include key-expanded notations.");
       }
-      if (/[()]/.test(args.notation)) {
+      if (/\(\+/.test(args.notation)) {
         return errorResponse(
-          `"${args.notation}" is a key-expanded notation — expand_keys requires a base notation without parentheses (e.g. "${args.notation.replace(/\(.*$/, "")}").`
+          `"${args.notation}" is a key-expanded notation — expand_keys requires a base notation (e.g. "${args.notation.replace(/\(.*$/, "")}").`
         );
       }
       const result = db.expandKeys(args.notation, args.lang, args.maxResults, args.offset ?? 0);

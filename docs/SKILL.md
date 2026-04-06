@@ -9,7 +9,7 @@ description: >
   MCP. Also use when the user mentions Iconclass, subject classification,
   iconography, or art-historical taxonomy — even if they don't name the server.
 metadata:
-  version: "0.2.1"
+  version: "0.3.0"
   last_updated: "2026-04-06"
 ---
 

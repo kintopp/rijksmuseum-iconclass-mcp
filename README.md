@@ -170,7 +170,7 @@ If you use rijksmuseum-iconclass-mcp in your research, please cite it as follows
 
 **APA (7th ed.)**
 
-> Bosse, A. (2026). *rijksmuseum-iconclass-mcp* (Version 0.2.1) [Software]. Research and Infrastructure Support (RISE), University of Basel. https://github.com/kintopp/rijksmuseum-iconclass-mcp
+> Bosse, A. (2026). *rijksmuseum-iconclass-mcp* (Version 0.3.0) [Software]. Research and Infrastructure Support (RISE), University of Basel. https://github.com/kintopp/rijksmuseum-iconclass-mcp
 
 **BibTeX**
 ```bibtex
@@ -178,7 +178,7 @@ If you use rijksmuseum-iconclass-mcp in your research, please cite it as follows
   author    = {Bosse, Arno},
   title     = {{rijksmuseum-iconclass-mcp}},
   year      = {2026},
-  version   = {0.2.1},
+  version   = {0.3.0},
   publisher = {Research and Infrastructure Support (RISE), University of Basel},
   url       = {https://github.com/kintopp/rijksmuseum-iconclass-mcp},
   orcid     = {0000-0003-3681-1289},

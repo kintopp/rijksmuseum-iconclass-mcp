@@ -222,20 +222,32 @@ export function registerTools(
           );
         }
 
-        // Over-fetch if parentNotation will filter down results
-        const fetchK = args.parentNotation ? args.maxResults * 5 : args.maxResults;
-        const result = db.semanticSearch(
-          args.semanticQuery, queryVec, fetchK, args.lang,
-          args.onlyWithArtworks ?? false, args.collectionId,
-        );
-        if (!result) {
-          return errorResponse("Semantic search failed — embeddings may be corrupted.");
+        // Iteratively expand when parentNotation will filter down results;
+        // sparse subtrees need large overfetch to fill the requested page.
+        const MAX_K = 4096;
+        let fetchK = args.parentNotation ? Math.min(args.maxResults * 20, MAX_K) : args.maxResults;
+        let result: NonNullable<ReturnType<typeof db.semanticSearch>> | null = null;
+
+        while (fetchK <= MAX_K) {
+          result = db.semanticSearch(
+            args.semanticQuery, queryVec, fetchK, args.lang,
+            args.onlyWithArtworks ?? false, args.collectionId,
+          );
+          if (!result) {
+            return errorResponse("Semantic search failed — embeddings may be corrupted.");
+          }
+          if (!args.parentNotation) break;
+          result.results = result.results.filter(e => e.notation.startsWith(args.parentNotation!));
+          if (result.results.length >= args.maxResults || fetchK >= MAX_K) break;
+          fetchK = Math.min(fetchK * 4, MAX_K);
         }
+        // result is guaranteed non-null: the loop always executes at least once,
+        // and the only null path returns errorResponse above.
+        result = result!;
 
         if (args.parentNotation) {
-          result.results = result.results.filter(e => e.notation.startsWith(args.parentNotation!));
-          result.results = result.results.slice(0, args.maxResults);
           result.totalResults = result.results.length;
+          result.results = result.results.slice(0, args.maxResults);
         }
 
         const header = `${result.results.length} semantic matches for "${args.semanticQuery}"`;

@@ -118,7 +118,7 @@ Sample prompts that show what the AI assistant can do with this server's six too
 
 ### 7. From Notation to Artwork
 
-*"Find the Iconclass notation for 'the deposition from the cross', then check which collections have artworks for it."* [link](https://claude.ai/share/a87d2b5b-a7f4-4d65-b973-9cd7eeba2069)
+*"Find the Iconclass notation for 'the deposition from the cross', then check whether the Rijksmuseum has have artworks with this notation."* [link](https://claude.ai/share/a87d2b5b-a7f4-4d65-b973-9cd7eeba2069)
 
 **Tools:** `search` (FTS), `find_artworks`, then `search_artwork`
 
@@ -126,7 +126,7 @@ Sample prompts that show what the AI assistant can do with this server's six too
 - `search` with `query: "deposition from the cross"` → 0 results → "semanticQuery": "deposition from the cross, taking Christ down from the cross" → 73D71 — "descent from the cross" and its sub-notations
 - `find_artworks` with `notation: ["73D71", "73D711", "73D712", "73D713","73D714"]` to see artwork counts for these related notations in the Rijksmuseum
 
-**Why it matters:** A [forum question about quantitative iconographical data](https://forum.iconclass.org/t/quantitative-iconographical-data/219) highlighted a core challenge: a researcher studying hospital artworks needed to know which collections hold works tagged with specific Iconclass codes, and whether any single collection's coverage is representative. The `find_artworks` tool attempts to address this directly.
+**Why it matters:** A similar challenge was highlighted in a [forum question about quantitative iconographical data](https://forum.iconclass.org/t/quantitative-iconographical-data/219): a researcher studying hospital artworks needed to know which collections hold works tagged with specific Iconclass codes, and whether any single collection's coverage is representative. The `find_artworks` tool attempts to address this for the Rijksmuseum.
 
 ---
 

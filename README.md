@@ -20,7 +20,7 @@ Go to _Settings_ → _Connectors_ → _Add custom connector_ → name it as you 
 
 **Recommended:** Next, follow the same procedure to install its companion resource, [rijksmuseum-mcp+](https://github.com/kintopp/rijksmuseum-mcp-plus). This allows you to explore over 830,000 artworks and metadata records from the Rijksmuseum with semantic search, provenance analysis, similarity comparisons, and spatial reasoning. 
 
-## Research skill##
+## Research skill
 
 The [`rijksmuseum-iconclass-mcp.skill`](docs/rijksmuseum-iconclass-mcp.skill.zip) file (.zip archive) is a [research skill](https://support.claude.com/en/articles/12512176-what-are-skills) that gives the AI assistant detailed, written guidance on how best to use the rijksmuseum-mcp+ tools effectively: which tool to choose for a given question type, how to combine searches, important metadata distinctions (e.g. `subject` terms vs `iconclass` notations), and known limitations. Installing the skill is optional but will significantly improve the quality and efficiency of your AI assistant's responses when exploring the collection. 
 

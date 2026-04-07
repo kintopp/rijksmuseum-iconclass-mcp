@@ -4,6 +4,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import express from "express";
 import cors from "cors";
+import compression from "compression";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -137,16 +138,33 @@ async function runHttp(): Promise<void> {
       origin: allowedOrigins ? allowedOrigins.split(",") : "*",
     })
   );
+  app.use(compression({ threshold: 1024 })); // gzip responses >= 1 KB
   app.use(express.json());
 
   // ── MCP endpoint (stateless — no sessions, no SSE streams) ─────
+  //
+  // The McpServer (with all registered tools) is created once and reused
+  // across requests. Only the transport is per-request. Protocol.connect()
+  // requires _transport to be unset, which transport.close() ensures via
+  // the _onclose callback. No long-lived connections to time out.
+
+  const server = createServer();
+
+  // 30s safety net — respond 504 before Railway's proxy kills the connection silently
+  app.use("/mcp", (_req: express.Request, res: express.Response, next: express.NextFunction) => {
+    res.setTimeout(30_000, () => {
+      if (!res.headersSent) {
+        res.status(504).json({ error: "Request timeout" });
+      }
+    });
+    next();
+  });
 
   app.post("/mcp", async (req: express.Request, res: express.Response) => {
     try {
       const transport = new StreamableHTTPServerTransport({
         sessionIdGenerator: undefined,
       });
-      const server = createServer();
       await server.connect(transport);
       await transport.handleRequest(req, res, req.body);
       await transport.close();
@@ -190,8 +208,19 @@ async function runHttp(): Promise<void> {
 
 function shutdown() {
   console.error("Shutting down...");
-  httpServer?.close();
-  process.exit(0);
+  if (httpServer) {
+    httpServer.close(() => {
+      console.error("All connections closed.");
+      process.exit(0);
+    });
+    // Force exit after 5s if connections don't drain
+    setTimeout(() => {
+      console.error("Forcing shutdown after timeout.");
+      process.exit(1);
+    }, 5000).unref();
+  } else {
+    process.exit(0);
+  }
 }
 
 process.on("SIGTERM", shutdown);

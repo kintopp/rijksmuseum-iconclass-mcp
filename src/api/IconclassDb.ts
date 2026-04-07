@@ -122,6 +122,8 @@ export class IconclassDb {
   private stmtKeyVariantsPage!: Statement;
   private stmtKeyVariantsCount!: Statement;
   private stmtGetCollectionCounts: Statement | null = null;
+  private stmtPresenceJoin: Statement | null = null;
+  private stmtBatchInsert: Statement | null = null;
   private stmtQuantize: Statement | null = null;
   private stmtKnn: Statement | null = null;
   private stmtFilteredKnn: Statement | null = null;
@@ -179,11 +181,22 @@ export class IconclassDb {
             };
           } catch { /* version_info may not exist in older DBs */ }
 
+          // Pre-create temp table and cache statements used by fetchPresenceForSort
+          this.db!.exec("CREATE TEMP TABLE IF NOT EXISTS _batch_notations (notation TEXT PRIMARY KEY)");
+          this.stmtPresenceJoin = this.db!.prepare(`
+            SELECT cc.notation, cc.collection_id
+            FROM counts.collection_counts cc
+            INNER JOIN _batch_notations bn ON cc.notation = bn.notation
+          `);
+          this.stmtBatchInsert = this.db!.prepare("INSERT OR IGNORE INTO _batch_notations VALUES (?)");
+
           console.error(`  Counts DB attached: ${countsPath} (${this._collections.length} collections, ${this._countsDbVersion?.releaseTag ?? "no tag"})`);
         } catch (err) {
           // Schema mismatch or missing tables — fully discard the sidecar so tools
           // don't expose stale/inconsistent collection data.
           this.stmtGetCollectionCounts = null;
+          this.stmtPresenceJoin = null;
+          this.stmtBatchInsert = null;
           this._collections = [];
           this._collectionsMap = new Map();
           this._countsDbVersion = null;
@@ -272,6 +285,8 @@ export class IconclassDb {
     } catch (err) {
       console.error(`Failed to open Iconclass DB: ${err instanceof Error ? err.message : err}`);
       this.stmtGetCollectionCounts = null;
+      this.stmtPresenceJoin = null;
+      this.stmtBatchInsert = null;
       this._collections = [];
       this._collectionsMap = new Map();
       this._countsDbVersion = null;
@@ -623,20 +638,14 @@ export class IconclassDb {
     }
 
     // Batch: insert all notations into a temp table, then JOIN against counts
-    this.db.exec("CREATE TEMP TABLE IF NOT EXISTS _batch_notations (notation TEXT PRIMARY KEY)");
     this.db.exec("DELETE FROM _batch_notations");
 
-    const insert = this.db.prepare("INSERT OR IGNORE INTO _batch_notations VALUES (?)");
     const insertAll = this.db.transaction((ns: string[]) => {
-      for (const n of ns) insert.run(n);
+      for (const n of ns) this.stmtBatchInsert!.run(n);
     });
     insertAll(notations);
 
-    const presenceRows = this.db.prepare(`
-      SELECT cc.notation, cc.collection_id
-      FROM counts.collection_counts cc
-      INNER JOIN _batch_notations bn ON cc.notation = bn.notation
-    `).all() as { notation: string; collection_id: string }[];
+    const presenceRows = this.stmtPresenceJoin!.all() as { notation: string; collection_id: string }[];
 
     // Build presence map
     for (const pr of presenceRows) {

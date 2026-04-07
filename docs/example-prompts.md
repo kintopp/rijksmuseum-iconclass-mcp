@@ -1,6 +1,6 @@
 ## Example Prompts
 
-Sample prompts that show what the AI assistant can do with this server's six tools. Each prompt was inspired by a real research question drawn from the [Iconclass community](https://forum.iconclass.org).
+Sample prompts that show what the AI assistant can do with this server's six tools. Each prompt was inspired by a real research question drawn from the [Iconclass community](https://forum.iconclass.org). The links following each prompt show you how that query was previously answered in Claude Desktop. 
 
 - [Smell and the Senses in Art](#1-smell-and-the-senses-in-art)
 - [Finding Saints by Name](#2-finding-saints-by-name)

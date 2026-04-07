@@ -11,5 +11,5 @@ __pycache__/
 CLAUDE.md
 AGENTS.md
 offline/
-data/arkyves-testset-data.json
-data/.staedel-term-map-state.json
+docs/rijksmuseum-iconclass-mcp.skill
+

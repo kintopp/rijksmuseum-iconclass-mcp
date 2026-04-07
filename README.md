@@ -4,7 +4,7 @@
 
 **rijksmuseum-iconclass-mcp** is a tool for searching and exploring [Iconclass](https://iconclass.org) notations in natural language with an AI assistant. It was designed as a companion resource for [rijksmuseum-mcp+](https://github.com/kintopp/rijksmuseum-mcp-plus), an analogous resource for the [Rijksmuseum's](https://www.rijksmuseum.nl/en) art collections.
 
-The tool provides access to over 1.3 million Iconclass notations — all of the c. 39,000 base concepts and c. 1.3 million key-expanded variants that add modifiers like posture, context, or symbolism. Beside simple keyword matching, rijksmuseum-iconclass-mcp supports semantic search in natural language, so that you can discover iconclass notations related to concepts like "homesickness and exile" -> `94I2111 — "Ulysses longs for home"` even when the exact search term doesn't appear in the notation text. You can also, for example, use the AI assistant to explore the Iconclass hierarchy, visualise their relationships, or prompt it for cataloguing advice. The database includes artwork count data from the [Rijksmuseum](https://www.rijksmuseum.nl/en/collection), showing how many artworks are tagged with each notation. 
+The tool provides access to over 1.3 million Iconclass notations — all of the c. 39,000 base concepts and c. 1.3 million key-expanded variants that add modifiers like posture, context, or symbolism. Beside simple keyword matching, rijksmuseum-iconclass-mcp supports semantic search in natural language, so that you can discover iconclass notations related to concepts like "homesickness and exile" -> `94I2111 — "Ulysses longs for home"` even when the exact search term doesn't appear in the notation text. You can also, for example, use the AI assistant to explore the Iconclass hierarchy, visualise their relationships, or prompt it for cataloguing advice. The database includes data from the [Rijksmuseum](https://www.rijksmuseum.nl/en/collection) showing how many artworks are tagged with each notation. 
 
 The resource was developed as a technology demo by the [Research and Infrastructure Support](https://rise.unibas.ch/en/) (RISE) group at the University of Basel and complements our ongoing work on [benchmarking](https://github.com/RISE-UNIBAS/humanities_data_benchmark) and [optimizing](https://github.com/kintopp/dspy-rise-humbench) humanities research tasks carried out by large language models (LLMs). We are particularly interested in exploring the research opportunities, methodological risks, and technical challenges posed by retrieving and analysing data with LLMs. If you are interested in collaborating with us in this area, please [get in touch](mailto:rise@unibas.ch).
 
@@ -16,17 +16,19 @@ For the best results, add rijksmuseum-iconclass-mcp as a custom connector in [Cl
 https://rijksmuseum-iconclass-mcp-production.up.railway.app/mcp
 ```
 
-Go to _Settings_ → _Connectors_ → _Add custom connector_ → name it as you like and paste the URL into the _Remote MCP Server URL_ field. You can ignore the Authentication section. Once configured, optionally set the permissions for its tools (e.g. 'Always allow'). See Anthropic's [instructions](https://support.claude.com/en/articles/11175166-get-started-with-custom-connectors-using-remote-mcp) for more details. To use it for free without a subscription, please see [Choosing an AI System](#choosing-an-ai-system).
+Go to _Settings_ → _Connectors_ → _Add custom connector_ → name it as you like and paste the URL into the _Remote MCP Server URL_ field. You can ignore the Authentication section. Once configured, optionally set the permissions for its tools (e.g. 'Always allow'). See Anthropic's [instructions](https://support.claude.com/en/articles/11175166-get-started-with-custom-connectors-using-remote-mcp) for  details. To learn how to use rijksmuseum-iconclass-mcp with a different AI assistant **without a paid subscription**, please see [Choosing an AI System](#choosing-an-ai-system) below.
 
-Recommended: After that, follow the same procedure to install its companion resource, [rijksmuseum-mcp+](https://github.com/kintopp/rijksmuseum-mcp-plus). This allows you to explore over 830,000 artworks and metadata records from the Rijksmuseum with semantic search, provenance analysis, similarity comparisons, and spatial reasoning. 
+**Recommended:** Next, follow the same procedure to install its companion resource, [rijksmuseum-mcp+](https://github.com/kintopp/rijksmuseum-mcp-plus). This allows you to explore over 830,000 artworks and metadata records from the Rijksmuseum with semantic search, provenance analysis, similarity comparisons, and spatial reasoning. 
+
+## Research skill##
+
+The [`rijksmuseum-iconclass-mcp.skill`](docs/rijksmuseum-iconclass-mcp.skill.zip) file (.zip archive) is a [research skill](https://support.claude.com/en/articles/12512176-what-are-skills) that gives the AI assistant detailed, written guidance on how best to use the rijksmuseum-mcp+ tools effectively: which tool to choose for a given question type, how to combine searches, important metadata distinctions (e.g. `subject` terms vs `iconclass` notations), and known limitations. Installing the skill is optional but will significantly improve the quality and efficiency of your AI assistant's responses when exploring the collection. 
+
+It can be installed in Claude by following [these instructions](https://support.claude.com/en/articles/12580051-teach-claude-your-way-of-working-using-skills). Skill files were originally developed by Anthropic for their Claude products but have since become an [open standard](https://agentskills.io/home). Even chatbots and applications without explicit support for skill packages can make use of the rijksmuseum-mcp+ skill by uploading/sharing the [SKILL.md](/docs/rijksmuseum-mcp%2B) file comprising directly with the AI assistant at the start of a research session. Some chatbots (e.g. Mistral's [LeChat](https://chat.mistral.ai/chat)) also allow you to permanently share files across sessions by uploading it to a [personal library](https://help.mistral.ai/en/articles/347582-what-are-libraries-and-how-do-i-use-them-in-le-chat). 
 
 ## Sample Queries
 
-tba. See [docs/example-prompts.md](docs/example-prompts.md).
-
-## Features
-
-tba.
+After you've connected rijksmuseum-mcp+ to your AI system, you can search, explore and ask questions about the Iconclass in natural language. For examples of the kinds of queries the systems can answer, see [docs/example-prompts.md](docs/example-prompts.md). The links following each prompt show you how that query was previously answered in Claude Desktop. 
 
 ## Choosing an AI system
 
@@ -102,9 +104,7 @@ notation: "73B57"  → Rijksmuseum: 24 artworks
 notation: ["73D6", "92D192134"]  → batch lookup with counts
 ```
 
-Currently includes:
-
-- **Rijksmuseum, Amsterdam** — artwork counts per notation; use [rijksmuseum-mcp-plus](https://github.com/kintopp/rijksmuseum-mcp-plus) for artwork search
+This currently only provides data from the Rijksmuseum in Amsterdam. 
 
 ## Technical Notes
 

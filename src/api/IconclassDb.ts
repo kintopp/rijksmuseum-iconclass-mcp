@@ -124,6 +124,8 @@ export class IconclassDb {
   private stmtGetCollectionCounts: Statement | null = null;
   private stmtPresenceJoin: Statement | null = null;
   private stmtBatchInsert: Statement | null = null;
+  private stmtDeleteBatch: Statement | null = null;
+  private batchInsertAll: ((ns: string[]) => void) | null = null;
   private stmtQuantize: Statement | null = null;
   private stmtKnn: Statement | null = null;
   private stmtFilteredKnn: Statement | null = null;
@@ -189,6 +191,10 @@ export class IconclassDb {
             INNER JOIN _batch_notations bn ON cc.notation = bn.notation
           `);
           this.stmtBatchInsert = this.db!.prepare("INSERT OR IGNORE INTO _batch_notations VALUES (?)");
+          this.stmtDeleteBatch = this.db!.prepare("DELETE FROM _batch_notations");
+          this.batchInsertAll = this.db!.transaction((ns: string[]) => {
+            for (const n of ns) this.stmtBatchInsert!.run(n);
+          });
 
           console.error(`  Counts DB attached: ${countsPath} (${this._collections.length} collections, ${this._countsDbVersion?.releaseTag ?? "no tag"})`);
         } catch (err) {
@@ -197,6 +203,8 @@ export class IconclassDb {
           this.stmtGetCollectionCounts = null;
           this.stmtPresenceJoin = null;
           this.stmtBatchInsert = null;
+          this.stmtDeleteBatch = null;
+          this.batchInsertAll = null;
           this._collections = [];
           this._collectionsMap = new Map();
           this._countsDbVersion = null;
@@ -638,12 +646,8 @@ export class IconclassDb {
     }
 
     // Batch: insert all notations into a temp table, then JOIN against counts
-    this.db.exec("DELETE FROM _batch_notations");
-
-    const insertAll = this.db.transaction((ns: string[]) => {
-      for (const n of ns) this.stmtBatchInsert!.run(n);
-    });
-    insertAll(notations);
+    this.stmtDeleteBatch!.run();
+    this.batchInsertAll!(notations);
 
     const presenceRows = this.stmtPresenceJoin!.all() as { notation: string; collection_id: string }[];
 

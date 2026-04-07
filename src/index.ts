@@ -143,10 +143,8 @@ async function runHttp(): Promise<void> {
 
   // ── MCP endpoint (stateless — no sessions, no SSE streams) ─────
   //
-  // The McpServer (with all registered tools) is created once and reused
-  // across requests. Only the transport is per-request. Protocol.connect()
-  // requires _transport to be unset, which transport.close() ensures via
-  // the _onclose callback. No long-lived connections to time out.
+  // Server is reused across requests; only the transport is per-request.
+  // transport.close() resets the server so the next connect() succeeds.
 
   const server = createServer();
 

@@ -24,7 +24,7 @@ Go to _Settings_ → _Connectors_ → _Add custom connector_ → name it as you 
 
 The [`rijksmuseum-iconclass-mcp.skill`](docs/rijksmuseum-iconclass-mcp.skill.zip) file (.zip archive) is a [research skill](https://support.claude.com/en/articles/12512176-what-are-skills) that gives the AI assistant detailed, written guidance on how best to use the rijksmuseum-mcp+ tools effectively: which tool to choose for a given question type, how to combine searches, important metadata distinctions (e.g. `subject` terms vs `iconclass` notations), and known limitations. Installing the skill is optional but will significantly improve the quality and efficiency of your AI assistant's responses when exploring the collection. 
 
-It can be installed in Claude by following [these instructions](https://support.claude.com/en/articles/12580051-teach-claude-your-way-of-working-using-skills). Skill files were originally developed by Anthropic for their Claude products but have since become an [open standard](https://agentskills.io/home). Even chatbots and applications without explicit support for skill packages can make use of the rijksmuseum-mcp+ skill by uploading/sharing the [SKILL.md](/docs/rijksmuseum-mcp%2B) file comprising directly with the AI assistant at the start of a research session. Some chatbots (e.g. Mistral's [LeChat](https://chat.mistral.ai/chat)) also allow you to permanently share files across sessions by uploading it to a [personal library](https://help.mistral.ai/en/articles/347582-what-are-libraries-and-how-do-i-use-them-in-le-chat). 
+It can be installed in Claude by following [these instructions](https://claude.com/resources/tutorials/teach-claude-your-way-of-working-using-skills). Skill files were originally developed by Anthropic for their Claude products but have since become an [open standard](https://agentskills.io/home). Even chatbots and applications without explicit support for skill packages can make use of the rijksmuseum-mcp+ skill by uploading/sharing the [SKILL.md](docs/SKILL.md) file comprising directly with the AI assistant at the start of a research session. Some chatbots (e.g. Mistral's [LeChat](https://chat.mistral.ai/chat)) also allow you to permanently share files across sessions by uploading it to a [personal library](https://help.mistral.ai/en/articles/347582-what-are-libraries-and-how-do-i-use-them-in-le-chat). 
 
 ## Sample Queries
 
@@ -108,7 +108,7 @@ This currently only provides data from the Rijksmuseum in Amsterdam.
 
 ## Technical Notes
 
-Introduction tba. For local setup (stdio or HTTP), deployment, architecture, data sources, and configuration, please see the [technical guide](/docs/technical-guide.md).
+Introduction tba. For local setup (stdio or HTTP), deployment, architecture, data sources, and configuration, please see the [technical guide](docs/technical-guide.md).
 
 ```mermaid
 graph TB

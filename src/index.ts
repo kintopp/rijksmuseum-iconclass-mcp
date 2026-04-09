@@ -72,7 +72,7 @@ function createServer(): McpServer {
   const server = new McpServer(
     { name: SERVER_NAME, version: SERVER_VERSION },
     {
-      capabilities: { tools: {} },
+      capabilities: { tools: {}, logging: {} },
       instructions:
         "Iconclass subject classification explorer — a hierarchical taxonomy for art subjects " +
         "covering 1.3 million notations across 13 languages.\n\n" +

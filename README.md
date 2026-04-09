@@ -153,7 +153,7 @@ graph TB
 
 ## Citation
 
-If you use rijksmuseum-iconclass-mcp in your research, please cite it as follows. A `CITATION.cff` file is included for use with Zotero, GitHub's "Cite this repository" button, and other reference managers.
+If you use rijksmuseum-iconclass-mcp in your research, please cite it as follows:
 
 **APA (7th ed.)**
 

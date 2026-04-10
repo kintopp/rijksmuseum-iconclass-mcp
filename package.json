@@ -29,6 +29,7 @@
     "zod": "^3.25.0"
   },
   "devDependencies": {
+    "@mcpjam/sdk": "^0.8.16",
     "@types/better-sqlite3": "^7.6.13",
     "@types/compression": "^1.8.1",
     "@types/cors": "^2.8.17",

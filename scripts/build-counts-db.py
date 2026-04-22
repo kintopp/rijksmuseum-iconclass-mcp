@@ -24,6 +24,7 @@ from datetime import datetime, timezone
 
 COLLECTION_META: dict[str, tuple[str, str | None]] = {
     "rijksmuseum": ("Rijksmuseum, Amsterdam", None),
+    "rkd": ("RKD", None),
 }
 
 

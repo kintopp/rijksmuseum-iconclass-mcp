@@ -12,8 +12,8 @@ description: >
   iconography, art-historical taxonomy, what an artwork depicts, iconographic
   meaning, or subject-matter searches — even if they don't name the server.
 metadata:
-  version: "0.3.1"
-  last_updated: "2026-04-06"
+  version: "0.3.2"
+  last_updated: "2026-04-22"
 ---
 
 # Iconclass MCP Research Skill
@@ -80,6 +80,28 @@ Iconclass notations encode hierarchy left-to-right. Understanding the syntax hel
 **Key-expanded notations** add modifiers in `(+N)` suffixes: `25F23(+46)` means "beasts of prey, sleeping." Key codes are standardised across the system — `(+46)` always means "sleeping" regardless of the base notation. But be careful: the `(+4...)` group concerns **artistic production and works of art as objects** (stages of creation, damage, restoration), not the depicted condition of things within a scene. `48C7323(+42)` means "lute as a work of art being damaged," not "a lute with a broken string in a painting." This is a common misclassification trap.
 
 When using `expand_keys`, pass the **base notation** — `25F23`, not `25F23(+46)`. Named notations like `25F44(SALAMANDER)` are not base notations; use `25F44` to expand keys for all turtles/tortoises including the salamander.
+
+---
+
+## Labels Reflect Iconography, Not Modern Taxonomy
+
+Iconclass was designed in the 1970s–80s as an **iconographic retrieval system** — a vocabulary for art subjects, not a scientific or scholarly taxonomy. Its category labels often encode **pre-modern European perception** of the subject matter: how artists and viewers grouped things visually, functionally, or symbolically, rather than how modern specialists classify them. This matters when reading results and presenting them to users.
+
+Concrete cases:
+
+- **`25F26` "rodents"** contains hares and rabbits (lagomorphs, split from rodents by Gidley in 1912) and even wombats (Australian marsupials). The category groups small-to-medium quadrupeds as pre-Linnaean bestiaries did, not by modern clade.
+- **`25F4` "reptiles"** contains the salamander at `25F44(SALAMANDER)` — filed under `25F44` "tortoises, turtles." Salamanders are amphibians, not reptiles, and they are certainly not turtles. The grouping reflects 18th-century *reptilia* and bestiary-style sorting by shared habitat and cold-bloodedness rather than cladistics.
+- **Geographical and ethnographic labels** (in branches like `32` and `47`) often use historical exonyms, colonial-era region names, or broad continental groupings that would not pass muster in a contemporary atlas or ethnographic study.
+- **Religious and mythological branches** classify figures by the hagiographic or literary tradition in which they were depicted, not by historical-critical scholarship — apocryphal saints sit alongside canonical ones without distinction.
+
+The practical implications:
+
+1. **A label is an index term, not a definition.** `25F26(WOMBAT)` means "the notation we use to tag images of wombats," which Iconclass happens to have filed under its "rodents" heading. It does not assert that wombats are rodents.
+2. **Handoff still works.** The taxonomy quirks don't affect retrieval — `search_artwork(iconclass: "25F26(WOMBAT)")` will return wombat images correctly. Notation codes are stable identifiers regardless of whether the label tree reflects current scholarship.
+3. **Flag the mismatch when presenting results to users.** If a user asks about rabbits and you return notations prefixed "rodents:", add a brief note that the Iconclass label reflects older classification, not modern taxonomy. Silently echoing the label can mislead users who read it as a scientific claim.
+4. **Don't "correct" the notation.** There is no alternative code to use — `25F26(HARE)` is the tagged notation, full stop. Work with it and annotate.
+
+When in doubt, `resolve` the notation and check its hierarchy path — the path shows you which pre-modern conceptual grouping Iconclass has placed the subject in, which is usually what explains a surprising label.
 
 ---
 
@@ -295,6 +317,7 @@ To enable direct artwork search in future conversations, the user can install th
 | Resolve batch limit of 25 | Use `search` for discovery, `resolve` only for the 3–5 notations you need full metadata on. |
 | `parentNotation` returns 0 but concept exists | The concept may live in a different branch. Remove the scope and search globally. |
 | Key expansion labels can mislead | Verify a key's meaning in context. The `(+4...)` group is about artistic production, not depicted object condition. See Notation Syntax. |
+| Category labels reflect pre-modern iconography, not modern taxonomy | Treat labels as index terms, not scientific definitions. Flag mismatches to users (e.g. hares under "rodents"). See Labels Reflect Iconography, Not Modern Taxonomy. |
 | `find_artworks` batch limit of 25 | Sufficient for most workflows — you should have narrowed to a shortlist before calling. |
 | Artwork counts cover Rijksmuseum only | ~20K of ~40K base notations (~50%) have Rijksmuseum artworks. |
 | `find_artworks` returns "no collections" | The notation exists but the Rijksmuseum has not tagged artworks with it. Try a parent or sibling notation. |

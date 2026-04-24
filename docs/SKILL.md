@@ -12,8 +12,8 @@ description: >
   iconography, art-historical taxonomy, what an artwork depicts, iconographic
   meaning, or subject-matter searches — even if they don't name the server.
 metadata:
-  version: "0.3.2"
-  last_updated: "2026-04-22"
+  version: "0.3.3"
+  last_updated: "2026-04-24"
 ---
 
 # Iconclass MCP Research Skill
@@ -90,7 +90,9 @@ Iconclass was designed in the 1970s–80s as an **iconographic retrieval system*
 Concrete cases:
 
 - **`25F26` "rodents"** contains hares and rabbits (lagomorphs, split from rodents by Gidley in 1912) and even wombats (Australian marsupials). The category groups small-to-medium quadrupeds as pre-Linnaean bestiaries did, not by modern clade.
-- **`25F4` "reptiles"** contains the salamander at `25F44(SALAMANDER)` — filed under `25F44` "tortoises, turtles." Salamanders are amphibians, not reptiles, and they are certainly not turtles. The grouping reflects 18th-century *reptilia* and bestiary-style sorting by shared habitat and cold-bloodedness rather than cladistics.
+- **The real salamander has no entry in the naturalistic tree at all.** The only salamander notation is `25FF412` "salamander (fabulous animal); salamander as spirit of fire" — in the fabulous tree. `25F5` amphibians has no `(SALAMANDER)` variant. A client looking for salamander images must use `25FF412` even when the painting shows an ordinary amphibian: the code is labelled "fabulous" but it is the only code the catalogue offers.
+- **Many common animals have no real-animal notation at all.** Horse, goat, sheep, cattle, donkey, reindeer, and rooster are all absent from `25F*`. They exist in the catalogue only through their functional roles — husbandry (`47I2*`), transport and traction (`46C13/14*`), saint attributes (`11H(GEORGE)`, `11H(ELOI)`, `11H(PETER)`), mythology (`25FF24(PEGASUS)`), literature (`82B(BAIARDO)`), and the fabulous tree more broadly. `25F24` "hoofed animals" in particular contains only wild and exotic species (antelope, camel, giraffe, rhinoceros, zebra) — the familiar European domesticated quadrupeds are elsewhere. This is not an accident; it reflects Iconclass's working definition of what counts as a "naturalistic animal picture."
+- **Real vipers and fishes known via the bestiary tradition** (aspic, cerastes, remora, sea-dragon) appear only in `25FF*` (fabulous), despite being real species. They entered the catalogue through their medieval literary identity rather than their zoology.
 - **Geographical and ethnographic labels** (in branches like `32` and `47`) often use historical exonyms, colonial-era region names, or broad continental groupings that would not pass muster in a contemporary atlas or ethnographic study.
 - **Religious and mythological branches** classify figures by the hagiographic or literary tradition in which they were depicted, not by historical-critical scholarship — apocryphal saints sit alongside canonical ones without distinction.
 
@@ -194,6 +196,25 @@ search(query: "dog", maxResults: 10)
 resolve(notation: ["34B11", "11A(DOG)", "25FF21(DOG)"])
 # -> full metadata for comparison — paths, keywords, counts
 ```
+
+#### Searching for a specific animal — the animal tree is a cultural index, not a biological one
+
+**Cross-branch presence is the rule for animals, not the exception.** Iconclass indexes animals by their culturally dominant role, and for many common species the `25F*` "real-animal tree" notation you would expect simply does not exist. A client asking "show me artworks depicting horses" cannot start with `25F24` — there is no `25F24(HORSE)`. Real horses live only in transport, saint attributes, mythology, and literature.
+
+Three patterns to recognise:
+
+- **Domesticated animals are usually outside `25F*`.** Horse, goat, sheep, cattle, donkey, reindeer, and rooster have no entries under real animals. Look in `47I2*` husbandry, `46C13/14*` transport and traction, `11H(*)` saint attributes, `25FF*` fabulous variants, `9X` classical mythology, `82B(*)` literary characters.
+- **Bestiary-famous real animals may live only in `25FF*`.** Salamander, aspic, cerastes (both real vipers), remora, sea-dragon — all real species — appear only in the fabulous tree. Do not skip `25FF*` just because the target animal is biologically real.
+- **Wild/exotic animals are reliably in `25F*`.** Antelope, bison, camel, giraffe, rhinoceros, zebra, wombat, elk, oryx, elephant, monkey, most birds and invertebrates — these are in the naturalistic tree as expected. `25F3` birds is the cleanest branch in the whole catalogue.
+
+Search strategy for a specific animal:
+
+1. **Start global, not scoped.** `search(query: "animal-name", maxResults: 25)` — do **not** pass `parentNotation: "25F"`. A scoped search hides the cross-branch reality.
+2. **Read the branches, not just the labels.** The hierarchy path on each result tells you which cultural role the notation captures. For horse you will see `46C13*` (transport), `11H(GEORGE)` (saint), `25FF24(PEGASUS)` (myth), etc.
+3. **Use `find_artworks` counts to choose.** When an animal appears in several branches, the Rijksmuseum usually tags most artworks with one canonical notation. The one with the highest count is the best handoff code. A `25F*` notation with zero artwork counts is a strong signal that the Rijksmuseum uses a different branch's code for that animal.
+4. **For compound queries, combine across branches.** "Artworks of St. George with a horse" is `search_artwork(iconclass: ["11H(GEORGE)", ...])` where the second code is whichever transport/saint horse notation actually has coverage — not `25F24(HORSE)`, which does not exist.
+
+When presenting results to users, flag the pattern honestly. A user who asked for horse images should be told the animal tree doesn't cover horses and that the catalogue indexes them by role; silently returning only `11H(GEORGE)` results without that context can mislead.
 
 ### 4. Scoped Search Within a Subtree
 
@@ -318,6 +339,7 @@ To enable direct artwork search in future conversations, the user can install th
 | `parentNotation` returns 0 but concept exists | The concept may live in a different branch. Remove the scope and search globally. |
 | Key expansion labels can mislead | Verify a key's meaning in context. The `(+4...)` group is about artistic production, not depicted object condition. See Notation Syntax. |
 | Category labels reflect pre-modern iconography, not modern taxonomy | Treat labels as index terms, not scientific definitions. Flag mismatches to users (e.g. hares under "rodents"). See Labels Reflect Iconography, Not Modern Taxonomy. |
+| Common animals (horse, goat, rooster, salamander) have no notation in `25F*` | Search globally, not scoped to `25F*`. The animal's code is in husbandry, transport, saints, mythology, literature, or the fabulous tree. See Workflow 3 → "Searching for a specific animal." |
 | `find_artworks` batch limit of 25 | Sufficient for most workflows — you should have narrowed to a shortlist before calling. |
 | Artwork counts cover Rijksmuseum only | ~20K of ~40K base notations (~50%) have Rijksmuseum artworks. |
 | `find_artworks` returns "no collections" | The notation exists but the Rijksmuseum has not tagged artworks with it. Try a parent or sibling notation. |

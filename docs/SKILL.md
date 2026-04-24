@@ -66,6 +66,7 @@ The `iconclass` parameter accepts exact notation codes (language-independent). T
 | "Which notations have Rijksmuseum artworks?" | `search` with `collectionId: "rijksmuseum"` |
 | "How many Rijksmuseum artworks depict X?" | `find_artworks` with notation(s) from a prior search |
 | "Show me artworks about X" | Full workflow: `search` → `find_artworks` → `search_artwork(iconclass: ...)` on rijksmuseum-mcp+ |
+| "Show me artworks of [a common animal]" | Start global (no `parentNotation`) — the animal may not be in `25F*`. See Workflow 3 → Searching for a specific animal. |
 
 ---
 
@@ -75,11 +76,11 @@ Iconclass notations encode hierarchy left-to-right. Understanding the syntax hel
 
 **Base notations** use alphanumeric codes: `7` (Bible) → `73` (New Testament) → `73D` (Passion) → `73D8` (instruments of the Passion) → `73D82` (road to Calvary).
 
-**Named notations** add a parenthesised qualifier for specific entities: `11H(FRANCIS)` (St. Francis), `25F44(SALAMANDER)` (salamander). The name is part of the notation — `11H(FRANCIS)` and `11H(JEROME)` are siblings under `11H(...)` (male saints). Named notations for female saints use `11HH(...)`.
+**Named notations** add a parenthesised qualifier for specific entities: `11H(FRANCIS)` (St. Francis), `25F26(WOMBAT)` (wombat). The name is part of the notation — `11H(FRANCIS)` and `11H(JEROME)` are siblings under `11H(...)` (male saints). Named notations for female saints use `11HH(...)`.
 
 **Key-expanded notations** add modifiers in `(+N)` suffixes: `25F23(+46)` means "beasts of prey, sleeping." Key codes are standardised across the system — `(+46)` always means "sleeping" regardless of the base notation. But be careful: the `(+4...)` group concerns **artistic production and works of art as objects** (stages of creation, damage, restoration), not the depicted condition of things within a scene. `48C7323(+42)` means "lute as a work of art being damaged," not "a lute with a broken string in a painting." This is a common misclassification trap.
 
-When using `expand_keys`, pass the **base notation** — `25F23`, not `25F23(+46)`. Named notations like `25F44(SALAMANDER)` are not base notations; use `25F44` to expand keys for all turtles/tortoises including the salamander.
+When using `expand_keys`, pass the **base notation** — `25F23`, not `25F23(+46)`. Named notations like `25F23(LION)` are not base notations either; use `25F23` to expand keys for all beasts of prey, lion included.
 
 ---
 

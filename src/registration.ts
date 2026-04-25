@@ -137,6 +137,18 @@ const TOOL_LIMITS = {
 const LANG_CODES = ["en", "nl", "de", "fr", "it", "es", "pt", "fi", "cz", "hu", "pl", "jp", "zh"] as const;
 const LANG_DESC = `Preferred language for labels (default: 'en'). Available: ${LANG_CODES.join(", ")}.`;
 
+// ─── Tool annotations ───────────────────────────────────────────────
+// All Iconclass tools are pure SQLite reads (semantic search uses local
+// embeddings). No mutation, no network — same hint profile for all six.
+// Note: omitting destructiveHint defaults it to true per MCP spec, so we
+// must set it explicitly to false to avoid mislabeling read-only tools.
+const READ_ONLY_ANNOTATIONS = {
+  readOnlyHint: true,
+  destructiveHint: false,
+  idempotentHint: true,
+  openWorldHint: false,
+} as const;
+
 // ─── Registration ───────────────────────────────────────────────────
 
 export function registerTools(
@@ -196,6 +208,7 @@ export function registerTools(
           .describe("Skip this many results (for pagination)."),
       }).strict(),
       ...withOutputSchema(SearchOutput),
+      annotations: READ_ONLY_ANNOTATIONS,
     },
     async (args) => {
       const modes = [args.query, args.semanticQuery].filter(v => v !== undefined);
@@ -296,6 +309,7 @@ export function registerTools(
           .describe("Skip this many key variants (for pagination)."),
       }).strict(),
       ...withOutputSchema(BrowseOutput),
+      annotations: READ_ONLY_ANNOTATIONS,
     },
     async (args) => {
       const result = db.browse(
@@ -374,6 +388,7 @@ export function registerTools(
         lang: z.string().default("en").describe(LANG_DESC),
       }).strict(),
       ...withOutputSchema(ResolveOutput),
+      annotations: READ_ONLY_ANNOTATIONS,
     },
     async (args) => {
       const notations = Array.isArray(args.notation) ? args.notation : [args.notation];
@@ -417,6 +432,7 @@ export function registerTools(
           .describe("Skip this many key variants (for pagination)."),
       }).strict(),
       ...withOutputSchema(ExpandKeysOutput),
+      annotations: READ_ONLY_ANNOTATIONS,
     },
     async (args) => {
       if (!keysAvailable) {
@@ -473,6 +489,7 @@ export function registerTools(
           .describe("Skip this many results (for pagination)."),
       }).strict(),
       ...withOutputSchema(PrefixSearchOutput),
+      annotations: READ_ONLY_ANNOTATIONS,
     },
     async (args) => {
       const result = db.searchPrefix(
@@ -513,6 +530,7 @@ export function registerTools(
         lang: optStr().default("en").describe(LANG_DESC),
       }).strict(),
       ...withOutputSchema(FindArtworksOutput),
+      annotations: READ_ONLY_ANNOTATIONS,
     },
     async (args) => {
       const notations = Array.isArray(args.notation) ? args.notation : [args.notation];

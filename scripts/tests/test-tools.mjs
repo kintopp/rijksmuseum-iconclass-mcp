@@ -93,6 +93,21 @@ for (const tool of tools.tools) {
   assert(schema.includes('"additionalProperties":false'), `${tool.name} inputSchema is strict`);
 }
 
+// Verify all tools advertise MCP behavioural annotations.
+// All current Iconclass tools are pure SQLite reads → identical profile.
+// If a future tool needs different hints (e.g. an open-world or mutating
+// tool), update this assertion to match — but it must not be silently
+// missing, since omitted destructiveHint defaults to true per spec.
+for (const tool of tools.tools) {
+  const a = tool.annotations;
+  assert(a != null, `${tool.name} has annotations object`);
+  if (!a) continue;
+  assertEq(a.readOnlyHint, true, `${tool.name} readOnlyHint=true`);
+  assertEq(a.destructiveHint, false, `${tool.name} destructiveHint=false`);
+  assertEq(a.idempotentHint, true, `${tool.name} idempotentHint=true`);
+  assertEq(a.openWorldHint, false, `${tool.name} openWorldHint=false`);
+}
+
 // ══════════════════════════════════════════════════════════════════
 //  2. search — FTS mode
 // ══════════════════════════════════════════════════════════════════

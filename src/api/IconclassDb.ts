@@ -142,7 +142,7 @@ export class IconclassDb {
     try {
       this.db = new Database(dbPath, { readonly: true });
       this.dbPath_ = dbPath;
-      this.db.pragma("mmap_size = 4294967296"); // 4 GB — covers full DB + growth headroom
+      this.db.pragma("mmap_size = 805306368"); // 768 MB — empirical working set is ~285 MB across observed query paths (issue #272). Note: SQLite caps mmap_size at SQLITE_MAX_MMAP_SIZE = 2 GB anyway.
       const count = (this.db.prepare("SELECT COUNT(*) as n FROM notations").get() as { n: number }).n;
 
       const countsPath = resolveDbPath("COUNTS_DB_PATH", "iconclass-counts.db");

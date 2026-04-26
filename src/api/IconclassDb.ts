@@ -105,6 +105,8 @@ function langFallbacks(lang: string): string[] {
 
 export class IconclassDb {
   private db: DatabaseType | null = null;
+  private dbPath_: string | null = null;
+  private countsDbPath_: string | null = null;
   private _hasEmbeddings = false;
   private _embeddingDimensions = 0;
   private _collections: CollectionInfo[] = [];
@@ -139,6 +141,7 @@ export class IconclassDb {
 
     try {
       this.db = new Database(dbPath, { readonly: true });
+      this.dbPath_ = dbPath;
       this.db.pragma("mmap_size = 4294967296"); // 4 GB — covers full DB + growth headroom
       const count = (this.db.prepare("SELECT COUNT(*) as n FROM notations").get() as { n: number }).n;
 
@@ -147,6 +150,7 @@ export class IconclassDb {
         try {
           this.db.exec(`ATTACH DATABASE '${countsPath}' AS counts`);
           this.db.prepare("SELECT 1 FROM counts.collection_counts LIMIT 1").get();
+          this.countsDbPath_ = countsPath;
 
           this.stmtGetCollectionCounts = this.db.prepare(
             "SELECT collection_id, count FROM counts.collection_counts WHERE notation = ?"
@@ -305,6 +309,21 @@ export class IconclassDb {
 
   get available(): boolean {
     return this.db !== null;
+  }
+
+  /** Resolved on-disk path of the iconclass DB (or null if unavailable). */
+  get dbPath(): string | null {
+    return this.dbPath_;
+  }
+
+  /** Resolved on-disk path of the attached counts DB (or null if not attached). */
+  get countsDbPath(): string | null {
+    return this.countsDbPath_;
+  }
+
+  /** Underlying better-sqlite3 handle for pragma queries (memory observability). */
+  get rawDb(): DatabaseType | null {
+    return this.db;
   }
 
   get embeddingsAvailable(): boolean {

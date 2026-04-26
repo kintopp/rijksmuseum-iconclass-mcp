@@ -12,6 +12,12 @@ import { fileURLToPath } from "node:url";
 import { IconclassDb } from "./api/IconclassDb.js";
 import { EmbeddingModel, DEFAULT_MODEL_ID } from "./api/EmbeddingModel.js";
 import { ensureDb, type DbSpec } from "./utils/db.js";
+import {
+  captureMemorySnapshot,
+  formatMemorySnapshotDetailed,
+  formatMemorySnapshotOneLine,
+  type DbHandle,
+} from "./utils/MemoryStats.js";
 import { registerTools } from "./registration.js";
 
 const SERVER_NAME = "rijksmuseum-iconclass-mcp";
@@ -52,6 +58,13 @@ const COUNTS_DB_SPEC: DbSpec = {
 
 let iconclassDb: IconclassDb | null = null;
 let embeddingModel: EmbeddingModel | null = null;
+
+function buildMemoryDbHandles(): DbHandle[] {
+  return [
+    { name: "iconclass", schema: "main", filePath: iconclassDb?.dbPath ?? null, db: iconclassDb?.rawDb ?? null },
+    { name: "counts", schema: "counts", filePath: iconclassDb?.countsDbPath ?? null, db: iconclassDb?.rawDb ?? null },
+  ];
+}
 
 async function initDatabase(): Promise<void> {
   await ensureDb(ICONCLASS_DB_SPEC);
@@ -193,12 +206,29 @@ async function runHttp(): Promise<void> {
     });
   });
 
+  // ── Memory observability (issue #272) ──────────────────────────
+  //
+  // /debug/memory returns the same snapshot used for startup + periodic logs.
+  // Unauthenticated to match /health — operational signal, not sensitive.
+
+  app.get("/debug/memory", (_req: express.Request, res: express.Response) => {
+    res.json(captureMemorySnapshot(buildMemoryDbHandles()));
+  });
+
   // ── Start ──────────────────────────────────────────────────────
 
   httpServer = app.listen(port, () => {
     console.error(`${SERVER_NAME} v${SERVER_VERSION} listening on http://localhost:${port}`);
     console.error(`  MCP endpoint: POST /mcp`);
     console.error(`  Health:       GET  /health`);
+    console.error(`  Memory:       GET  /debug/memory`);
+    console.error(formatMemorySnapshotDetailed(captureMemorySnapshot(buildMemoryDbHandles())));
+
+    // Periodic 5-min RSS snapshot for issue #272 — single log line, near-zero cost.
+    const memInterval = setInterval(() => {
+      console.error(formatMemorySnapshotOneLine(captureMemorySnapshot(buildMemoryDbHandles())));
+    }, 5 * 60 * 1000);
+    memInterval.unref();
   });
 }
 

@@ -521,7 +521,19 @@ export function registerTools(
         "and link-out URLs where available. " +
         "An empty collections array means no loaded collection has artworks for that notation — " +
         "the top-level 'collections' field lists all loaded collections. " +
-        "Use after search or browse to discover where a subject appears across collections.",
+        "Use after search or browse to discover where a subject appears across collections.\n\n" +
+        "Beyond the loaded collections, you can also offer the user a search link to " +
+        "ArtResearch.net — the PHAROS consortium aggregator covering ~601K works tagged with " +
+        "~128K Iconclass notations from Hertziana, Frick, Zeri, KHI, and other photo archives. " +
+        "Construct the link as: " +
+        "https://artresearch.net/resource/?uri=http%3A%2F%2Ficonclass.org%2F{N} " +
+        "where {N} is the notation with '(' ')' ':' '+' percent-encoded twice " +
+        "('%2528', '%2529', '%253A', '%252B'). Examples: " +
+        "'25F23' → 'https://artresearch.net/resource/?uri=http%3A%2F%2Ficonclass.org%2F25F23'; " +
+        "'25F23(LION)' → 'https://artresearch.net/resource/?uri=http%3A%2F%2Ficonclass.org%2F25F23%2528LION%2529'; " +
+        "'73D82:11H(JOHN)' → 'https://artresearch.net/resource/?uri=http%3A%2F%2Ficonclass.org%2F73D82%253A11H%2528JOHN%2529'. " +
+        "The page returns matching artworks and all narrower / key-expanded descendants — " +
+        "a single link covers an entire notation subtree.",
       inputSchema: z.object({
         notation: z.union([
           z.string().min(1),

@@ -385,6 +385,23 @@ const s7c = sc(r7c);
 assertEq(s7c.results.length, 5, "broad prefix returns maxResults");
 assert(s7c.totalResults >= 5, `broad prefix totalResults >= maxResults (got ${s7c.totalResults})`);
 
+// Regression: notation punctuation (., :, -, spaces) must not be stripped.
+// Previously the prefix was rewritten to alphanumerics + ()+, dropping all
+// punctuation and returning 0 rows for valid prefixes like the example below.
+const r7d = await client.callTool({
+  name: "search_prefix",
+  arguments: { notation: "12A27(Deut. 21:22-23)", maxResults: 10 },
+});
+const s7d = sc(r7d);
+assert(
+  s7d.totalResults >= 1,
+  `prefix with .,:- preserves punctuation (got ${s7d.totalResults})`
+);
+assert(
+  s7d.results.every(r => r.notation.startsWith("12A27(Deut. 21:22-23)")),
+  "all results start with the punctuation-bearing prefix"
+);
+
 // ══════════════════════════════════════════════════════════════════
 //  8. Language support
 // ══════════════════════════════════════════════════════════════════

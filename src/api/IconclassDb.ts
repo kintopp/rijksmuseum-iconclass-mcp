@@ -281,10 +281,10 @@ export class IconclassDb {
         "SELECT keyword FROM keywords WHERE notation = ? LIMIT 40"
       );
       this.stmtPrefixSearch = this.db.prepare(
-        "SELECT notation FROM notations WHERE notation LIKE ? ORDER BY notation LIMIT ? OFFSET ?"
+        "SELECT notation FROM notations WHERE notation LIKE ? ESCAPE '\\' ORDER BY notation LIMIT ? OFFSET ?"
       );
       this.stmtPrefixCount = this.db.prepare(
-        "SELECT COUNT(*) as n FROM notations WHERE notation LIKE ?"
+        "SELECT COUNT(*) as n FROM notations WHERE notation LIKE ? ESCAPE '\\'"
       );
       this.stmtKeyVariantsPage = this.db.prepare(
         "SELECT notation FROM notations WHERE base_notation = ? ORDER BY notation LIMIT ? OFFSET ?"
@@ -484,10 +484,14 @@ export class IconclassDb {
     const empty: IconclassPrefixResult = { prefix, totalResults: 0, results: [], collections: this._collections };
     if (!this.db) return empty;
 
-    const clean = prefix.replace(/[^a-zA-Z0-9()+]/g, "");
+    const clean = prefix.trim();
     if (!clean) return empty;
 
-    const likePattern = `${clean}%`;
+    // Escape SQL LIKE wildcards (%, _) and the escape char itself so notation
+    // characters like '.', ':', '-', and spaces (e.g. '12A27(Deut. 21:22-23)')
+    // pass through as literals. Paired with `LIKE ? ESCAPE '\'` in the prepared
+    // statements above.
+    const likePattern = `${clean.replace(/[\\%_]/g, (ch) => `\\${ch}`)}%`;
     const presenceCache = new Map<string, Set<string>>();
 
     if (collectionId) {

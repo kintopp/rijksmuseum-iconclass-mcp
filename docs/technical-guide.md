@@ -80,6 +80,13 @@ modal run scripts/generate-embeddings-modal.py
 
 This embeds ~40K base notations using `intfloat/multilingual-e5-base` (768d, int8). Takes ~4 minutes on an A10G GPU. Key-expanded notations are not embedded — they are searchable via FTS.
 
+The default model is public, so no Hugging Face token is required. To use a private or gated model, create a Modal secret containing `HF_TOKEN` and point the script at it:
+
+```bash
+modal secret create huggingface-secret HF_TOKEN=hf_...
+HF_SECRET_NAME=huggingface-secret modal run scripts/generate-embeddings-modal.py
+```
+
 ### Releasing the database
 
 The main database is ~1 GB compressed — too large for a single reliable upload on slow connections. The release script splits it into 200 MB chunks and uploads each as a separate GitHub release asset, with automatic retry on failure:

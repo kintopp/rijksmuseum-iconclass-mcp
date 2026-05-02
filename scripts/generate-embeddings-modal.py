@@ -22,6 +22,11 @@ Prerequisites:
     pip install modal sqlite-vec numpy    # in the same Python env
     modal setup                           # one-time auth (free $30/mo tier)
 
+Optional:
+    export HF_SECRET_NAME=huggingface-secret
+        Use a Modal secret (containing HF_TOKEN) for Hugging Face access.
+        Only needed for private/gated models; the default model is public.
+
 Output: Adds iconclass_embeddings + vec_iconclass tables to existing data/iconclass.db
 """
 
@@ -52,7 +57,12 @@ MODAL_BATCH_SIZE = 512  # A10G has 24 GB VRAM, plenty for e5-base 768d
 
 app = modal.App("iconclass-embeddings-base")
 
-hf_secret = modal.Secret.from_name("huggingface-secret")
+# Hugging Face token is OPTIONAL — multilingual-e5-base is a public model.
+# Set HF_SECRET_NAME to a Modal secret name (containing HF_TOKEN) only if you
+# need authenticated access (e.g. private/gated models or higher rate limits).
+# Defaults to no secret so a fresh `modal setup` works out of the box.
+HF_SECRET_NAME = os.environ.get("HF_SECRET_NAME")
+hf_secrets = [modal.Secret.from_name(HF_SECRET_NAME)] if HF_SECRET_NAME else []
 
 
 def download_model():
@@ -69,11 +79,11 @@ gpu_image = (
         "torch",
         "numpy",
     )
-    .run_function(download_model, secrets=[hf_secret])
+    .run_function(download_model, secrets=hf_secrets)
 )
 
 
-@app.cls(gpu="A10G", image=gpu_image, secrets=[hf_secret], scaledown_window=60, timeout=3600)
+@app.cls(gpu="A10G", image=gpu_image, secrets=hf_secrets, scaledown_window=60, timeout=3600)
 class Embedder:
     @modal.enter()
     def load(self):

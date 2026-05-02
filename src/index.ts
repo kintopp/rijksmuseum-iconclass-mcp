@@ -156,10 +156,11 @@ async function runHttp(): Promise<void> {
 
   // ── MCP endpoint (stateless — no sessions, no SSE streams) ─────
   //
-  // Server is reused across requests; only the transport is per-request.
-  // transport.close() resets the server so the next connect() succeeds.
-
-  const server = createServer();
+  // A fresh McpServer + transport is created per request. The MCP SDK enforces
+  // one transport per server (Protocol.connect rejects re-binding), so a shared
+  // server breaks under concurrent POSTs. The expensive state — IconclassDb
+  // and EmbeddingModel — is initialized once in initDatabase() and shared
+  // read-only via the closure captured by registerTools().
 
   // 30s safety net — respond 504 before Railway's proxy kills the connection silently
   app.use("/mcp", (_req: express.Request, res: express.Response, next: express.NextFunction) => {
@@ -172,13 +173,17 @@ async function runHttp(): Promise<void> {
   });
 
   app.post("/mcp", async (req: express.Request, res: express.Response) => {
+    const server = createServer();
+    const transport = new StreamableHTTPServerTransport({
+      sessionIdGenerator: undefined,
+    });
+    res.on("close", () => {
+      transport.close().catch(() => {});
+      server.close().catch(() => {});
+    });
     try {
-      const transport = new StreamableHTTPServerTransport({
-        sessionIdGenerator: undefined,
-      });
       await server.connect(transport);
       await transport.handleRequest(req, res, req.body);
-      await transport.close();
     } catch (err) {
       console.error("MCP endpoint error:", err);
       if (!res.headersSent) {

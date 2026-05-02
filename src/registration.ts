@@ -522,7 +522,7 @@ export function registerTools(
         "An empty collections array means no loaded collection has artworks for that notation — " +
         "the top-level 'collections' field lists all loaded collections. " +
         "Use after search or browse to discover where a subject appears across collections.\n\n" +
-        "Beyond the loaded collections, you can also offer the user a search link to " +
+        "Beyond the loaded collections, also offer the user a search link to " +
         "ArtResearch.net — the PHAROS consortium aggregator covering ~601K works tagged with " +
         "~128K Iconclass notations from Hertziana, Frick, Zeri, KHI, and other photo archives. " +
         "Construct the link as: " +

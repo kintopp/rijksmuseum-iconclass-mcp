@@ -1,20 +1,19 @@
 ---
 name: iconclass-mcp
 description: >
-  Research workflows for the Iconclass MCP server — a universal art-subject
-  taxonomy with ~1.3M notations across 13 languages. Use this skill whenever
-  the user wants to explore iconographic subjects, find Iconclass notation codes,
-  browse the classification hierarchy, discover what subjects exist for a theme,
-  or find Rijksmuseum artworks by iconographic subject. This server is the
-  companion vocabulary layer to rijksmuseum-mcp+ — notation codes discovered
-  here should be passed directly to search_artwork(iconclass=...) there.
-  Also use when the user mentions Iconclass, subject classification,
-  iconography, art-historical taxonomy, what an artwork depicts, iconographic
-  meaning, or subject-matter searches — even if they don't name the server.
-metadata:
-  version: "0.3.3"
-  last_updated: "2026-04-24"
+  Companion vocabulary layer to rijksmuseum-mcp+: maps art-subject concepts
+  to Iconclass notation codes (~1.3M codes across 13 languages) and finds
+  Rijksmuseum artworks tagged with them. Use this skill whenever the user
+  mentions Iconclass, iconography, subject classification, what an artwork
+  depicts, or wants to search/browse art subjects — even if they don't name
+  the server. Codes discovered here flow directly into rijksmuseum-mcp+'s
+  search_artwork(iconclass=...).
 ---
+
+<!-- Skill version: 0.3.4 — last updated 2026-05-02 -->
+<!-- "rijksmuseum-mcp+" refers to the companion server at
+     github.com/kintopp/rijksmuseum-mcp-plus. If that name changes, every
+     reference in this file should be updated together. -->
 
 # Iconclass MCP Research Skill
 
@@ -43,9 +42,9 @@ Most of the ~40K base notations are "theoretical" — they exist in the taxonomy
 
 This server's notation codes are the input to rijksmuseum-mcp+'s `search_artwork(iconclass: [...])` parameter. The handoff is direct:
 
-- **Single notation:** `search_artwork(iconclass: "73D82")` — finds all Rijksmuseum artworks tagged with "road to Calvary"
+- **Single notation:** `search_artwork(iconclass: "73D6")` — finds all Rijksmuseum artworks tagged with "the Crucifixion of Christ"
 - **Multiple notations (AND):** `search_artwork(iconclass: ["11H(FRANCIS)32", "25F3"])` — finds artworks tagged with *both* codes
-- **Combined with other filters:** `search_artwork(iconclass: "73D64", type: "painting")` — paintings of the Crucifixion
+- **Combined with other filters:** `search_artwork(iconclass: "73D641", type: "painting")` — paintings of the crucified Christ with Mary and John
 
 The `iconclass` parameter accepts exact notation codes (language-independent). These are the same codes returned by this server's `search`, `browse`, `resolve`, and `search_prefix` tools. Note that rijksmuseum-mcp+'s `subject` parameter is different — it searches Iconclass label *text* (primarily Dutch/English), not notation codes.
 
@@ -61,7 +60,7 @@ The `iconclass` parameter accepts exact notation codes (language-independent). T
 | "What does notation 73D82 mean?" | `resolve` with the notation |
 | "What's related to this notation?" | `browse` — shows children, cross-refs, path |
 | "List all key variants of 25F23" | `expand_keys` |
-| "Everything under 'Passion of Christ'" | `search_prefix` with `73D8` |
+| "Everything under 'the Crucifixion of Christ'" | `search_prefix` with `73D6` |
 | "Find 'reading' within Virgin Mary subjects" | `search` with `query: "reading"`, `parentNotation: "11F"` |
 | "Which notations have Rijksmuseum artworks?" | `search` with `collectionId: "rijksmuseum"` |
 | "How many Rijksmuseum artworks depict X?" | `find_artworks` with notation(s) from a prior search |
@@ -74,7 +73,7 @@ The `iconclass` parameter accepts exact notation codes (language-independent). T
 
 Iconclass notations encode hierarchy left-to-right. Understanding the syntax helps you read results and construct queries.
 
-**Base notations** use alphanumeric codes: `7` (Bible) → `73` (New Testament) → `73D` (Passion) → `73D8` (instruments of the Passion) → `73D82` (road to Calvary).
+**Base notations** use alphanumeric codes: `7` (Bible) → `73` (New Testament) → `73D` (Passion of Christ) → `73D6` (the Crucifixion of Christ) → `73D64` (crucified Christ with particular persons under the cross) → `73D641` (crucified Christ with Mary and John on either side; Holy Rood).
 
 **Named notations** add a parenthesised qualifier for specific entities: `11H(FRANCIS)` (St. Francis), `25F26(WOMBAT)` (wombat). The name is part of the notation — `11H(FRANCIS)` and `11H(JEROME)` are siblings under `11H(...)` (male saints). Named notations for female saints use `11HH(...)`.
 
@@ -167,13 +166,12 @@ search(semanticQuery: "domestic animals")
 Use `browse` with `depth: 2` for narrative exploration — it returns the entry, its children, and their children in one call, avoiding the sequential browse-per-child pattern that would cost 8+ tool calls on a branch like St. Francis.
 
 ```
-browse(notation: "73D8", depth: 2)
-# -> 73D8 "the Passion of Christ"
-#      73D81 "carrying of the Cross"
-#        73D811 "Christ falls under the Cross"
-#        73D812 "Veronica wipes the face of Christ"
-#      73D82 "the Crucifixion"
-#        73D821 "the raising of the Cross"
+browse(notation: "73D6", depth: 2)
+# -> 73D6 "the crucifixion of Christ: Christ's death on the cross; Golgotha"
+#      73D64 "crucified Christ, with particular persons under the cross"
+#        73D641 "crucified Christ with Mary and John on either side; Holy Rood"
+#        73D642 ...
+#      73D65 ...
 #        ...
 ```
 
@@ -261,8 +259,8 @@ After discovering notation codes via `search` or `browse`, use `find_artworks` t
 
 ```
 # Single notation
-find_artworks(notation: "73D64")
-# -> 73D64 "the Crucifixion of Christ"
+find_artworks(notation: "73D6")
+# -> 73D6 "the crucifixion of Christ: Christ's death on the cross; Golgotha"
 #      Rijksmuseum, Amsterdam: 47 artworks
 
 # Batch: compare counts across multiple notations (up to 25)
@@ -277,13 +275,13 @@ find_artworks(notation: ["34B11", "25F23", "11H(FRANCIS)32"])
 **Practical patterns:**
 
 - **After narrowing to a handful of codes:** Run `find_artworks` on your shortlist to see counts, then hand off the codes with the best coverage to rijksmuseum-mcp+.
-- **Comparing sibling notations:** When two notations seem interchangeable (e.g. `73D64` vs `73D641`), `find_artworks` reveals which one the Rijksmuseum actually uses — the one with more artworks is the better handoff code.
+- **Comparing parent vs child notations:** When a parent and a more specific child seem interchangeable (e.g. `73D6` "Crucifixion" vs `73D641` "crucified Christ with Mary and John"), `find_artworks` reveals which one the Rijksmuseum actually uses — the one with more artworks is the better handoff code.
 - **Checking before handoff:** A notation with 0 artworks will return nothing on rijksmuseum-mcp+. Look for a parent or sibling notation instead.
 - **When all queried notations return 0:** The specific codes may be too narrow. Try the parent notation — often the broader category has artworks even when the children don't:
   ```
-  # 73D812 "Veronica wipes the face of Christ" — 0 artworks
+  # 73D6411 (a deep child of "crucified Christ with Mary and John") — 0 artworks
   # Try the parent:
-  find_artworks(notation: "73D81")
+  find_artworks(notation: "73D641")
   # -> Rijksmuseum, Amsterdam: 12 artworks
   ```
 

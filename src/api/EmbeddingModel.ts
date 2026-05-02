@@ -1,10 +1,9 @@
+import type { FeatureExtractionPipeline } from "@huggingface/transformers";
+
 export const DEFAULT_MODEL_ID = "Xenova/multilingual-e5-base";
 
 export class EmbeddingModel {
-  // Typed as `any` because @huggingface/transformers pipeline() returns
-  // a union type too complex for TypeScript to represent. At runtime,
-  // "feature-extraction" always returns a FeatureExtractionPipeline.
-  private pipe: any = null;
+  private pipe: FeatureExtractionPipeline | null = null;
   private _modelId: string = "";
   private queryPrefix = "query: ";
   private targetDim = 0;
@@ -27,7 +26,16 @@ export class EmbeddingModel {
 
     try {
       const { pipeline } = await import("@huggingface/transformers");
-      this.pipe = await pipeline("feature-extraction", modelId, {
+      // pipeline()'s generic return type Promise<AllTasks[T]> is too wide for
+      // tsc to evaluate at the call site (TS2590). Narrow the function shape
+      // before calling so we get a concrete FeatureExtractionPipeline.
+      type PipelineOpts = Parameters<typeof pipeline>[2];
+      const featurePipeline = pipeline as (
+        task: "feature-extraction",
+        model: string,
+        opts?: PipelineOpts,
+      ) => Promise<FeatureExtractionPipeline>;
+      this.pipe = await featurePipeline("feature-extraction", modelId, {
         dtype: "q8",   // int8 quantized ONNX
       });
       console.error(`Embedding model loaded: ${modelId}${targetDim > 0 ? ` (MRL ${targetDim}d)` : ""}`);

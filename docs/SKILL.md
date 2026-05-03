@@ -10,7 +10,7 @@ description: >
   search_artwork(iconclass=...).
 ---
 
-<!-- Skill version: 0.3.4 — last updated 2026-05-02 -->
+<!-- Skill version: 0.4.0 — last updated 2026-05-03 -->
 <!-- "rijksmuseum-mcp+" refers to the companion server at
      github.com/kintopp/rijksmuseum-mcp-plus. If that name changes, every
      reference in this file should be updated together. -->

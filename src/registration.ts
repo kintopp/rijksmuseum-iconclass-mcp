@@ -288,10 +288,12 @@ export function registerTools(
         const offset = args.offset ?? 0;
         const needed = offset + args.maxResults;
 
-        const result = db.semanticSearch(
-          args.semanticQuery, queryVec, needed, args.lang,
-          args.onlyWithArtworks ?? false, args.collectionId, args.parentNotation,
-        );
+        const result = db.semanticSearch(args.semanticQuery, queryVec, needed, {
+          lang: args.lang,
+          onlyWithArtworks: args.onlyWithArtworks,
+          collectionId: args.collectionId,
+          parentNotation: args.parentNotation,
+        });
         if (!result) {
           return errorResponse("Semantic search failed — embeddings may be corrupted.");
         }
@@ -305,7 +307,7 @@ export function registerTools(
       }
 
       // FTS search mode
-      const result = db.search(args.query!, args.maxResults, args.lang, args.offset ?? 0, args.collectionId, args.onlyWithArtworks ?? false, args.parentNotation);
+      const result = db.search(args.query!, args.maxResults, args.lang, args.offset ?? 0, args.collectionId, args.onlyWithArtworks, args.parentNotation);
 
       const header = `${result.results.length} of ${result.totalResults} matches for "${args.query}"`;
       const lines = result.results.map((e, i) =>

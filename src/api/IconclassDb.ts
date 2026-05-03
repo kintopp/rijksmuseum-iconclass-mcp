@@ -4,6 +4,13 @@ import { escapeFts5, escapeFts5Terms, resolveDbPath } from "../utils/db.js";
 
 const require = createRequire(import.meta.url);
 
+/** Escape SQL LIKE wildcards (%, _) and the escape char so notation chars
+ *  like '.', ':', '-', '(', ')' and spaces pass through as literals.
+ *  Paired with `LIKE ? ESCAPE '\'` in prepared statements. */
+function escapeLikePrefix(prefix: string): string {
+  return `${prefix.replace(/[\\%_]/g, (ch) => `\\${ch}`)}%`;
+}
+
 // ─── Types ───────────────────────────────────────────────────────────
 
 export interface CollectionInfo {
@@ -535,11 +542,7 @@ export class IconclassDb {
     const clean = prefix.trim();
     if (!clean) return empty;
 
-    // Escape SQL LIKE wildcards (%, _) and the escape char itself so notation
-    // characters like '.', ':', '-', and spaces (e.g. '12A27(Deut. 21:22-23)')
-    // pass through as literals. Paired with `LIKE ? ESCAPE '\'` in the prepared
-    // statements above.
-    const likePattern = `${clean.replace(/[\\%_]/g, (ch) => `\\${ch}`)}%`;
+    const likePattern = escapeLikePrefix(clean);
     const presenceCache = new Map<string, Set<string>>();
 
     if (collectionId) {
@@ -598,30 +601,32 @@ export class IconclassDb {
     query: string,
     queryEmbedding: Float32Array,
     k: number,
-    lang: string = "en",
-    onlyWithArtworks: boolean = false,
-    collectionId?: string,
-    parentNotation?: string,
+    opts: {
+      lang?: string;
+      onlyWithArtworks?: boolean;
+      collectionId?: string;
+      parentNotation?: string;
+    } = {},
   ): IconclassSemanticResult | null {
     if (!this.db || !this._hasEmbeddings || !this.stmtQuantize) return null;
 
+    const { lang = "en", onlyWithArtworks = false, collectionId, parentNotation } = opts;
     const quantized = this.stmtQuantize.get(queryEmbedding) as { v: Buffer };
 
     let rows: { notation: string; distance: number }[];
 
-    // Three execution paths, chosen by which filters are set:
-    // - parentNotation: prefix-filtered brute-force cosine via stmtPrefixFilteredKnn
-    //   (PK b-tree narrows to the subtree, then cosine over a small set)
-    // - onlyWithArtworks (no parent): filtered brute-force over collection_counts
-    // - neither: vec0 KNN
-    // collectionId is post-filtered against the chosen result set since
-    // collection presence requires a JOIN against the counts DB.
+    // Three execution paths chosen by which filters are set; collectionId is
+    // always post-filtered since it requires a JOIN against the counts DB.
+    // When parentNotation has already narrowed via SQL, the collection-presence
+    // overfetch is much smaller (k * 5 vs k * 20).
     const needsCollectionPostFilter = collectionId || onlyWithArtworks;
-    const fetchK = needsCollectionPostFilter ? Math.min(k * 20, 4096) : Math.min(k, 4096);
+    const overfetchMultiplier = parentNotation ? 5 : 20;
+    const fetchK = needsCollectionPostFilter
+      ? Math.min(k * overfetchMultiplier, 4096)
+      : Math.min(k, 4096);
 
     if (parentNotation && this.stmtPrefixFilteredKnn) {
-      const likePattern = `${parentNotation.replace(/[\\%_]/g, (ch) => `\\${ch}`)}%`;
-      rows = this.stmtPrefixFilteredKnn.all(quantized.v, likePattern, fetchK) as { notation: string; distance: number }[];
+      rows = this.stmtPrefixFilteredKnn.all(quantized.v, escapeLikePrefix(parentNotation), fetchK) as { notation: string; distance: number }[];
     } else if (onlyWithArtworks && this.stmtFilteredKnn) {
       rows = this.stmtFilteredKnn.all(quantized.v, fetchK) as { notation: string; distance: number }[];
     } else if (this.stmtKnn) {

@@ -3,6 +3,53 @@ import { z } from "zod";
 import { IconclassDb } from "./api/IconclassDb.js";
 import { EmbeddingModel } from "./api/EmbeddingModel.js";
 
+// ─── Structured per-call logging ────────────────────────────────────
+//
+// Emits one JSON line to stderr per tool invocation: { tool, ms, ok, input }.
+// On Railway this is consumed by `railway logs --json` and analysed by
+// scripts/analyse-railway-logs.{sh,py}. Shape mirrors rijksmuseum-mcp-plus
+// (registration.ts createLogger) so the analyser's data-shape contract holds.
+//
+// Long-array inputs (resolve, find_artworks accept up to 25 notations) are
+// truncated to keep log volume bounded — the analyser only needs the shape.
+
+const MAX_INPUT_ARRAY = 5;
+
+function truncateInput(input: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(input)) {
+    if (Array.isArray(v) && v.length > MAX_INPUT_ARRAY) {
+      out[k] = [...v.slice(0, MAX_INPUT_ARRAY), `+${v.length - MAX_INPUT_ARRAY} more`];
+    } else {
+      out[k] = v;
+    }
+  }
+  return out;
+}
+
+function withLogging<A extends unknown[], R>(
+  toolName: string,
+  fn: (...args: A) => Promise<R>,
+): (...args: A) => Promise<R> {
+  return async (...args: A): Promise<R> => {
+    const rawInput = args[0] && typeof args[0] === "object" ? args[0] as Record<string, unknown> : undefined;
+    const input = rawInput ? truncateInput(rawInput) : undefined;
+    const start = performance.now();
+    try {
+      const result = await fn(...args);
+      const ms = Math.round(performance.now() - start);
+      const ok = !(result && typeof result === "object" && "isError" in result && (result as Record<string, unknown>).isError);
+      console.error(JSON.stringify({ tool: toolName, ms, ok, ...(input && { input }) }));
+      return result;
+    } catch (err) {
+      const ms = Math.round(performance.now() - start);
+      const error = err instanceof Error ? err.message : String(err);
+      console.error(JSON.stringify({ tool: toolName, ms, ok: false, error, ...(input && { input }) }));
+      throw err;
+    }
+  };
+}
+
 // ─── Shared helpers ─────────────────────────────────────────────────
 
 /** Preprocess: strip JSON null / "null" string / "" → undefined BEFORE Zod validates.
@@ -210,7 +257,7 @@ export function registerTools(
       ...withOutputSchema(SearchOutput),
       annotations: READ_ONLY_ANNOTATIONS,
     },
-    async (args) => {
+    withLogging("search", async (args) => {
       const modes = [args.query, args.semanticQuery].filter(v => v !== undefined);
       if (modes.length === 0) {
         return errorResponse("Provide exactly one of: query or semanticQuery.");
@@ -282,7 +329,7 @@ export function registerTools(
         formatEntryLine(e, `${i + 1}. `)
       );
       return structuredResponse(result, [header, ...lines].join("\n"));
-    }
+    })
   );
 
   // ── browse ─────────────────────────────────────────────────────
@@ -311,7 +358,7 @@ export function registerTools(
       ...withOutputSchema(BrowseOutput),
       annotations: READ_ONLY_ANNOTATIONS,
     },
-    async (args) => {
+    withLogging("browse", async (args) => {
       const result = db.browse(
         args.notation, args.lang, args.includeKeys ?? false,
         args.maxKeyVariants ?? 25, args.keyOffset ?? 0, args.depth ?? 1,
@@ -367,7 +414,7 @@ export function registerTools(
       }
 
       return structuredResponse(result, sections.join("\n"));
-    }
+    })
   );
 
   // ── resolve ────────────────────────────────────────────────────
@@ -390,7 +437,7 @@ export function registerTools(
       ...withOutputSchema(ResolveOutput),
       annotations: READ_ONLY_ANNOTATIONS,
     },
-    async (args) => {
+    withLogging("resolve", async (args) => {
       const notations = Array.isArray(args.notation) ? args.notation : [args.notation];
       const entries = db.resolve(notations, args.lang);
 
@@ -407,7 +454,7 @@ export function registerTools(
       });
       const data = { notations: entries, collections: db.collections };
       return structuredResponse(data, lines.join("\n"));
-    }
+    })
   );
 
   // ── expand_keys ────────────────────────────────────────────────
@@ -434,7 +481,7 @@ export function registerTools(
       ...withOutputSchema(ExpandKeysOutput),
       annotations: READ_ONLY_ANNOTATIONS,
     },
-    async (args) => {
+    withLogging("expand_keys", async (args) => {
       if (!keysAvailable) {
         return errorResponse("Key expansion is not available — the loaded DB does not include key-expanded notations.");
       }
@@ -459,7 +506,7 @@ export function registerTools(
         return `  ${k.notation} (${k.keyId})${kc} "${k.text}"`;
       });
       return structuredResponse(result, [header, ...lines].join("\n"));
-    }
+    })
   );
 
   // ── search_prefix ──────────────────────────────────────────────
@@ -491,7 +538,7 @@ export function registerTools(
       ...withOutputSchema(PrefixSearchOutput),
       annotations: READ_ONLY_ANNOTATIONS,
     },
-    async (args) => {
+    withLogging("search_prefix", async (args) => {
       const result = db.searchPrefix(
         args.notation, args.maxResults, args.lang,
         args.offset ?? 0, args.collectionId,
@@ -506,7 +553,7 @@ export function registerTools(
         ? `\n(Large subtree — narrow the prefix instead of paginating, e.g. "${args.notation}3" or "${args.notation}A")`
         : "";
       return structuredResponse(result, [header, ...lines].join("\n") + hint);
-    }
+    })
   );
 
   // ─── find_artworks ────────────────────────────────────────────────
@@ -544,7 +591,7 @@ export function registerTools(
       ...withOutputSchema(FindArtworksOutput),
       annotations: READ_ONLY_ANNOTATIONS,
     },
-    async (args) => {
+    withLogging("find_artworks", async (args) => {
       const notations = Array.isArray(args.notation) ? args.notation : [args.notation];
       const result = db.findArtworks(notations, args.lang);
 
@@ -564,7 +611,7 @@ export function registerTools(
       });
 
       return structuredResponse(result, lines.join("\n\n"));
-    }
+    })
   );
 }
 

@@ -125,6 +125,7 @@ async function runStdio(): Promise<void> {
     console.error("FATAL: Iconclass DB is not available — cannot register tools. Exiting.");
     process.exit(1);
   }
+  iconclassDb.warmCorePages();
   const server = createServer();
   const transport = new StdioServerTransport();
   await server.connect(transport);
@@ -141,6 +142,7 @@ async function runHttp(): Promise<void> {
     console.error("FATAL: Iconclass DB is not available — cannot register tools. Exiting.");
     process.exit(1);
   }
+  iconclassDb.warmCorePages();
   const port = getHttpPort();
   const app = express();
   app.set("trust proxy", 1);

@@ -285,35 +285,15 @@ export function registerTools(
           );
         }
 
-        // Fetch enough results to satisfy offset + maxResults, then slice.
         const offset = args.offset ?? 0;
         const needed = offset + args.maxResults;
 
-        // Iteratively expand when parentNotation will filter down results;
-        // sparse subtrees need large overfetch to fill the requested page.
-        const MAX_K = 4096;
-        let fetchK = args.parentNotation ? Math.min(needed * 20, MAX_K) : needed;
-        let result: NonNullable<ReturnType<typeof db.semanticSearch>> | null = null;
-
-        while (fetchK <= MAX_K) {
-          result = db.semanticSearch(
-            args.semanticQuery, queryVec, fetchK, args.lang,
-            args.onlyWithArtworks ?? false, args.collectionId,
-          );
-          if (!result) {
-            return errorResponse("Semantic search failed — embeddings may be corrupted.");
-          }
-          if (!args.parentNotation) break;
-          result.results = result.results.filter(e => e.notation.startsWith(args.parentNotation!));
-          if (result.results.length >= needed || fetchK >= MAX_K) break;
-          fetchK = Math.min(fetchK * 4, MAX_K);
-        }
-        // result is guaranteed non-null: the loop always executes at least once,
-        // and the only null path returns errorResponse above.
-        result = result!;
-
-        if (args.parentNotation) {
-          result.totalResults = result.results.length;
+        const result = db.semanticSearch(
+          args.semanticQuery, queryVec, needed, args.lang,
+          args.onlyWithArtworks ?? false, args.collectionId, args.parentNotation,
+        );
+        if (!result) {
+          return errorResponse("Semantic search failed — embeddings may be corrupted.");
         }
         result.results = result.results.slice(offset, offset + args.maxResults);
 

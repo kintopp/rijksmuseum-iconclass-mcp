@@ -131,6 +131,7 @@ export class IconclassDb {
   private stmtQuantize: Statement | null = null;
   private stmtKnn: Statement | null = null;
   private stmtFilteredKnn: Statement | null = null;
+  private stmtPrefixFilteredKnn: Statement | null = null;
 
   constructor() {
     const dbPath = resolveDbPath("ICONCLASS_DB_PATH", "iconclass.db");
@@ -246,6 +247,18 @@ export class IconclassDb {
           `);
         }
 
+        // Brute-force cosine over a prefix-restricted subset. The PK b-tree on
+        // notations makes the LIKE scan cheap; replaces the registration.ts
+        // overfetch loop that was paying multiple full-vec0 scans per scoped
+        // semantic query (see #237 follow-up perf review).
+        this.stmtPrefixFilteredKnn = this.db.prepare(`
+          SELECT ie.notation,
+                 vec_distance_cosine(vec_int8(ie.embedding), vec_int8(?)) as distance
+          FROM iconclass_embeddings ie
+          WHERE ie.notation LIKE ? ESCAPE '\\'
+          ORDER BY distance LIMIT ?
+        `);
+
         this._hasEmbeddings = true;
         const embCount = (this.db.prepare("SELECT COUNT(*) as n FROM iconclass_embeddings").get() as { n: number }).n;
         console.error(`  Iconclass embeddings: ${embCount.toLocaleString()} vectors (${this._embeddingDimensions}d)`);
@@ -309,6 +322,41 @@ export class IconclassDb {
 
   get available(): boolean {
     return this.db !== null;
+  }
+
+  /** Page in critical mmap regions so the first user query is fast.
+   *  Touches FTS5 indexes (texts + keywords), the notations PK b-tree,
+   *  the texts/keywords leaf pages, the counts DB join path, and the
+   *  vec0 vector index. Run once before app.listen() — Railway's
+   *  healthcheck only flips healthy after listen, so the cold cost
+   *  hits the deploy, not users. */
+  warmCorePages(): void {
+    if (!this.db) return;
+    const t0 = Date.now();
+    try {
+      this.db.prepare("SELECT rowid FROM texts_fts WHERE texts_fts MATCH 'art' LIMIT 1").get();
+      this.db.prepare("SELECT rowid FROM keywords_fts WHERE keywords_fts MATCH 'figure' LIMIT 1").get();
+      this.db.prepare("SELECT notation FROM notations LIMIT 1").get();
+      this.db.prepare("SELECT text FROM texts WHERE notation = '1' AND lang = 'en' LIMIT 1").get();
+      this.db.prepare("SELECT keyword FROM keywords WHERE notation = '11F' AND lang = 'en' LIMIT 1").get();
+      if (this.stmtGetCollectionCounts) {
+        this.stmtGetCollectionCounts.all("11F");
+      }
+      console.error(`  Iconclass DB core pages warmed in ${Date.now() - t0}ms`);
+
+      if (this._hasEmbeddings && this.stmtQuantize && this.stmtKnn) {
+        const t1 = Date.now();
+        const zeros = new Float32Array(this._embeddingDimensions);
+        const quantized = this.stmtQuantize.get(zeros) as { v: Buffer };
+        this.stmtKnn.all(quantized.v, 1);
+        if (this.stmtPrefixFilteredKnn) {
+          this.stmtPrefixFilteredKnn.all(quantized.v, "11F%", 1);
+        }
+        console.error(`  Iconclass embeddings pages warmed in ${Date.now() - t1}ms`);
+      }
+    } catch (err) {
+      console.error(`  Iconclass DB warmup failed: ${err instanceof Error ? err.message : err}`);
+    }
   }
 
   /** Resolved on-disk path of the iconclass DB (or null if unavailable). */
@@ -553,6 +601,7 @@ export class IconclassDb {
     lang: string = "en",
     onlyWithArtworks: boolean = false,
     collectionId?: string,
+    parentNotation?: string,
   ): IconclassSemanticResult | null {
     if (!this.db || !this._hasEmbeddings || !this.stmtQuantize) return null;
 
@@ -560,13 +609,20 @@ export class IconclassDb {
 
     let rows: { notation: string; distance: number }[];
 
-    // When filtering by collection or onlyWithArtworks, over-fetch to compensate
-    // for post-filtering. Use filtered brute-force scan when available, otherwise
-    // expand the vec0 KNN candidate pool up to 4096.
-    const needsPostFilter = collectionId || onlyWithArtworks;
-    const fetchK = needsPostFilter ? Math.min(k * 20, 4096) : Math.min(k, 4096);
+    // Three execution paths, chosen by which filters are set:
+    // - parentNotation: prefix-filtered brute-force cosine via stmtPrefixFilteredKnn
+    //   (PK b-tree narrows to the subtree, then cosine over a small set)
+    // - onlyWithArtworks (no parent): filtered brute-force over collection_counts
+    // - neither: vec0 KNN
+    // collectionId is post-filtered against the chosen result set since
+    // collection presence requires a JOIN against the counts DB.
+    const needsCollectionPostFilter = collectionId || onlyWithArtworks;
+    const fetchK = needsCollectionPostFilter ? Math.min(k * 20, 4096) : Math.min(k, 4096);
 
-    if (onlyWithArtworks && this.stmtFilteredKnn) {
+    if (parentNotation && this.stmtPrefixFilteredKnn) {
+      const likePattern = `${parentNotation.replace(/[\\%_]/g, (ch) => `\\${ch}`)}%`;
+      rows = this.stmtPrefixFilteredKnn.all(quantized.v, likePattern, fetchK) as { notation: string; distance: number }[];
+    } else if (onlyWithArtworks && this.stmtFilteredKnn) {
       rows = this.stmtFilteredKnn.all(quantized.v, fetchK) as { notation: string; distance: number }[];
     } else if (this.stmtKnn) {
       rows = this.stmtKnn.all(quantized.v, fetchK) as { notation: string; distance: number }[];
@@ -574,8 +630,9 @@ export class IconclassDb {
       return null;
     }
 
-    // Batch-filter by collectionId using temp table + JOIN (same pattern as
-    // FTS search and prefix search) instead of N+1 per-row queries.
+    // Batch-filter by collectionId/onlyWithArtworks using temp table + JOIN.
+    // When parentNotation already restricted via SQL, this still applies any
+    // additional collection constraints on the smaller candidate set.
     const presenceCache = new Map<string, Set<string>>();
     let candidates = rows;
     if (collectionId || onlyWithArtworks) {

@@ -9,13 +9,14 @@ import { EmbeddingModel } from "./api/EmbeddingModel.js";
 // On Railway this is consumed by `railway logs --json` and analysed by
 // scripts/analyse-railway-logs.{sh,py}. Shape mirrors rijksmuseum-mcp-plus
 // (registration.ts createLogger) so the analyser's data-shape contract holds.
-//
-// Long-array inputs (resolve, find_artworks accept up to 25 notations) are
-// truncated to keep log volume bounded — the analyser only needs the shape.
 
 const MAX_INPUT_ARRAY = 5;
 
 function truncateInput(input: Record<string, unknown>): Record<string, unknown> {
+  const needsTruncation = Object.values(input).some(
+    v => Array.isArray(v) && v.length > MAX_INPUT_ARRAY,
+  );
+  if (!needsTruncation) return input;
   const out: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(input)) {
     if (Array.isArray(v) && v.length > MAX_INPUT_ARRAY) {
@@ -35,17 +36,19 @@ function withLogging<A extends unknown[], R>(
     const rawInput = args[0] && typeof args[0] === "object" ? args[0] as Record<string, unknown> : undefined;
     const input = rawInput ? truncateInput(rawInput) : undefined;
     const start = performance.now();
+    let ok = true;
+    let error: string | undefined;
     try {
       const result = await fn(...args);
-      const ms = Math.round(performance.now() - start);
-      const ok = !(result && typeof result === "object" && "isError" in result && (result as Record<string, unknown>).isError);
-      console.error(JSON.stringify({ tool: toolName, ms, ok, ...(input && { input }) }));
+      ok = !(result && typeof result === "object" && "isError" in result && result.isError);
       return result;
     } catch (err) {
-      const ms = Math.round(performance.now() - start);
-      const error = err instanceof Error ? err.message : String(err);
-      console.error(JSON.stringify({ tool: toolName, ms, ok: false, error, ...(input && { input }) }));
+      ok = false;
+      error = err instanceof Error ? err.message : String(err);
       throw err;
+    } finally {
+      const ms = Math.round(performance.now() - start);
+      console.error(JSON.stringify({ tool: toolName, ms, ok, ...(error !== undefined && { error }), ...(input && { input }) }));
     }
   };
 }

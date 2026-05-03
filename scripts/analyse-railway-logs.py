@@ -723,7 +723,7 @@ def section_6(calls):
 
 # ─── Section 7: Recommendations ─────────────────────────────────────────────
 
-def section_7(calls, sessions, startup_events):
+def section_7(calls, startup_events):
     out = ["## 7. Recommendations\n"]
     recs_high, recs_med, recs_low = [], [], []
 
@@ -969,7 +969,7 @@ def main():
         "---\n",
         section_6(calls),
         "---\n",
-        section_7(calls, sessions, startup),
+        section_7(calls, startup),
         "---\n",
         section_appendix(calls, logs, sessions),
     ]

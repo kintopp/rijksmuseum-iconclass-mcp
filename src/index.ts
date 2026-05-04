@@ -231,10 +231,10 @@ async function runHttp(): Promise<void> {
     console.error(`  Memory:       GET  /debug/memory`);
     console.error(formatMemorySnapshotDetailed(captureMemorySnapshot(buildMemoryDbHandles())));
 
-    // Periodic 5-min RSS snapshot for issue #272 — single log line, near-zero cost.
+    // Periodic 15-min RSS snapshot for issue #272 — single log line, near-zero cost.
     const memInterval = setInterval(() => {
       console.error(formatMemorySnapshotOneLine(captureMemorySnapshot(buildMemoryDbHandles())));
-    }, 5 * 60 * 1000);
+    }, 15 * 60 * 1000);
     memInterval.unref();
   });
 }

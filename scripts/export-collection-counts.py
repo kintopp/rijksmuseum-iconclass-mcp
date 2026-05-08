@@ -30,6 +30,10 @@ def export_counts(vocab_db_path: str, output_path: str):
     cols = {row[1] for row in conn.execute("PRAGMA table_info(mappings)").fetchall()}
     has_int = "field_id" in cols
 
+    # The `subject` mapping field aggregates classifications + depicted
+    # places/persons/events/groups. Filter on type='classification' so
+    # non-Iconclass rows (e.g. places with leaked WKT POINT in `notation`,
+    # see rijksmuseum-mcp-plus#328) cannot pollute the export.
     if has_int:
         fid_row = conn.execute("SELECT id FROM field_lookup WHERE name = 'subject'").fetchone()
         subject_fid = fid_row[0] if fid_row else -1
@@ -37,7 +41,9 @@ def export_counts(vocab_db_path: str, output_path: str):
             SELECT v.notation, COUNT(DISTINCT m.artwork_id) as cnt
             FROM mappings m
             JOIN vocabulary v ON v.vocab_int_id = m.vocab_rowid
-            WHERE m.field_id = ? AND v.notation IS NOT NULL AND v.notation != ''
+            WHERE m.field_id = ?
+              AND v.type = 'classification'
+              AND v.notation IS NOT NULL AND v.notation != ''
             GROUP BY v.notation
             ORDER BY cnt DESC
         """, (subject_fid,)).fetchall()
@@ -46,7 +52,9 @@ def export_counts(vocab_db_path: str, output_path: str):
             SELECT v.notation, COUNT(DISTINCT m.object_number) as cnt
             FROM mappings m
             JOIN vocabulary v ON m.vocab_id = v.id
-            WHERE m.field = 'subject' AND v.notation IS NOT NULL AND v.notation != ''
+            WHERE m.field = 'subject'
+              AND v.type = 'classification'
+              AND v.notation IS NOT NULL AND v.notation != ''
             GROUP BY v.notation
             ORDER BY cnt DESC
         """).fetchall()

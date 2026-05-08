@@ -46,6 +46,10 @@ export interface DbSpec {
   defaultFile: string;
   /** SQL query that must succeed for the DB to be considered valid. */
   validationQuery: string;
+  /** When true, re-download from urlEnvVar on every startup even if the local file passes validation.
+   *  Use for small rolling-release sidecars whose content changes without a schema bump.
+   *  The existing local file is preserved if the download or post-download validation fails. */
+  refreshOnStartup?: boolean;
 }
 
 function resolveDbPathForSpec(spec: DbSpec): string {
@@ -107,8 +111,10 @@ async function tryChunkedDownload(baseUrl: string, destPath: string, assembledPa
  */
 export async function ensureDb(spec: DbSpec): Promise<void> {
   const dbPath = resolveDbPathForSpec(spec);
+  const url = process.env[spec.urlEnvVar];
+  const shouldRefresh = !!spec.refreshOnStartup && !!url;
 
-  if (fs.existsSync(dbPath)) {
+  if (!shouldRefresh && fs.existsSync(dbPath)) {
     try {
       const { default: Database } = await import("better-sqlite3");
       const db = new Database(dbPath, { readonly: true });
@@ -121,10 +127,9 @@ export async function ensureDb(spec: DbSpec): Promise<void> {
     }
   }
 
-  const url = process.env[spec.urlEnvVar];
   if (!url) return;
 
-  console.error(`Downloading ${spec.name} DB...`);
+  console.error(shouldRefresh ? `Refreshing ${spec.name} DB from ${spec.urlEnvVar}...` : `Downloading ${spec.name} DB...`);
   const dir = path.dirname(dbPath);
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 
@@ -142,6 +147,17 @@ export async function ensureDb(spec: DbSpec): Promise<void> {
         await pipeline(fs.createReadStream(gzTmpPath), createGunzip(), fs.createWriteStream(tmpPath));
         fs.unlinkSync(gzTmpPath);
       }
+    }
+
+    // Validate the downloaded file before swapping it in. Protects against corrupt
+    // downloads or schema-incompatible builds replacing a working local DB.
+    const { default: Database } = await import("better-sqlite3");
+    const newDb = new Database(tmpPath, { readonly: true });
+    try {
+      const row = newDb.prepare(spec.validationQuery).get();
+      if (!row) throw new Error("validation query returned no rows on downloaded file");
+    } finally {
+      newDb.close();
     }
 
     fs.renameSync(tmpPath, dbPath);

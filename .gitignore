@@ -13,4 +13,7 @@ AGENTS.md
 offline/
 docs/rijksmuseum-iconclass-mcp.skill
 docs/superpowers/
+.mcpjam-evidence/
+.agents/
+.claude/
 

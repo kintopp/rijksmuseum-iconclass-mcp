@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "skills": {
+    "mcp-inspector": {
+      "source": "mcpjam/inspector",
+      "sourceType": "github",
+      "computedHash": "91b6a5df54e6f43269c52fbec3552f44a6d456b16fa34de5525a0c24eb75e7d8"
+    }
+  }
+}

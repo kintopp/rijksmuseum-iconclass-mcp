@@ -15,7 +15,6 @@ import { ensureDb, type DbSpec } from "./utils/db.js";
 import {
   captureMemorySnapshot,
   formatMemorySnapshotDetailed,
-  formatMemorySnapshotOneLine,
   type DbHandle,
 } from "./utils/MemoryStats.js";
 import { registerTools } from "./registration.js";
@@ -216,8 +215,9 @@ async function runHttp(): Promise<void> {
 
   // ── Memory observability (issue #272) ──────────────────────────
   //
-  // /debug/memory returns the same snapshot used for startup + periodic logs.
-  // Unauthenticated to match /health — operational signal, not sensitive.
+  // Startup logs a detailed snapshot; /debug/memory exposes the same shape
+  // on demand. Unauthenticated to match /health — operational signal, not
+  // sensitive.
 
   app.get("/debug/memory", (_req: express.Request, res: express.Response) => {
     res.json(captureMemorySnapshot(buildMemoryDbHandles()));
@@ -231,12 +231,6 @@ async function runHttp(): Promise<void> {
     console.error(`  Health:       GET  /health`);
     console.error(`  Memory:       GET  /debug/memory`);
     console.error(formatMemorySnapshotDetailed(captureMemorySnapshot(buildMemoryDbHandles())));
-
-    // Periodic 15-min RSS snapshot for issue #272 — single log line, near-zero cost.
-    const memInterval = setInterval(() => {
-      console.error(formatMemorySnapshotOneLine(captureMemorySnapshot(buildMemoryDbHandles())));
-    }, 15 * 60 * 1000);
-    memInterval.unref();
   });
 }
 

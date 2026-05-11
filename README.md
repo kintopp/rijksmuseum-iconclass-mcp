@@ -8,7 +8,7 @@ The tool provides access to over 1.3 million Iconclass notations — all of the 
 
 It includes data from the [Rijksmuseum](https://www.rijksmuseum.nl/en/collection) showing how many artworks are tagged with a particular notation and is able (if [rijksmuseum-mcp+](https://github.com/kintopp/rijksmuseum-mcp-plus) has also been installed) to seamlessly pass you back to that service to e.g. view an artwork with that notation. In addition, it can give you a custom link to [ArtResearch](https://artresearch.net) to let you view more artworks sharing this notation from the twelve member institutions in the PHAROS consortium.
 
-The resource was developed as a technology demo by the [Research and Infrastructure Support](https://rise.unibas.ch/en/) (RISE) group at the University of Basel and complements our ongoing work on [benchmarking](https://github.com/RISE-UNIBAS/humanities_data_benchmark) humanities research tasks carried out by large language models (LLMs). We are particularly interested in exploring the research opportunities, methodological risks, and technical challenges posed by retrieving and analysing data with LLMs. If you are interested in collaborating with us in this area, please [get in touch](mailto:rise@unibas.ch).
+The tool was developed as a technology demo by the [Research and Infrastructure Support](https://rise.unibas.ch/en/) (RISE) group at the University of Basel. We are particularly interested in exploring the research opportunities, methodological risks, and technical challenges posed by retrieving and analysing data with LLMs. If you are interested in collaborating with us in this area, please [get in touch](mailto:rise@unibas.ch).
 
 ## Quick start
 

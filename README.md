@@ -60,8 +60,11 @@ semanticQuery: "domestic animals" → top matches by embedding similarity
 | `collectionId` | Filter to a specific collection (e.g. `"rijksmuseum"`) |
 | `lang` | Preferred language for labels (default: `en`) |
 | `maxResults` | 1–50 (default 25) |
+| `include_extensions` | Also search non-CC0 museum extensions like `11H(MARY MAGDALENE)` — see below |
 
 Provide exactly one of `query` or `semanticQuery`.
+
+**Non-CC0 extensions (`include_extensions: true`)** — museums regularly extend Iconclass with name-fills (`11H(MARY MAGDALENE)`, `49L12(D)`) and Marburg-dialect codes (`&25F72(OYSTER)`) that aren't enumerated in the canonical CC0 dump. Setting `include_extensions: true` adds a separate `extensions` array to the response with hits from PHAROS/MIDAS via ArtResearch (Hertziana + Marburg, ~88K extensions), RKD (~3K), and the Rijksmuseum (~2.5K). Each hit carries a per-source `link_url` to the institution's UI and the canonical parent template's label for context. Ignored when `semanticQuery` is used.
 
 ### `browse` — navigate the hierarchy
 
@@ -177,7 +180,16 @@ If you use rijksmuseum-iconclass-mcp in your research, please cite it as follows
 
 ## License
 
-MIT
+MIT — for the server source code.
+
+**Data license notes:**
+- The canonical Iconclass data (`iconclass.db`) is CC0 1.0 (see Acknowledgements).
+- The extensions sidecar (`iconclass-extensions.db`, used by `search(include_extensions: true)`) carries a **mixed** licence inherited from its upstream sources:
+  - Rijksmuseum-attributed rows: CC0 1.0
+  - RKD-attributed rows: CC BY
+  - **PHAROS / Bibliotheca Hertziana context text: CC BY-SA-NC 4.0** (non-commercial, share-alike)
+
+Downstream consumers redistributing the extensions sidecar inherit the most restrictive applicable terms. The license summary is exposed at runtime via `/health` (`extensionsLicense`) and per-source in the sidecar's `extension_sources.license` table.
 
 ## Acknowledgements
 

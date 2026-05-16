@@ -54,6 +54,15 @@ const COUNTS_DB_SPEC: DbSpec = {
   refreshOnStartup: true,
 };
 
+const EXTENSIONS_DB_SPEC: DbSpec = {
+  name: "Extensions",
+  pathEnvVar: "EXTENSIONS_DB_PATH",
+  urlEnvVar: "EXTENSIONS_DB_URL",
+  defaultFile: "iconclass-extensions.db",
+  validationQuery: "SELECT 1 FROM version_info WHERE key = 'schema_version' AND CAST(value AS INTEGER) >= 1",
+  refreshOnStartup: true,
+};
+
 // ─── Shared instances ───────────────────────────────────────────────
 
 let iconclassDb: IconclassDb | null = null;
@@ -63,12 +72,14 @@ function buildMemoryDbHandles(): DbHandle[] {
   return [
     { name: "iconclass", schema: "main", filePath: iconclassDb?.dbPath ?? null, db: iconclassDb?.rawDb ?? null },
     { name: "counts", schema: "counts", filePath: iconclassDb?.countsDbPath ?? null, db: iconclassDb?.rawDb ?? null },
+    { name: "extensions", schema: "extensions", filePath: iconclassDb?.extensionsDbPath ?? null, db: iconclassDb?.rawDb ?? null },
   ];
 }
 
 async function initDatabase(): Promise<void> {
   await ensureDb(ICONCLASS_DB_SPEC);
   await ensureDb(COUNTS_DB_SPEC);
+  await ensureDb(EXTENSIONS_DB_SPEC);
   iconclassDb = new IconclassDb();
 
   if (iconclassDb.embeddingsAvailable) {
@@ -210,6 +221,8 @@ async function runHttp(): Promise<void> {
       embeddings: iconclassDb?.embeddingsAvailable ? "loaded" : "unavailable",
       collections: iconclassDb?.collections.map(c => c.collectionId) ?? [],
       countsDb: iconclassDb?.countsDbVersion ?? null,
+      extensionsDb: iconclassDb?.extensionsDbVersion ?? null,
+      extensionsLicense: iconclassDb?.extensionsLicenseSummary ?? null,
     });
   });
 

@@ -148,6 +148,16 @@ for (const entry of s2c.results) {
   assert(entry.collections.includes("rijksmuseum"), `collectionId filter: ${entry.notation} has rijksmuseum presence`);
 }
 
+// parentNotation scope should be pushed into the FTS statements, while still
+// returning only subtree results through the public tool contract.
+const r2scope = await client.callTool({
+  name: "search",
+  arguments: { query: "Jerome", parentNotation: "11H", maxResults: 25 },
+});
+const s2scope = sc(r2scope);
+assert(s2scope.results.length > 0, `parentNotation FTS returns results (got ${s2scope.results.length})`);
+assert(s2scope.results.every(r => r.notation.startsWith("11H")), "parentNotation FTS results stay in subtree");
+
 // Empty query
 const r2d = await client.callTool({
   name: "search",

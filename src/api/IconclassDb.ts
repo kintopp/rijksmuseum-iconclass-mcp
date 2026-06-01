@@ -137,6 +137,8 @@ export class IconclassDb {
   private _countsDbVersion: CountsDbVersion | null = null;
   private stmtTextFts!: Statement;
   private stmtKwFts!: Statement;
+  private stmtTextFtsScoped!: Statement;
+  private stmtKwFtsScoped!: Statement;
   private stmtGetNotation!: Statement;
   private stmtGetText!: Statement;
   private stmtGetTextAny!: Statement;
@@ -348,6 +350,22 @@ export class IconclassDb {
          WHERE keywords_fts MATCH ?
          GROUP BY k.notation`
       );
+      this.stmtTextFtsScoped = this.db.prepare(
+        `SELECT t.notation, MIN(f.rank) as rank
+         FROM texts_fts f
+         JOIN texts t ON t.rowid = f.rowid
+         WHERE texts_fts MATCH ?
+           AND t.notation LIKE ? ESCAPE '\\'
+         GROUP BY t.notation`
+      );
+      this.stmtKwFtsScoped = this.db.prepare(
+        `SELECT k.notation, MIN(f.rank) as rank
+         FROM keywords_fts f
+         JOIN keywords k ON k.rowid = f.rowid
+         WHERE keywords_fts MATCH ?
+           AND k.notation LIKE ? ESCAPE '\\'
+         GROUP BY k.notation`
+      );
       this.stmtGetNotation = this.db.prepare(
         "SELECT notation, path, children, refs, base_notation, key_id, is_key_expanded FROM notations WHERE notation = ?"
       );
@@ -532,24 +550,16 @@ export class IconclassDb {
     const ftsPhrase = escapeFts5(query);
     if (!ftsPhrase) return empty;
 
-    let rankMap = this.runFtsQueries(ftsPhrase);
+    let rankMap = this.runFtsQueries(ftsPhrase, parentNotation);
 
     // Auto-fallback: if phrase match returns 0, retry with individual AND-ed terms
     if (rankMap.size === 0) {
       const ftsTerms = escapeFts5Terms(query);
       if (!ftsTerms) return empty;
-      rankMap = this.runFtsQueries(ftsTerms);
+      rankMap = this.runFtsQueries(ftsTerms, parentNotation);
     }
 
     if (rankMap.size === 0) return empty;
-
-    // Post-filter: restrict to subtree if parentNotation specified
-    if (parentNotation) {
-      for (const n of rankMap.keys()) {
-        if (!n.startsWith(parentNotation)) rankMap.delete(n);
-      }
-      if (rankMap.size === 0) return empty;
-    }
 
     const presenceCache = new Map<string, Set<string>>();
     const countedNotations = this.fetchPresenceForSort([...rankMap.keys()], presenceCache, collectionId, onlyWithArtworks);
@@ -823,14 +833,22 @@ export class IconclassDb {
 
   // ─── Internal ─────────────────────────────────────────────────────
 
-  private runFtsQueries(ftsExpr: string): Map<string, number> {
+  private runFtsQueries(ftsExpr: string, parentNotation?: string): Map<string, number> {
     const map = new Map<string, number>();
+    const likePattern = parentNotation ? escapeLikePrefix(parentNotation) : null;
+    const textRows = likePattern
+      ? this.stmtTextFtsScoped.all(ftsExpr, likePattern)
+      : this.stmtTextFts.all(ftsExpr);
+    const keywordRows = likePattern
+      ? this.stmtKwFtsScoped.all(ftsExpr, likePattern)
+      : this.stmtKwFts.all(ftsExpr);
+
     // FTS5 rank is negative BM25 (lower = more relevant). Keep the best (lowest) rank per notation.
-    for (const r of this.stmtTextFts.all(ftsExpr) as { notation: string; rank: number }[]) {
+    for (const r of textRows as { notation: string; rank: number }[]) {
       const prev = map.get(r.notation);
       if (prev === undefined || r.rank < prev) map.set(r.notation, r.rank);
     }
-    for (const r of this.stmtKwFts.all(ftsExpr) as { notation: string; rank: number }[]) {
+    for (const r of keywordRows as { notation: string; rank: number }[]) {
       const prev = map.get(r.notation);
       if (prev === undefined || r.rank < prev) map.set(r.notation, r.rank);
     }

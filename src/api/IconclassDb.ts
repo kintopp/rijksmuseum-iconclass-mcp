@@ -90,22 +90,6 @@ export interface CountsDbVersion {
   builtAt: string;
 }
 
-export interface ExtensionsDbVersion {
-  releaseTag: string;
-  builtAt: string;
-  totalExtensions: number;
-}
-
-export interface ExtensionHit {
-  notation: string;
-  source_id: string;
-  parent_template: string | null;
-  parent_label: string | null;
-  bracket_text: string | null;
-  work_count: number;
-  link_url: string | null;
-}
-
 export interface FindArtworksResult {
   notations: {
     notation: string;
@@ -157,10 +141,6 @@ export class IconclassDb {
   private stmtKnn: Statement | null = null;
   private stmtFilteredKnn: Statement | null = null;
   private stmtPrefixFilteredKnn: Statement | null = null;
-  private extensionsDbPath_: string | null = null;
-  private _extensionsDbVersion: ExtensionsDbVersion | null = null;
-  private _extensionsLicenseSummary: string | null = null;
-  private stmtExtSearch: Statement | null = null;
 
   constructor() {
     const dbPath = resolveDbPath("ICONCLASS_DB_PATH", "iconclass.db");
@@ -232,7 +212,6 @@ export class IconclassDb {
 
           console.error(`  Counts DB attached: ${countsPath} (${this._collections.length} collections, ${this._countsDbVersion?.releaseTag ?? "no tag"})`);
         } catch (err) {
-          // (extensions ATTACH happens below regardless of counts outcome)
           // Schema mismatch or missing tables — fully discard the sidecar so tools
           // don't expose stale/inconsistent collection data.
           this.stmtGetCollectionCounts = null;
@@ -245,48 +224,6 @@ export class IconclassDb {
           this._countsDbVersion = null;
           try { this.db!.exec("DETACH DATABASE counts"); } catch { /* already detached or never attached */ }
           console.error(`  Counts DB not available: ${err instanceof Error ? err.message : err}`);
-        }
-      }
-
-      // ── Extensions sidecar (independent of counts) ─────────────────
-      const extensionsPath = resolveDbPath("EXTENSIONS_DB_PATH", "iconclass-extensions.db");
-      if (extensionsPath) {
-        try {
-          this.db.exec(`ATTACH DATABASE '${extensionsPath}' AS extensions`);
-          this.db.prepare("SELECT 1 FROM extensions.extensions LIMIT 1").get();
-          this.extensionsDbPath_ = extensionsPath;
-
-          this.stmtExtSearch = this.db.prepare(`
-            SELECT e.notation, e.source_id, e.parent_template, e.bracket_text,
-                   e.work_count, e.link_url, MIN(f.rank) AS rank
-            FROM extensions.extensions_fts f
-            JOIN extensions.extensions e ON e.rowid = f.rowid
-            WHERE extensions_fts MATCH ?
-            GROUP BY e.notation, e.source_id
-            ORDER BY rank, e.work_count DESC
-            LIMIT ?
-          `);
-
-          try {
-            const extVersionRows = this.db.prepare(
-              "SELECT key, value FROM extensions.version_info"
-            ).all() as { key: string; value: string }[];
-            const vMap = new Map(extVersionRows.map(r => [r.key, r.value]));
-            this._extensionsDbVersion = {
-              releaseTag: vMap.get("release_tag") ?? "unknown",
-              builtAt: vMap.get("built_at") ?? "unknown",
-              totalExtensions: parseInt(vMap.get("total_extensions") ?? "0", 10),
-            };
-            this._extensionsLicenseSummary = vMap.get("license_summary") ?? null;
-          } catch { /* version_info may not exist */ }
-
-          console.error(`  Extensions DB attached: ${extensionsPath} (${this._extensionsDbVersion?.totalExtensions ?? 0} extensions, ${this._extensionsDbVersion?.releaseTag ?? "no tag"})`);
-        } catch (err) {
-          this.stmtExtSearch = null;
-          this._extensionsDbVersion = null;
-          this._extensionsLicenseSummary = null;
-          try { this.db!.exec("DETACH DATABASE extensions"); } catch { /* already detached or never attached */ }
-          console.error(`  Extensions DB not available: ${err instanceof Error ? err.message : err}`);
         }
       }
 
@@ -413,9 +350,6 @@ export class IconclassDb {
       if (this.stmtGetCollectionCounts) {
         this.stmtGetCollectionCounts.all("11F");
       }
-      if (this.stmtExtSearch) {
-        this.stmtExtSearch.all('"mary"', 1);
-      }
       console.error(`  Iconclass DB core pages warmed in ${Date.now() - t0}ms`);
 
       if (this._hasEmbeddings && this.stmtQuantize && this.stmtKnn) {
@@ -464,64 +398,8 @@ export class IconclassDb {
     return this._countsDbVersion;
   }
 
-  get extensionsDbPath(): string | null {
-    return this.extensionsDbPath_;
-  }
-
-  get extensionsDbVersion(): ExtensionsDbVersion | null {
-    return this._extensionsDbVersion;
-  }
-
-  get extensionsLicenseSummary(): string | null {
-    return this._extensionsLicenseSummary;
-  }
-
-  get extensionsAvailable(): boolean {
-    return this.stmtExtSearch !== null;
-  }
-
   get hasKeyExpansion(): boolean {
     return this.db !== null;
-  }
-
-  // ─── Extensions search (opt-in fallthrough for `search`) ─────────
-
-  /** Search the non-CC0 extensions sidecar via FTS5 over bracket_text + context_text.
-   *  Tries phrase match first, falls back to AND-ed terms (mirrors canonical `search`).
-   *  Returns [] when extensions sidecar is unavailable or query is empty after escaping. */
-  searchExtensions(query: string, limit: number = 25): ExtensionHit[] {
-    if (!this.stmtExtSearch || !this.db) return [];
-
-    const tryQuery = (ftsExpr: string): ExtensionHit[] => {
-      const rows = this.stmtExtSearch!.all(ftsExpr, limit) as {
-        notation: string;
-        source_id: string;
-        parent_template: string | null;
-        bracket_text: string | null;
-        work_count: number;
-        link_url: string | null;
-      }[];
-      return rows.map(r => ({
-        notation: r.notation,
-        source_id: r.source_id,
-        parent_template: r.parent_template,
-        parent_label: r.parent_template ? this.getText(r.parent_template, "en") : null,
-        bracket_text: r.bracket_text,
-        work_count: r.work_count,
-        link_url: r.link_url,
-      }));
-    };
-
-    const phrase = escapeFts5(query);
-    if (phrase) {
-      const hits = tryQuery(phrase);
-      if (hits.length > 0) return hits;
-    }
-    const terms = escapeFts5Terms(query);
-    if (terms) {
-      return tryQuery(terms);
-    }
-    return [];
   }
 
   // ─── Search (FTS) ─────────────────────────────────────────────────

@@ -1,6 +1,6 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { IconclassDb, type ExtensionHit } from "./api/IconclassDb.js";
+import { IconclassDb } from "./api/IconclassDb.js";
 import { EmbeddingModel } from "./api/EmbeddingModel.js";
 
 // ─── Structured per-call logging ────────────────────────────────────
@@ -109,22 +109,11 @@ const IconclassEntryShape = () => z.object({
   collections: z.array(z.string()),
 });
 
-const ExtensionHitShape = () => z.object({
-  notation: z.string(),
-  source_id: z.string(),
-  parent_template: z.string().nullable(),
-  parent_label: z.string().nullable(),
-  bracket_text: z.string().nullable(),
-  work_count: z.number().int(),
-  link_url: z.string().nullable(),
-});
-
 const SearchOutput = {
   query: z.string(),
   totalResults: z.number().int(),
   results: z.array(IconclassEntryShape().extend({ similarity: z.number().optional() })),
   collections: z.array(CollectionInfoShape()),
-  extensions: z.array(ExtensionHitShape()).optional(),
   error: z.string().optional(),
 };
 
@@ -267,13 +256,6 @@ export function registerTools(
           .describe(`Maximum results (1-${TOOL_LIMITS.search.max}, default ${TOOL_LIMITS.search.default}).`),
         offset: z.number().int().min(0).default(0).optional()
           .describe("Skip this many results (for pagination)."),
-        include_extensions: z.boolean().default(false).optional()
-          .describe(
-            "Also search non-CC0 Iconclass extensions catalogued by museums (e.g. 11H(MARY MAGDALENE) " +
-            "for the penitent Magdalene, 49L12(D) for an illuminated initial 'D'). Returns a separate " +
-            "'extensions' array. Sources: PHAROS (Hertziana + Marburg), RKD, Rijksmuseum. " +
-            "Ignored when semanticQuery is used (extensions have no embeddings)."
-          ),
       }).strict(),
       ...withOutputSchema(SearchOutput),
       annotations: READ_ONLY_ANNOTATIONS,
@@ -331,26 +313,7 @@ export function registerTools(
       const lines = result.results.map((e, i) =>
         formatEntryLine(e, `${i + 1}. `)
       );
-
-      // Opt-in: search the extensions sidecar in parallel and merge.
-      // Extensions live in a separate vocabulary namespace; we don't apply
-      // parentNotation/collectionId filters in v1 — see plan rationale.
-      let extensions: ExtensionHit[] | undefined;
-      const extLines: string[] = [];
-      if (args.include_extensions && db.extensionsAvailable) {
-        extensions = db.searchExtensions(args.query!, args.maxResults);
-        if (extensions.length > 0) {
-          extLines.push("", `Extensions (${extensions.length}):`);
-          for (let i = 0; i < extensions.length; i++) {
-            const e = extensions[i];
-            const ctx = e.parent_label ? ` — under "${e.parent_label}"` : "";
-            extLines.push(`  ${i + 1}. ${e.notation} [${e.source_id}]${ctx}`);
-          }
-        }
-      }
-
-      const responseData = extensions !== undefined ? { ...result, extensions } : result;
-      return structuredResponse(responseData, [header, ...lines, ...extLines].join("\n"));
+      return structuredResponse(result, [header, ...lines].join("\n"));
     })
   );
 

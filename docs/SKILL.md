@@ -1,16 +1,17 @@
 ---
 name: iconclass-mcp
+version: "0.41"
 description: >
   Companion vocabulary layer to rijksmuseum-mcp+: maps art-subject concepts
-  to Iconclass notation codes (~1.3M codes across 13 languages) and finds
-  Rijksmuseum artworks tagged with them. Use this skill whenever the user
+  to Iconclass notation codes (~1.3M codes across 13 languages) and checks
+  which loaded collections have artworks tagged with them. Use this skill whenever the user
   mentions Iconclass, iconography, subject classification, what an artwork
   depicts, or wants to search/browse art subjects — even if they don't name
   the server. Codes discovered here flow directly into rijksmuseum-mcp+'s
   search_artwork(iconclass=...).
 ---
 
-<!-- Skill version: 0.4.0 — last updated 2026-05-03 -->
+<!-- Skill version: 0.41 — last updated 2026-06-01 -->
 <!-- "rijksmuseum-mcp+" refers to the companion server at
      github.com/kintopp/rijksmuseum-mcp-plus. -->
 
@@ -31,9 +32,9 @@ For simple single-concept queries ("show me paintings of dogs"), rijksmuseum-mcp
 
 Iconclass is a retrieval tool, not a descriptive language. A notation's meaning comes from its position in the hierarchy, not just its label. Complex artworks carry many codes (often 30+) across different branches because a single image contains multiple subjects — a scene, its setting, its actors, their attributes, symbolic objects. The goal is not to find *the one right code* but to identify the set of codes that carve out the search space you need.
 
-Most of the ~40K base notations are "theoretical" — they exist in the taxonomy but the Rijksmuseum has not tagged artworks with them. Check the `collections` array before handing a code to rijksmuseum-mcp+ — an empty array means the Rijksmuseum has no artworks for that notation. The `find_artworks` tool returns per-notation artwork counts.
+Most of the ~40K base notations are "theoretical" — they exist in the taxonomy but no loaded collection has tagged artworks with them. Check the `collections` array before handing a code to a collection server. An empty array means no loaded collection has artwork-count data for that notation; if you specifically need Rijksmuseum coverage, look for `rijksmuseum`. The `find_artworks` tool returns per-notation artwork counts by loaded collection.
 
-**Never truncate discovery queries.** When searching for notation codes, use the default `maxResults` (25) or higher — never set a lower value. You need to see the full result set with artwork counts to evaluate which codes are useful. Cutting results short means you miss relevant notations and can't make informed handoff decisions.
+**Never truncate discovery queries.** When searching for notation codes, use the default `maxResults` (25) or higher — never set a lower value. You need to see enough of the result set, including collection-presence markers, to evaluate which codes are useful. Cutting results short means you miss relevant notations and can't make informed handoff decisions.
 
 ---
 
@@ -61,8 +62,8 @@ The `iconclass` parameter accepts exact notation codes (language-independent). T
 | "List all key variants of 25F23" | `expand_keys` |
 | "Everything under 'the Crucifixion of Christ'" | `search_prefix` with `73D6` |
 | "Find 'reading' within Virgin Mary subjects" | `search` with `query: "reading"`, `parentNotation: "11F"` |
-| "Which notations have Rijksmuseum artworks?" | `search` with `collectionId: "rijksmuseum"` |
-| "How many Rijksmuseum artworks depict X?" | `find_artworks` with notation(s) from a prior search |
+| "Which notations have artworks in a collection?" | `search` with `collectionId` (e.g. `"rijksmuseum"` or `"rkd"`) |
+| "How many artworks depict X?" | `find_artworks` with notation(s) from a prior search |
 | "Show me artworks about X" | Full workflow: `search` → `find_artworks` → `search_artwork(iconclass: ...)` on rijksmuseum-mcp+ |
 | "Show me artworks of [a common animal]" | Start global (no `parentNotation`) — the animal may not be in `25F*`. See Workflow 3 → Searching for a specific animal. |
 
@@ -98,7 +99,7 @@ Concrete cases:
 The practical implications:
 
 1. **A label is an index term, not a definition.** `25F26(WOMBAT)` means "the notation we use to tag images of wombats," which Iconclass happens to have filed under its "rodents" heading. It does not assert that wombats are rodents.
-2. **Handoff still works.** The taxonomy quirks don't affect retrieval — `search_artwork(iconclass: "25F26(WOMBAT)")` will return wombat images correctly. Notation codes are stable identifiers regardless of whether the label tree reflects current scholarship.
+2. **Handoff still works.** The taxonomy quirks don't affect retrieval — `search_artwork(iconclass: "25F26(WOMBAT)")` is the correct way to ask a collection server for wombat images when that collection has tagged them. Notation codes are stable identifiers regardless of whether the label tree reflects current scholarship.
 3. **Flag the mismatch when presenting results to users.** If a user asks about rabbits and you return notations prefixed "rodents:", add a brief note that the Iconclass label reflects older classification, not modern taxonomy. Silently echoing the label can mislead users who read it as a scientific claim.
 4. **Don't "correct" the notation.** There is no alternative code to use — `25F26(HARE)` is the tagged notation, full stop. Work with it and annotate.
 
@@ -138,7 +139,7 @@ When working with key expansions, remember that the `(+4...)` group is about art
 Both restrict to a subtree, but they answer different questions:
 
 - `search(query=..., parentNotation="11F")`: keyword search *within* a subtree — "find notations about 'reading' under Virgin Mary." Combines text relevance with hierarchical scoping.
-- `search_prefix(notation="11F")`: enumerate *all* notations starting with a prefix, ordered alphabetically. No text search — pure hierarchy traversal. Use when you want the full inventory of a branch. Supports `collectionId` to filter to notations with Rijksmuseum artworks.
+- `search_prefix(notation="11F")`: enumerate *all* notations starting with a prefix, ordered alphabetically. No text search — pure hierarchy traversal. Use when you want the full inventory of a branch. Supports `collectionId` to filter to notations with artworks in a specific loaded collection.
 
 If `parentNotation` returns zero results, the concept may exist in a different branch. Try removing the scope for a global search, or broadening to a parent prefix (e.g. `"11"` instead of `"11F"`).
 
@@ -174,16 +175,16 @@ browse(notation: "73D6", depth: 2)
 #        ...
 ```
 
-Wide branches (e.g. saints by name under `11H`, 183 children) are capped at 25 children per parent to protect your context window. The response shows `totalChildren` so you know when truncation occurred.
+Wide branches (e.g. male saints by name under `11H(...)`, 183 children) are capped at 25 children per parent to protect your context window. The response shows `totalChildren` so you know when truncation occurred.
 
-Use `depth: 3` only on narrow branches where you can see the full structure. For wide branches like `11H`, browse at depth 1 first to see the top-level names, then drill into specific children at depth 2.
+Use `depth: 3` only on narrow branches where you can see the full structure. For wide branches like `11H(...)`, browse at depth 1 first to see the top-level names, then drill into specific children at depth 2.
 
 ### 3. Cross-Branch Discovery
 
 The same concept can appear in multiple Iconclass branches because the system classifies by context, not just identity. A dog might be:
 - `34B11` — pets, domestic animals: dog (zoological classification)
-- `11A(DOG)` — the dog as symbol of fidelity (religious symbolism)
-- `25FF21(DOG)` — predatory animals: dog (wild/feral context)
+- `11H(BERNARD)` — St. Bernard with a white dog among his possible attributes (saint iconography)
+- `25FF21` — fabulous animals ~ domestic animals (fabulous-animal context)
 
 Use keyword or semantic search to discover all branches, then `resolve` to compare them side by side:
 
@@ -191,8 +192,8 @@ Use keyword or semantic search to discover all branches, then `resolve` to compa
 search(query: "dog", maxResults: 10)
 # -> multiple notations across branches 11, 25, 34, 46...
 
-resolve(notation: ["34B11", "11A(DOG)", "25FF21(DOG)"])
-# -> full metadata for comparison — paths, keywords, counts
+resolve(notation: ["34B11", "11H(BERNARD)", "25FF21"])
+# -> full metadata for comparison — paths, keywords, collection presence
 ```
 
 #### Searching for a specific animal — the animal tree is a cultural index, not a biological one
@@ -209,7 +210,7 @@ Search strategy for a specific animal:
 
 1. **Start global, not scoped.** `search(query: "animal-name", maxResults: 25)` — do **not** pass `parentNotation: "25F"`. A scoped search hides the cross-branch reality.
 2. **Read the branches, not just the labels.** The hierarchy path on each result tells you which cultural role the notation captures. For horse you will see `46C13*` (transport), `11H(GEORGE)` (saint), `25FF24(PEGASUS)` (myth), etc.
-3. **Use `find_artworks` counts to choose.** When an animal appears in several branches, the Rijksmuseum usually tags most artworks with one canonical notation. The one with the highest count is the best handoff code. A `25F*` notation with zero artwork counts is a strong signal that the Rijksmuseum uses a different branch's code for that animal.
+3. **Use `find_artworks` counts to choose.** When an animal appears in several branches, a collection usually tags most artworks with one canonical notation. The one with the strongest coverage in your target collection is the best handoff code. A `25F*` notation with no target-collection counts is a strong signal that the collection may use a different branch's code for that animal.
 4. **For compound queries, combine across branches.** "Artworks of St. George with a horse" is `search_artwork(iconclass: ["11H(GEORGE)", ...])` where the second code is whichever transport/saint horse notation actually has coverage — not `25F24(HORSE)`, which does not exist.
 
 When presenting results to users, flag the pattern honestly. A user who asked for horse images should be told the animal tree doesn't cover horses and that the catalogue indexes them by role; silently returning only `11H(GEORGE)` results without that context can mislead.
@@ -252,39 +253,40 @@ When passed to rijksmuseum-mcp+, these codes AND-combine — `search_artwork(ico
 
 When no notation exactly captures a nuanced concept (e.g., a broken lute string as a vanitas symbol), use the closest codes (`11R7` vanitas symbols + `48C7323` lute) and note the interpretive nuance separately. Verify the key's actual meaning before using key expansions (see Notation Syntax above).
 
-### 6. Check Rijksmuseum Artwork Counts
+### 6. Check Artwork Counts
 
-After discovering notation codes via `search` or `browse`, use `find_artworks` to check artwork counts and get link-out URLs. This answers "how many Rijksmuseum artworks use this subject?" — essential for gauging a notation's practical usefulness before handing it to rijksmuseum-mcp+.
+After discovering notation codes via `search` or `browse`, use `find_artworks` to check artwork counts in the loaded collection overlays. This answers "how many artworks in the available collections use this subject?" — essential for gauging a notation's practical usefulness before handing it to rijksmuseum-mcp+ or another collection server.
 
 ```
 # Single notation
 find_artworks(notation: "73D6")
 # -> 73D6 "the crucifixion of Christ: Christ's death on the cross; Golgotha"
-#      Rijksmuseum, Amsterdam: 47 artworks
+#      Rijksmuseum, Amsterdam: matching artworks
+#      RKD: matching artworks   # if the RKD overlay is loaded
 
 # Batch: compare counts across multiple notations (up to 25)
 find_artworks(notation: ["34B11", "25F23", "11H(FRANCIS)32"])
-# -> per-notation breakdown with artwork counts
+# -> per-notation breakdown with per-collection artwork counts
 ```
 
 **When to use `find_artworks` vs `collections`:**
-- `collections` (returned by `search`, `browse`, `resolve`) gives a quick signal — "does the Rijksmuseum have artworks for this code?" Useful for filtering during discovery.
-- `find_artworks` gives exact artwork counts. Use it when you need to know *how many* artworks are tagged with a notation, or when comparing coverage across notations before handoff.
+- `collections` (returned by `search`, `browse`, `resolve`) gives a quick signal — "does any loaded collection have artworks for this code?" Useful for filtering during discovery.
+- `find_artworks` gives exact artwork counts by collection. Use it when you need to know *how many* artworks are tagged with a notation, or when comparing coverage across notations before handoff.
 
 **Practical patterns:**
 
 - **After narrowing to a handful of codes:** Run `find_artworks` on your shortlist to see counts, then hand off the codes with the best coverage to rijksmuseum-mcp+.
-- **Comparing parent vs child notations:** When a parent and a more specific child seem interchangeable (e.g. `73D6` "Crucifixion" vs `73D641` "crucified Christ with Mary and John"), `find_artworks` reveals which one the Rijksmuseum actually uses — the one with more artworks is the better handoff code.
-- **Checking before handoff:** A notation with 0 artworks will return nothing on rijksmuseum-mcp+. Look for a parent or sibling notation instead.
-- **When all queried notations return 0:** The specific codes may be too narrow. Try the parent notation — often the broader category has artworks even when the children don't:
+- **Comparing parent vs child notations:** When a parent and a more specific child seem interchangeable (e.g. `73D6` "Crucifixion" vs `73D641` "crucified Christ with Mary and John"), `find_artworks` reveals which one the target collection actually uses more often — the one with stronger coverage is usually the better handoff code.
+- **Checking before handoff:** A notation with no artwork counts in the target collection will usually return nothing on that collection server. Look for a parent or sibling notation instead.
+- **When all queried notations return no counts:** The specific codes may be too narrow, or the notation may not exist in the canonical database. First `resolve` any uncertain code; if it exists, try the parent notation — often the broader category has artworks even when the children don't:
   ```
-  # 73D6411 (a deep child of "crucified Christ with Mary and John") — 0 artworks
+  # A deep child of "crucified Christ with Mary and John" — no target-collection counts
   # Try the parent:
   find_artworks(notation: "73D641")
-  # -> Rijksmuseum, Amsterdam: 12 artworks
+  # -> target collections may have broader matches
   ```
 
-The `lang` parameter controls the language of notation labels in the response (default: `"en"`). The link-out URLs open pre-filtered searches on the Rijksmuseum website — these are useful as a fallback when rijksmuseum-mcp+ is unavailable.
+The `lang` parameter controls the language of notation labels in the response (default: `"en"`). Some collection overlays may include link-out URL templates; if a collection has no template, `find_artworks` returns counts without a URL. As a general web fallback, the tool description explains how to construct an ArtResearch.net link for a notation.
 
 ### 7. Cross-Server Handoff to rijksmuseum-mcp+
 
@@ -297,7 +299,7 @@ search(query: "Jerome")
 
 # Step 2: check artwork counts
 find_artworks(notation: "11H(JEROME)")
-# -> Rijksmuseum, Amsterdam: 156 artworks
+# -> per-collection artwork counts
 
 # Step 3: hand off to rijksmuseum-mcp+
 search_artwork(iconclass: ["11H(JEROME)"])
@@ -321,7 +323,7 @@ When rijksmuseum-mcp+ is available and the user's goal involves seeing artworks,
 
 ### When rijksmuseum-mcp+ is not available
 
-If `search_artwork` is not available (the server is not connected), present the notation codes you've found with their artwork counts and hierarchy context — this is more useful than bare codes alone. You can also offer the link-out URLs from `find_artworks`, which open pre-filtered searches on the Rijksmuseum website.
+If `search_artwork` is not available (the server is not connected), present the notation codes you've found with their collection coverage, artwork counts, and hierarchy context — this is more useful than bare codes alone. If `find_artworks` returns link-out URLs for a loaded collection, include them; otherwise, use the ArtResearch.net link pattern described in the tool metadata as a broader web fallback.
 
 To enable direct artwork search in future conversations, the user can install the companion server **rijksmuseum-mcp+** from [github.com/kintopp/rijksmuseum-mcp-plus](https://github.com/kintopp/rijksmuseum-mcp-plus).
 
@@ -339,8 +341,8 @@ To enable direct artwork search in future conversations, the user can install th
 | Category labels reflect pre-modern iconography, not modern taxonomy | Treat labels as index terms, not scientific definitions. Flag mismatches to users (e.g. hares under "rodents"). See Labels Reflect Iconography, Not Modern Taxonomy. |
 | Common animals (horse, goat, rooster, salamander) have no notation in `25F*` | Search globally, not scoped to `25F*`. The animal's code is in husbandry, transport, saints, mythology, literature, or the fabulous tree. See Workflow 3 → "Searching for a specific animal." |
 | `find_artworks` batch limit of 25 | Sufficient for most workflows — you should have narrowed to a shortlist before calling. |
-| Artwork counts cover Rijksmuseum only | ~20K of ~40K base notations (~50%) have Rijksmuseum artworks. |
-| `find_artworks` returns "no collections" | The notation exists but the Rijksmuseum has not tagged artworks with it. Try a parent or sibling notation. |
+| Artwork-count overlays are collection-specific | Check the top-level `collections` field to see which overlays are loaded (for example `rijksmuseum` or `rkd`). Coverage changes when the sidecar database is updated. |
+| `find_artworks` returns "no collections" | The notation has no counts in the loaded overlays, or the input notation may not exist. Use `resolve` to verify uncertain codes, then try a parent or sibling notation. |
 
 ---
 

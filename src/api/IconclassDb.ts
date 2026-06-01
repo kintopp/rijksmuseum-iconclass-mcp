@@ -336,36 +336,19 @@ export class IconclassDb {
         console.error(`  Iconclass embeddings: ${embCount.toLocaleString()} vectors (${this._embeddingDimensions}d)`);
       } catch { /* no embeddings */ }
 
-      this.stmtTextFts = this.db.prepare(
-        `SELECT t.notation, MIN(f.rank) as rank
-         FROM texts_fts f
-         JOIN texts t ON t.rowid = f.rowid
-         WHERE texts_fts MATCH ?
-         GROUP BY t.notation`
-      );
-      this.stmtKwFts = this.db.prepare(
-        `SELECT k.notation, MIN(f.rank) as rank
-         FROM keywords_fts f
-         JOIN keywords k ON k.rowid = f.rowid
-         WHERE keywords_fts MATCH ?
-         GROUP BY k.notation`
-      );
-      this.stmtTextFtsScoped = this.db.prepare(
-        `SELECT t.notation, MIN(f.rank) as rank
-         FROM texts_fts f
-         JOIN texts t ON t.rowid = f.rowid
-         WHERE texts_fts MATCH ?
-           AND t.notation LIKE ? ESCAPE '\\'
-         GROUP BY t.notation`
-      );
-      this.stmtKwFtsScoped = this.db.prepare(
-        `SELECT k.notation, MIN(f.rank) as rank
-         FROM keywords_fts f
-         JOIN keywords k ON k.rowid = f.rowid
-         WHERE keywords_fts MATCH ?
-           AND k.notation LIKE ? ESCAPE '\\'
-         GROUP BY k.notation`
-      );
+      // Text and keyword FTS share an identical shape; the scoped variants only
+      // append a notation-prefix filter. Build all four from one template so the
+      // SELECT/JOIN/GROUP BY can never drift between the scoped and unscoped copies.
+      const ftsSql = (ftsTable: string, srcTable: string, alias: string, scoped: boolean) =>
+        `SELECT ${alias}.notation, MIN(f.rank) as rank
+         FROM ${ftsTable} f
+         JOIN ${srcTable} ${alias} ON ${alias}.rowid = f.rowid
+         WHERE ${ftsTable} MATCH ?${scoped ? `\n           AND ${alias}.notation LIKE ? ESCAPE '\\'` : ""}
+         GROUP BY ${alias}.notation`;
+      this.stmtTextFts = this.db.prepare(ftsSql("texts_fts", "texts", "t", false));
+      this.stmtTextFtsScoped = this.db.prepare(ftsSql("texts_fts", "texts", "t", true));
+      this.stmtKwFts = this.db.prepare(ftsSql("keywords_fts", "keywords", "k", false));
+      this.stmtKwFtsScoped = this.db.prepare(ftsSql("keywords_fts", "keywords", "k", true));
       this.stmtGetNotation = this.db.prepare(
         "SELECT notation, path, children, refs, base_notation, key_id, is_key_expanded FROM notations WHERE notation = ?"
       );
@@ -844,13 +827,11 @@ export class IconclassDb {
       : this.stmtKwFts.all(ftsExpr);
 
     // FTS5 rank is negative BM25 (lower = more relevant). Keep the best (lowest) rank per notation.
-    for (const r of textRows as { notation: string; rank: number }[]) {
-      const prev = map.get(r.notation);
-      if (prev === undefined || r.rank < prev) map.set(r.notation, r.rank);
-    }
-    for (const r of keywordRows as { notation: string; rank: number }[]) {
-      const prev = map.get(r.notation);
-      if (prev === undefined || r.rank < prev) map.set(r.notation, r.rank);
+    for (const rows of [textRows, keywordRows] as { notation: string; rank: number }[][]) {
+      for (const r of rows) {
+        const prev = map.get(r.notation);
+        if (prev === undefined || r.rank < prev) map.set(r.notation, r.rank);
+      }
     }
     return map;
   }

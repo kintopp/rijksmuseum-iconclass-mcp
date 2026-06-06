@@ -122,6 +122,7 @@ The server's download logic auto-detects chunked assets (`.part-aa`, `.part-ab`,
 | `HF_HOME` | — | HuggingFace cache directory |
 | `ALLOWED_ORIGINS` | `*` | CORS origins for HTTP mode |
 | `STRUCTURED_CONTENT` | `true` | Set `false` to disable `outputSchema` |
+| `USAGE_STATS_PATH` | `data/usage-stats.json` | Per-tool call/error/latency counters (flushed hourly + on shutdown). The default lives inside the image and is clobbered on every redeploy — set this to a path on the Railway volume to persist across restarts. |
 
 ## Performance
 

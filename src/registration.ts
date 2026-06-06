@@ -2,6 +2,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { IconclassDb } from "./api/IconclassDb.js";
 import { EmbeddingModel } from "./api/EmbeddingModel.js";
+import { UsageStats } from "./utils/UsageStats.js";
 
 // ─── Structured per-call logging ────────────────────────────────────
 //
@@ -9,6 +10,9 @@ import { EmbeddingModel } from "./api/EmbeddingModel.js";
 // On Railway this is consumed by `railway logs --json` and analysed by
 // scripts/analyse-railway-logs.{sh,py}. Shape mirrors rijksmuseum-mcp-plus
 // (registration.ts createLogger) so the analyser's data-shape contract holds.
+//
+// createLogger(stats) optionally also records the call into a persistent
+// UsageStats instance (#326), mirroring the rijksmuseum-mcp-plus shape.
 
 const MAX_INPUT_ARRAY = 5;
 
@@ -28,28 +32,31 @@ function truncateInput(input: Record<string, unknown>): Record<string, unknown> 
   return out;
 }
 
-function withLogging<A extends unknown[], R>(
-  toolName: string,
-  fn: (...args: A) => Promise<R>,
-): (...args: A) => Promise<R> {
-  return async (...args: A): Promise<R> => {
-    const rawInput = args[0] && typeof args[0] === "object" ? args[0] as Record<string, unknown> : undefined;
-    const input = rawInput ? truncateInput(rawInput) : undefined;
-    const start = performance.now();
-    let ok = true;
-    let error: string | undefined;
-    try {
-      const result = await fn(...args);
-      ok = !(result && typeof result === "object" && "isError" in result && result.isError);
-      return result;
-    } catch (err) {
-      ok = false;
-      error = err instanceof Error ? err.message : String(err);
-      throw err;
-    } finally {
-      const ms = Math.round(performance.now() - start);
-      console.error(JSON.stringify({ tool: toolName, ms, ok, ...(error !== undefined && { error }), ...(input && { input }) }));
-    }
+function createLogger(stats?: UsageStats) {
+  return function withLogging<A extends unknown[], R>(
+    toolName: string,
+    fn: (...args: A) => Promise<R>,
+  ): (...args: A) => Promise<R> {
+    return async (...args: A): Promise<R> => {
+      const rawInput = args[0] && typeof args[0] === "object" ? args[0] as Record<string, unknown> : undefined;
+      const input = rawInput ? truncateInput(rawInput) : undefined;
+      const start = performance.now();
+      let ok = true;
+      let error: string | undefined;
+      try {
+        const result = await fn(...args);
+        ok = !(result && typeof result === "object" && "isError" in result && result.isError);
+        return result;
+      } catch (err) {
+        ok = false;
+        error = err instanceof Error ? err.message : String(err);
+        throw err;
+      } finally {
+        const ms = Math.round(performance.now() - start);
+        console.error(JSON.stringify({ tool: toolName, ms, ok, ...(error !== undefined && { error }), ...(input && { input }) }));
+        stats?.record(toolName, ms, ok);
+      }
+    };
   };
 }
 
@@ -205,7 +212,9 @@ export function registerTools(
   server: McpServer,
   db: IconclassDb,
   embeddingModel: EmbeddingModel | null,
+  stats?: UsageStats,
 ): void {
+  const withLogging = createLogger(stats);
   const semanticAvailable = db.embeddingsAvailable && embeddingModel?.available;
   const keysAvailable = db.hasKeyExpansion;
 

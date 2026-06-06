@@ -5,6 +5,8 @@ data/*.db
 data/*.db-shm
 data/*.db-wal
 data/*.gz
+data/usage-stats.json
+data/usage-stats.json.tmp
 .env
 *.tgz
 __pycache__/

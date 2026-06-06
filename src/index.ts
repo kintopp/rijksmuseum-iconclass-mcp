@@ -18,6 +18,7 @@ import {
   type DbHandle,
 } from "./utils/MemoryStats.js";
 import { registerTools } from "./registration.js";
+import { UsageStats } from "./utils/UsageStats.js";
 
 const SERVER_NAME = "rijksmuseum-iconclass-mcp";
 
@@ -58,6 +59,9 @@ const COUNTS_DB_SPEC: DbSpec = {
 
 let iconclassDb: IconclassDb | null = null;
 let embeddingModel: EmbeddingModel | null = null;
+// Per-tool usage telemetry (#326). Module-scope singleton: createServer() runs
+// per-request in HTTP mode, so this must NOT be created inside it.
+let usageStats: UsageStats | undefined;
 
 function buildMemoryDbHandles(): DbHandle[] {
   return [
@@ -79,6 +83,10 @@ async function initDatabase(): Promise<void> {
   }
 
   iconclassDb.warmCorePages();
+
+  // Per-tool usage telemetry (#326). Instantiated once here (both runStdio and
+  // runHttp call initDatabase), shared read-only by every per-request server.
+  usageStats = new UsageStats();
 }
 
 // ─── Create a configured McpServer ──────────────────────────────────
@@ -113,7 +121,7 @@ function createServer(): McpServer {
   );
 
   if (iconclassDb?.available) {
-    registerTools(server, iconclassDb, embeddingModel);
+    registerTools(server, iconclassDb, embeddingModel, usageStats);
   }
 
   return server;
@@ -238,6 +246,7 @@ async function runHttp(): Promise<void> {
 
 function shutdown() {
   console.error("Shutting down...");
+  usageStats?.flush(); // persist any pending counters (#326)
   if (httpServer) {
     httpServer.close(() => {
       console.error("All connections closed.");

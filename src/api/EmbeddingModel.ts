@@ -2,6 +2,18 @@ import type { FeatureExtractionPipeline } from "@huggingface/transformers";
 
 export const DEFAULT_MODEL_ID = "Xenova/multilingual-e5-base";
 
+/** MRL truncation: cut a vector to targetDim and re-normalize to unit length.
+ *  No-op when targetDim is 0 or the vector is already <= targetDim. */
+export function mrlTruncate(vec: Float32Array, targetDim: number): Float32Array {
+  if (targetDim <= 0 || vec.length <= targetDim) return vec;
+  const out = vec.slice(0, targetDim);
+  let norm = 0;
+  for (const v of out) norm += v * v;
+  norm = Math.sqrt(norm);
+  if (norm > 1e-10) for (let i = 0; i < out.length; i++) out[i] /= norm;
+  return out;
+}
+
 export class EmbeddingModel {
   private pipe: FeatureExtractionPipeline | null = null;
   private _modelId: string = "";
@@ -67,13 +79,7 @@ export class EmbeddingModel {
 
     // MRL truncation: when the DB was built at a lower dimension than the model
     // outputs, truncate and re-normalize so the query vector matches stored embeddings.
-    if (this.targetDim > 0 && vec.length > this.targetDim) {
-      vec = vec.slice(0, this.targetDim);
-      let norm = 0;
-      for (const v of vec) norm += v * v;
-      norm = Math.sqrt(norm);
-      if (norm > 1e-10) for (let i = 0; i < vec.length; i++) vec[i] /= norm;
-    }
+    vec = mrlTruncate(vec, this.targetDim);
 
     return vec;
   }

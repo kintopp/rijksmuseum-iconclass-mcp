@@ -231,6 +231,12 @@ async function runHttp(): Promise<void> {
     res.json(captureMemorySnapshot(buildMemoryDbHandles()));
   });
 
+  // Per-tool usage counters (#326). Same convention as /debug/memory:
+  // unauthenticated operational signal — tool names, counts, latencies only.
+  app.get("/debug/stats", (_req: express.Request, res: express.Response) => {
+    res.json(usageStats?.toJSON() ?? { error: "usage stats not initialized" });
+  });
+
   // ── Start ──────────────────────────────────────────────────────
 
   httpServer = app.listen(port, () => {
@@ -238,6 +244,7 @@ async function runHttp(): Promise<void> {
     console.error(`  MCP endpoint: POST /mcp`);
     console.error(`  Health:       GET  /health`);
     console.error(`  Memory:       GET  /debug/memory`);
+    console.error(`  Stats:        GET  /debug/stats`);
     console.error(formatMemorySnapshotDetailed(captureMemorySnapshot(buildMemoryDbHandles())));
   });
 }

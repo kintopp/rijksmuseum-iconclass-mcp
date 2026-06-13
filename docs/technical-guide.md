@@ -124,6 +124,19 @@ The server's download logic auto-detects chunked assets (`.part-aa`, `.part-ab`,
 | `STRUCTURED_CONTENT` | `true` | Set `false` to disable `outputSchema` |
 | `USAGE_STATS_PATH` | `data/usage-stats.json` | Per-tool call/error/latency counters (flushed hourly + on shutdown). The default lives inside the image and is clobbered on every redeploy — set this to a path on the Railway volume to persist across restarts. |
 
+## HTTP endpoints
+
+In HTTP mode (`PORT` set or `--http`):
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| `POST` | `/mcp` | Stateless Streamable HTTP MCP endpoint |
+| `GET` | `/health` | Liveness + DB/model readiness |
+| `GET` | `/debug/memory` | Process + DB memory snapshot (issue #272) |
+| `GET` | `/debug/stats` | Per-tool call/error/latency counters since `since`, backed by `USAGE_STATS_PATH` (flushed hourly + on shutdown) |
+
+`/debug/memory` and `/debug/stats` are unauthenticated by convention — operational signals only (no inputs, no PII), matching `/health`.
+
 ## Performance
 
 | Operation | Local | Production | Notes |

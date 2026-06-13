@@ -6,34 +6,7 @@
  */
 import { escapeFts5, escapeFts5Terms } from "../../dist/utils/db.js";
 import { formatCollections, formatEntryLine } from "../../dist/registration.js";
-
-// ── Test helpers ─────────────────────────────────────────────────
-
-let passed = 0;
-let failed = 0;
-const failures = [];
-
-function assert(condition, msg) {
-  if (condition) {
-    passed++;
-    console.log(`  ✓ ${msg}`);
-  } else {
-    failed++;
-    failures.push(msg);
-    console.log(`  ✗ ${msg}`);
-  }
-}
-
-function assertEq(actual, expected, msg) {
-  const ok = actual === expected;
-  assert(ok, ok ? msg : `${msg} — expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`);
-}
-
-function section(name) {
-  console.log(`\n${"═".repeat(60)}`);
-  console.log(`  ${name}`);
-  console.log(`${"═".repeat(60)}`);
-}
+import { assertEq, section, report } from "./_assert.mjs";
 
 // ── escapeFts5 ──────────────────────────────────────────────────
 
@@ -128,12 +101,4 @@ assertEq(
 
 // ── Summary ─────────────────────────────────────────────────────
 
-console.log(`\n${"═".repeat(60)}`);
-console.log(`  ${passed} passed, ${failed} failed`);
-console.log(`${"═".repeat(60)}`);
-
-if (failed > 0) {
-  console.log("\nFailures:");
-  for (const f of failures) console.log(`  ✗ ${f}`);
-  process.exit(1);
-}
+report();

@@ -20,45 +20,9 @@ import Database from "better-sqlite3";
 import { UsageStats } from "../../dist/utils/UsageStats.js";
 import { ensureDb } from "../../dist/utils/db.js";
 import { mrlTruncate } from "../../dist/api/EmbeddingModel.js";
+import { assert, assertEq, section, atest, report } from "./_assert.mjs";
 
 // ── Test helpers ─────────────────────────────────────────────────
-
-let passed = 0;
-let failed = 0;
-const failures = [];
-
-function assert(condition, msg) {
-  if (condition) {
-    passed++;
-    console.log(`  ✓ ${msg}`);
-  } else {
-    failed++;
-    failures.push(msg);
-    console.log(`  ✗ ${msg}`);
-  }
-}
-
-function assertEq(actual, expected, msg) {
-  const ok = actual === expected;
-  assert(ok, ok ? msg : `${msg} — expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`);
-}
-
-function section(name) {
-  console.log(`\n${"═".repeat(60)}`);
-  console.log(`  ${name}`);
-  console.log(`${"═".repeat(60)}`);
-}
-
-/** Run an async test body; a throw becomes a failure rather than aborting the suite. */
-async function atest(msg, fn) {
-  try {
-    await fn();
-  } catch (err) {
-    failed++;
-    failures.push(`${msg} — threw: ${err.message}`);
-    console.log(`  ✗ ${msg} (threw: ${err.message})`);
-  }
-}
 
 function l2(v) {
   let s = 0;
@@ -70,22 +34,20 @@ function sha256(buf) {
   return crypto.createHash("sha256").update(buf).digest("hex");
 }
 
-/** A valid SQLite file (table t with one row) as a byte buffer. */
-function makeValidDbBuffer(dir, name) {
-  const p = path.join(dir, name);
-  const db = new Database(p);
-  db.exec("CREATE TABLE t (id INTEGER); INSERT INTO t VALUES (1);");
-  db.close();
-  const buf = fs.readFileSync(p);
-  fs.unlinkSync(p);
-  return buf;
-}
-
 /** Write a valid SQLite DB (table t + row) at path. */
 function writeValidDb(p) {
   const db = new Database(p);
   db.exec("CREATE TABLE t (id INTEGER); INSERT INTO t VALUES (1);");
   db.close();
+}
+
+/** The bytes of a valid SQLite file (table t with one row). */
+function makeValidDbBuffer(dir, name) {
+  const p = path.join(dir, name);
+  writeValidDb(p);
+  const buf = fs.readFileSync(p);
+  fs.unlinkSync(p);
+  return buf;
 }
 
 /** Write a SQLite DB that opens but FAILS `SELECT 1 FROM t` (no table t). */
@@ -119,13 +81,38 @@ function serverUrl(server, suffix = "/db") {
   return `http://127.0.0.1:${port}${suffix}`;
 }
 
+/** True iff the file at `p` passes VALIDATION_QUERY; false on any open/query
+ *  failure (mirrors how ensureDb itself treats a validation error). */
 function dbValidates(p) {
   const db = new Database(p, { readonly: true });
   try {
     return !!db.prepare(VALIDATION_QUERY).get();
+  } catch {
+    return false;
   } finally {
     db.close();
   }
+}
+
+// One shared env-var pair is enough: the ensureDb cases run sequentially, so a
+// fresh temp dir per case is all the isolation they need.
+const ENV_PATH = "TEST_DB_PATH";
+const ENV_URL = "TEST_DB_URL";
+
+/** Make a fresh temp dir + dbPath under `tmpRoot` and point ensureDb's env vars
+ *  at it. Sets TEST_DB_URL to `url` when given, clears it otherwise. */
+function setupEnsureDb(tag, url) {
+  const dir = fs.mkdtempSync(path.join(tmpRoot, `${tag}-`));
+  const dbPath = path.join(dir, "db.sqlite");
+  process.env[ENV_PATH] = dbPath;
+  if (url) process.env[ENV_URL] = url;
+  else delete process.env[ENV_URL];
+  return dbPath;
+}
+
+/** Invoke the real ensureDb against the shared env-var pair. */
+function callEnsureDb(name, extra = {}) {
+  return ensureDb({ name, pathEnvVar: ENV_PATH, urlEnvVar: ENV_URL, defaultFile: "x.db", validationQuery: VALIDATION_QUERY, ...extra });
 }
 
 // ── Main ─────────────────────────────────────────────────────────
@@ -216,35 +203,26 @@ try {
   const validBuf = makeValidDbBuffer(tmpRoot, "fixture-src.db");
 
   await atest("existing valid DB + no URL → no re-download (mtime unchanged)", async () => {
-    const dir = fs.mkdtempSync(path.join(tmpRoot, "c1-"));
-    const dbPath = path.join(dir, "db.sqlite");
+    const dbPath = setupEnsureDb("c1");
     writeValidDb(dbPath);
-    process.env.TEST_DB_PATH_1 = dbPath;
-    delete process.env.TEST_DB_URL_1;
     const before = fs.statSync(dbPath).mtimeMs;
-    await ensureDb({ name: "t1", pathEnvVar: "TEST_DB_PATH_1", urlEnvVar: "TEST_DB_URL_1", defaultFile: "x.db", validationQuery: VALIDATION_QUERY });
+    await callEnsureDb("t1");
     const after = fs.statSync(dbPath).mtimeMs;
     assertEq(after, before, "case 1: mtime unchanged (no re-download)");
     assert(dbValidates(dbPath), "case 1: file still valid");
   });
 
   await atest("no local file + no URL → no file created, no throw", async () => {
-    const dir = fs.mkdtempSync(path.join(tmpRoot, "c2-"));
-    const dbPath = path.join(dir, "db.sqlite");
-    process.env.TEST_DB_PATH_2 = dbPath;
-    delete process.env.TEST_DB_URL_2;
-    await ensureDb({ name: "t2", pathEnvVar: "TEST_DB_PATH_2", urlEnvVar: "TEST_DB_URL_2", defaultFile: "x.db", validationQuery: VALIDATION_QUERY });
+    const dbPath = setupEnsureDb("c2");
+    await callEnsureDb("t2");
     assert(!fs.existsSync(dbPath), "case 2: no file created");
   });
 
   await atest("no local file + URL (uncompressed) → downloaded + valid", async () => {
-    const dir = fs.mkdtempSync(path.join(tmpRoot, "c3-"));
-    const dbPath = path.join(dir, "db.sqlite");
     const server = await startServer(validBuf);
     try {
-      process.env.TEST_DB_PATH_3 = dbPath;
-      process.env.TEST_DB_URL_3 = serverUrl(server, "/db");
-      await ensureDb({ name: "t3", pathEnvVar: "TEST_DB_PATH_3", urlEnvVar: "TEST_DB_URL_3", defaultFile: "x.db", validationQuery: VALIDATION_QUERY });
+      const dbPath = setupEnsureDb("c3", serverUrl(server, "/db"));
+      await callEnsureDb("t3");
       assert(fs.existsSync(dbPath), "case 3: file downloaded");
       assert(dbValidates(dbPath), "case 3: downloaded file validates");
     } finally {
@@ -253,13 +231,10 @@ try {
   });
 
   await atest("no local file + .gz URL → decompressed + valid", async () => {
-    const dir = fs.mkdtempSync(path.join(tmpRoot, "c4-"));
-    const dbPath = path.join(dir, "db.sqlite");
     const server = await startServer(zlib.gzipSync(validBuf));
     try {
-      process.env.TEST_DB_PATH_4 = dbPath;
-      process.env.TEST_DB_URL_4 = serverUrl(server, "/db.gz");
-      await ensureDb({ name: "t4", pathEnvVar: "TEST_DB_PATH_4", urlEnvVar: "TEST_DB_URL_4", defaultFile: "x.db", validationQuery: VALIDATION_QUERY });
+      const dbPath = setupEnsureDb("c4", serverUrl(server, "/db.gz"));
+      await callEnsureDb("t4");
       assert(fs.existsSync(dbPath), "case 4: file downloaded");
       assert(dbValidates(dbPath), "case 4: gunzipped file validates");
       assert(!fs.existsSync(dbPath + ".tmp.gz"), "case 4: no .tmp.gz left behind");
@@ -269,15 +244,12 @@ try {
   });
 
   await atest("corrupt download + refreshOnStartup → local file preserved", async () => {
-    const dir = fs.mkdtempSync(path.join(tmpRoot, "c5-"));
-    const dbPath = path.join(dir, "db.sqlite");
-    writeValidDb(dbPath);
-    const hashBefore = sha256(fs.readFileSync(dbPath));
     const server = await startServer(Buffer.from("this is not a sqlite database at all"));
     try {
-      process.env.TEST_DB_PATH_5 = dbPath;
-      process.env.TEST_DB_URL_5 = serverUrl(server, "/db");
-      await ensureDb({ name: "t5", pathEnvVar: "TEST_DB_PATH_5", urlEnvVar: "TEST_DB_URL_5", defaultFile: "x.db", validationQuery: VALIDATION_QUERY, refreshOnStartup: true });
+      const dbPath = setupEnsureDb("c5", serverUrl(server, "/db"));
+      writeValidDb(dbPath);
+      const hashBefore = sha256(fs.readFileSync(dbPath));
+      await callEnsureDb("t5", { refreshOnStartup: true });
       assertEq(sha256(fs.readFileSync(dbPath)), hashBefore, "case 5: local file unchanged after bad refresh");
       assert(dbValidates(dbPath), "case 5: local file still valid");
       assert(!fs.existsSync(dbPath + ".tmp"), "case 5: no .tmp left behind");
@@ -288,15 +260,12 @@ try {
   });
 
   await atest("existing INVALID DB + URL → replaced with valid download", async () => {
-    const dir = fs.mkdtempSync(path.join(tmpRoot, "c6-"));
-    const dbPath = path.join(dir, "db.sqlite");
-    writeInvalidDb(dbPath);
-    assert(!(() => { try { return dbValidates(dbPath); } catch { return false; } })(), "case 6: precondition — local file fails validation");
     const server = await startServer(validBuf);
     try {
-      process.env.TEST_DB_PATH_6 = dbPath;
-      process.env.TEST_DB_URL_6 = serverUrl(server, "/db");
-      await ensureDb({ name: "t6", pathEnvVar: "TEST_DB_PATH_6", urlEnvVar: "TEST_DB_URL_6", defaultFile: "x.db", validationQuery: VALIDATION_QUERY });
+      const dbPath = setupEnsureDb("c6", serverUrl(server, "/db"));
+      writeInvalidDb(dbPath);
+      assert(!dbValidates(dbPath), "case 6: precondition — local file fails validation");
+      await callEnsureDb("t6");
       assert(dbValidates(dbPath), "case 6: file replaced and now validates");
     } finally {
       server.close();
@@ -350,15 +319,7 @@ try {
   }
 
   // ── Summary ───────────────────────────────────────────────────
-  console.log(`\n${"═".repeat(60)}`);
-  console.log(`  ${passed} passed, ${failed} failed`);
-  console.log(`${"═".repeat(60)}`);
-
-  if (failed > 0) {
-    console.log("\nFailures:");
-    for (const f of failures) console.log(`  ✗ ${f}`);
-    process.exitCode = 1;
-  }
+  report();
 } finally {
   fs.rmSync(tmpRoot, { recursive: true, force: true });
 }

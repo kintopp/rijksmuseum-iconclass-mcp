@@ -37,7 +37,20 @@ export class EmbeddingModel {
     }
 
     try {
-      const { pipeline } = await import("@huggingface/transformers");
+      const { pipeline, env } = await import("@huggingface/transformers");
+
+      // transformers.js does NOT read HF_HOME / TRANSFORMERS_CACHE (unlike Python's
+      // huggingface_hub) — it only honors env.cacheDir, which defaults to
+      // node_modules/@huggingface/transformers/.cache. On Railway that path is on the
+      // ephemeral image filesystem, so the model re-downloads on every deploy. Redirect
+      // the cache onto the persistent volume when HF_HOME is set so the q8 weights and
+      // tokenizer survive restarts. FileCache.put() mkdir's the tree, so the dir need
+      // not pre-exist — the volume just has to be mounted.
+      if (process.env.HF_HOME) {
+        env.cacheDir = process.env.HF_HOME;
+        console.error(`Embedding model cache dir: ${env.cacheDir}`);
+      }
+
       // pipeline()'s generic return type Promise<AllTasks[T]> is too wide for
       // tsc to evaluate at the call site (TS2590). Narrow the function shape
       // before calling so we get a concrete FeatureExtractionPipeline.

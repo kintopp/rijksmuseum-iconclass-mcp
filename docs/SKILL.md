@@ -11,10 +11,6 @@ description: >
   search_artwork(iconclass=...).
 ---
 
-<!-- Skill version: 0.4.2 — last updated 2026-06-15 -->
-<!-- "rijksmuseum-mcp+" refers to the companion server at
-     github.com/kintopp/rijksmuseum-mcp-plus. -->
-
 # Iconclass MCP Research Skill
 
 ## Core Mental Model

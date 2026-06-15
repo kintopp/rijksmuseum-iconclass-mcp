@@ -1,6 +1,6 @@
 ---
 name: iconclass-mcp
-version: "0.41"
+version: "0.4.2"
 description: >
   Companion vocabulary layer to rijksmuseum-mcp+: maps art-subject concepts
   to Iconclass notation codes (~1.3M codes across 13 languages) and checks
@@ -11,7 +11,7 @@ description: >
   search_artwork(iconclass=...).
 ---
 
-<!-- Skill version: 0.41 — last updated 2026-06-01 -->
+<!-- Skill version: 0.4.2 — last updated 2026-06-15 -->
 <!-- "rijksmuseum-mcp+" refers to the companion server at
      github.com/kintopp/rijksmuseum-mcp-plus. -->
 
@@ -63,6 +63,7 @@ The `iconclass` parameter accepts exact notation codes (language-independent). T
 | "Everything under 'the Crucifixion of Christ'" | `search_prefix` with `73D6` |
 | "Find 'reading' within Virgin Mary subjects" | `search` with `query: "reading"`, `parentNotation: "11F"` |
 | "Which notations have artworks in a collection?" | `search` with `collectionId` (e.g. `"rijksmuseum"` or `"rkd"`) |
+| "Which notations have artworks at all (any collection)?" | `search` with `onlyWithArtworks: true` |
 | "How many artworks depict X?" | `find_artworks` with notation(s) from a prior search |
 | "Show me artworks about X" | Full workflow: `search` → `find_artworks` → `search_artwork(iconclass: ...)` on rijksmuseum-mcp+ |
 | "Show me artworks of [a common animal]" | Start global (no `parentNotation`) — the animal may not be in `25F*`. See Workflow 3 → Searching for a specific animal. |
@@ -109,7 +110,7 @@ When in doubt, `resolve` the notation and check its hierarchy path — the path 
 
 ## FTS Query Patterns
 
-The keyword search (`query`) uses FTS5 across labels and keywords in all 13 languages. Understanding its behaviour avoids wasted tool calls.
+The keyword search (`query`) uses FTS5 across labels (13 languages) and keywords (11 languages). Understanding its behaviour avoids wasted tool calls.
 
 **Inflected forms often work** because the Iconclass keyword data includes variants — "crucified" finds "crucifixion" (675 matches). But **spelling variants do not** — "odour" and "odor" are separate words and won't cross-match. When in doubt, try both spellings or fall back to `semanticQuery`.
 
@@ -189,7 +190,7 @@ The same concept can appear in multiple Iconclass branches because the system cl
 Use keyword or semantic search to discover all branches, then `resolve` to compare them side by side:
 
 ```
-search(query: "dog", maxResults: 10)
+search(query: "dog", maxResults: 25)
 # -> multiple notations across branches 11, 25, 34, 46...
 
 resolve(notation: ["34B11", "11H(BERNARD)", "25FF21"])

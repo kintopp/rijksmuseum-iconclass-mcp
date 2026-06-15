@@ -12,6 +12,13 @@
 # and uploads each chunk to the given GitHub release. Failed uploads are
 # retried up to 3 times. On the server side, ensureDb() in src/utils/db.ts
 # detects the chunks, downloads them in sequence, and reassembles the file.
+#
+# ROLLING TAGS (e.g. iconclass-db-latest, #331): delete the existing
+# .part-* assets BEFORE re-running. --clobber overwrites same-named parts
+# but does NOT prune orphans, and tryChunkedDownload() stops at the first
+# *missing* chunk — so a leftover part from a larger prior build gets
+# appended and corrupts reassembly. See the "Update main DB" runbook in
+# CLAUDE.md for the prune one-liner.
 
 set -euo pipefail
 

@@ -333,9 +333,8 @@ export function registerTools(
     {
       title: "Browse Iconclass",
       description:
-        "Browse an Iconclass notation's hierarchy: returns the entry with its path, children (expandable to depth 1-3), " +
-        "cross-references (resolved with labels), and optionally key-expanded variants. " +
-        "Use depth=2 for narrative exploration; wide branches are capped at 25 children per parent. " +
+        "Browse an Iconclass notation's hierarchy: its entry, path, children, cross-references, and key variants. " +
+        "Children expand to depth 1-3 (use depth=2 for narrative exploration); wide branches are capped at 25 children per parent. " +
         "To list all key variants of a notation, use expand_keys instead of includeKeys.",
       inputSchema: z.object({
         notation: z.string().min(1).describe("Iconclass notation to browse (e.g. '31A33', '73D82')."),

@@ -11,6 +11,16 @@ function escapeLikePrefix(prefix: string): string {
   return `${prefix.replace(/[\\%_]/g, (ch) => `\\${ch}`)}%`;
 }
 
+/** True when a loaded embeddings table is trustworthy: the recorded expected
+ *  count matches the actual row count, OR no expected count was recorded
+ *  (older DBs predate the `embedding_count` metadata key — can't check, so we
+ *  assume the table is complete). A mismatch means the build was interrupted
+ *  and the table is partial. */
+export function embeddingsCountConsistent(expected: number | null, actual: number): boolean {
+  if (expected === null || Number.isNaN(expected)) return true;
+  return expected === actual;
+}
+
 // ─── Types ───────────────────────────────────────────────────────────
 
 export interface CollectionInfo {
@@ -289,9 +299,22 @@ export class IconclassDb {
           ORDER BY distance LIMIT ?
         `);
 
-        this._hasEmbeddings = true;
         const embCount = (this.db.prepare("SELECT COUNT(*) as n FROM iconclass_embeddings").get() as { n: number }).n;
-        console.error(`  Iconclass embeddings: ${embCount.toLocaleString()} vectors (${this._embeddingDimensions}d)`);
+        const expectedRow = this.db.prepare(
+          "SELECT value FROM version_info WHERE key = 'embedding_count'"
+        ).get() as { value: string } | undefined;
+        const expectedCount = expectedRow ? parseInt(expectedRow.value, 10) : null;
+
+        if (!embeddingsCountConsistent(expectedCount, embCount)) {
+          console.error(
+            `  Iconclass embeddings INCOMPLETE: expected ${expectedCount}, found ${embCount.toLocaleString()} — ` +
+            `disabling semantic search (likely an interrupted embedding build)`
+          );
+          this._hasEmbeddings = false;
+        } else {
+          this._hasEmbeddings = true;
+          console.error(`  Iconclass embeddings: ${embCount.toLocaleString()} vectors (${this._embeddingDimensions}d)`);
+        }
       } catch { /* no embeddings */ }
 
       // Text and keyword FTS share an identical shape; the scoped variants only

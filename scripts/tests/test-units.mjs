@@ -20,6 +20,7 @@ import Database from "better-sqlite3";
 import { UsageStats } from "../../dist/utils/UsageStats.js";
 import { ensureDb } from "../../dist/utils/db.js";
 import { mrlTruncate } from "../../dist/api/EmbeddingModel.js";
+import { embeddingsCountConsistent } from "../../dist/api/IconclassDb.js";
 import { assert, assertEq, section, atest, report } from "./_assert.mjs";
 
 // ── Test helpers ─────────────────────────────────────────────────
@@ -317,6 +318,14 @@ try {
     const ratioOut = out[10] / out[20];
     assert(Math.abs(ratioIn - ratioOut) < 1e-4, "case 5: component ratio preserved (uniform scaling)");
   }
+
+  // ════════════════════════════════════════════════════════════════
+  section("embeddingsCountConsistent — partial-table guard");
+  assert(embeddingsCountConsistent(null, 0) === true, "null expected → trust (older DB)");
+  assert(embeddingsCountConsistent(NaN, 100) === true, "NaN expected → trust (unparseable)");
+  assert(embeddingsCountConsistent(39802, 39802) === true, "match → trust");
+  assert(embeddingsCountConsistent(39802, 12000) === false, "fewer than expected → distrust (partial)");
+  assert(embeddingsCountConsistent(39802, 39803) === false, "more than expected → distrust (drift)");
 
   // ── Summary ───────────────────────────────────────────────────
   report();

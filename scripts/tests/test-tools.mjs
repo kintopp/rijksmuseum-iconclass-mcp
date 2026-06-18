@@ -459,6 +459,12 @@ const s9b = sc(r9b);
 assert(s9b.results.length > 0, `offset 20 still returns results (got ${s9b.results.length})`);
 assertEq(s9b.totalResults, s9a.totalResults, "totalResults consistent across pages");
 
+// Results must be ascending by notation (SQL ORDER BY n.notation).
+const ordered = [...s9a.results].map(r => r.notation);
+const sortedCopy = [...ordered].sort();
+assert(JSON.stringify(ordered) === JSON.stringify(sortedCopy),
+  "prefix+collection results are ascending by notation");
+
 // Without collectionId, totalResults should also be accurate
 const r9c = await client.callTool({
   name: "search_prefix",

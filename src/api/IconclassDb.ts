@@ -141,6 +141,8 @@ export class IconclassDb {
   private stmtKnn: Statement | null = null;
   private stmtFilteredKnn: Statement | null = null;
   private stmtPrefixFilteredKnn: Statement | null = null;
+  private stmtPrefixCollCount: Statement | null = null;
+  private stmtPrefixCollPage: Statement | null = null;
 
   constructor() {
     const dbPath = resolveDbPath("ICONCLASS_DB_PATH", "iconclass.db");
@@ -210,6 +212,23 @@ export class IconclassDb {
             for (const n of ns) this.stmtBatchInsert!.run(n);
           });
 
+          // Prefix + collection filter: filter, sort, and paginate entirely in
+          // SQL so a broad prefix never materializes ~200K notations in JS.
+          this.stmtPrefixCollCount = this.db!.prepare(`
+            SELECT COUNT(*) AS n
+            FROM notations n
+            INNER JOIN counts.collection_counts cc ON cc.notation = n.notation
+            WHERE n.notation LIKE ? ESCAPE '\\' AND cc.collection_id = ?
+          `);
+          this.stmtPrefixCollPage = this.db!.prepare(`
+            SELECT n.notation
+            FROM notations n
+            INNER JOIN counts.collection_counts cc ON cc.notation = n.notation
+            WHERE n.notation LIKE ? ESCAPE '\\' AND cc.collection_id = ?
+            ORDER BY n.notation
+            LIMIT ? OFFSET ?
+          `);
+
           console.error(`  Counts DB attached: ${countsPath} (${this._collections.length} collections, ${this._countsDbVersion?.releaseTag ?? "no tag"})`);
         } catch (err) {
           // Schema mismatch or missing tables — fully discard the sidecar so tools
@@ -219,6 +238,8 @@ export class IconclassDb {
           this.stmtBatchInsert = null;
           this.stmtDeleteBatch = null;
           this.batchInsertAll = null;
+          this.stmtPrefixCollCount = null;
+          this.stmtPrefixCollPage = null;
           this._collections = [];
           this._collectionsMap = new Map();
           this._countsDbVersion = null;
@@ -320,6 +341,8 @@ export class IconclassDb {
       this.stmtGetCollectionCounts = null;
       this.stmtPresenceJoin = null;
       this.stmtBatchInsert = null;
+      this.stmtPrefixCollCount = null;
+      this.stmtPrefixCollPage = null;
       this._collections = [];
       this._collectionsMap = new Map();
       this._countsDbVersion = null;
@@ -539,18 +562,19 @@ export class IconclassDb {
     const presenceCache = new Map<string, Set<string>>();
 
     if (collectionId) {
-      // Collection filter: fetch ALL matching notations, filter, then paginate
-      const allRows = this.stmtPrefixSearch.all(likePattern, -1, 0) as { notation: string }[];
-      const allNotations = allRows.map(r => r.notation);
-      const counted = this.fetchPresenceForSort(allNotations, presenceCache, collectionId);
-      const filteredNotations = counted.map(c => c.notation).sort();
+      // Direct JOIN against the counts sidecar — filter, sort, and paginate in
+      // SQL. Avoids pulling every prefix-matching notation (up to ~200K for a
+      // broad prefix) into JS and re-inserting them into the temp table.
+      if (!this.stmtPrefixCollCount || !this.stmtPrefixCollPage) {
+        return empty; // counts DB not attached → no collection data to filter on
+      }
 
-      const totalResults = filteredNotations.length;
-      const page = filteredNotations.slice(offset, offset + maxResults);
+      const totalResults = (this.stmtPrefixCollCount.get(likePattern, collectionId) as { n: number }).n;
+      const rows = this.stmtPrefixCollPage.all(likePattern, collectionId, maxResults, offset) as { notation: string }[];
 
       const textCache = new Map<string, string | null>();
-      const results = page
-        .map((n) => this.resolveEntry(n, lang, textCache, presenceCache))
+      const results = rows
+        .map((r) => this.resolveEntry(r.notation, lang, textCache, presenceCache))
         .filter((e): e is IconclassEntry => e !== null);
 
       return { prefix, totalResults, results, collections: this._collections };

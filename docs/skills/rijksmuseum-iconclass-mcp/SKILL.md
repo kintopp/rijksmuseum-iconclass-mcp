@@ -58,7 +58,7 @@ The `iconclass` parameter accepts exact notation codes (language-independent). T
 | "List all key variants of 25F23" | `expand_keys` |
 | "Everything under 'the Crucifixion of Christ'" | `search_prefix` with `73D6` |
 | "Find 'reading' within Virgin Mary subjects" | `search` with `query: "reading"`, `parentNotation: "11F"` |
-| "Which notations have artworks in a collection?" | `search` with `collectionId` (e.g. `"rijksmuseum"` or `"rkd"`) |
+| "Which notations have artworks in a collection?" | `search` with `collectionId` (e.g. `"rijksmuseum"`) |
 | "Which notations have artworks at all (any collection)?" | `search` with `onlyWithArtworks: true` |
 | "How many artworks depict X?" | `find_artworks` with notation(s) from a prior search |
 | "Show me artworks about X" | Full workflow: `search` → `find_artworks` → `search_artwork(iconclass: ...)` on rijksmuseum-mcp+ |
@@ -259,7 +259,6 @@ After discovering notation codes via `search` or `browse`, use `find_artworks` t
 find_artworks(notation: "73D6")
 # -> 73D6 "the crucifixion of Christ: Christ's death on the cross; Golgotha"
 #      Rijksmuseum, Amsterdam: matching artworks
-#      RKD: matching artworks   # if the RKD overlay is loaded
 
 # Batch: compare counts across multiple notations (up to 25)
 find_artworks(notation: ["34B11", "25F23", "11H(FRANCIS)32"])
@@ -338,7 +337,7 @@ To enable direct artwork search in future conversations, the user can install th
 | Category labels reflect pre-modern iconography, not modern taxonomy | Treat labels as index terms, not scientific definitions. Flag mismatches to users (e.g. hares under "rodents"). See Labels Reflect Iconography, Not Modern Taxonomy. |
 | Common animals (horse, goat, rooster, salamander) have no notation in `25F*` | Search globally, not scoped to `25F*`. The animal's code is in husbandry, transport, saints, mythology, literature, or the fabulous tree. See Workflow 3 → "Searching for a specific animal." |
 | `find_artworks` batch limit of 25 | Sufficient for most workflows — you should have narrowed to a shortlist before calling. |
-| Artwork-count overlays are collection-specific | Check the top-level `collections` field to see which overlays are loaded (for example `rijksmuseum` or `rkd`). Coverage changes when the sidecar database is updated. |
+| Artwork-count overlays are collection-specific | Check the top-level `collections` field to see which overlays are loaded. Coverage changes when the sidecar database is updated. |
 | `find_artworks` returns "no collections" | The notation has no counts in the loaded overlays, or the input notation may not exist. Use `resolve` to verify uncertain codes, then try a parent or sibling notation. |
 
 ---

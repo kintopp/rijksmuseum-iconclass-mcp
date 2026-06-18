@@ -27,6 +27,22 @@ To use the local server with Claude Desktop (stdio), add to your `claude_desktop
 }
 ```
 
+### Testing
+
+There is no test framework — the suites are standalone Node scripts under
+`scripts/tests/`, run via npm:
+
+| Command | Layer | Requires |
+|---------|-------|----------|
+| `npm test` | Pure-function + unit tests | nothing (runs in CI) |
+| `npm run test:tools` | Integration tests via the MCP client | the main `data/iconclass.db` |
+| `npm run test:http` | HTTP concurrency smoke test | a built `dist/` |
+| `npm run test:e2e` | LLM-driven end-to-end (tool selection) | `data/iconclass.db` **and** `ANTHROPIC_API_KEY` |
+
+Only `npm test` runs in CI; the integration and E2E layers need the large
+database (and, for E2E, a paid API key), so run them locally. The E2E suite
+skips itself with a notice when `ANTHROPIC_API_KEY` is not set.
+
 ## Artwork counts
 
 Artwork count data lives in a separate **sidecar database** (`iconclass-counts.db`, ~1.4 MB) so it can be updated independently of the main 3 GB notation/text/embedding database. The Rijksmuseum collection overlay ships by default with ~20,200 notations and per-notation artwork counts. The `find_artworks` tool returns these counts; the other tools use the sidecar for presence filtering (`onlyWithArtworks`, `collectionId`).

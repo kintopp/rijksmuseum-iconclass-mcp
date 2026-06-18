@@ -18,6 +18,7 @@
     "test": "node scripts/tests/test-pure-functions.mjs && node scripts/tests/test-units.mjs",
     "test:tools": "node scripts/tests/test-tools.mjs",
     "test:http": "node scripts/tests/test-http-concurrency.mjs",
+    "test:e2e": "node scripts/tests/test-mcpjam.mjs",
     "test:all": "node scripts/tests/test-pure-functions.mjs && node scripts/tests/test-tools.mjs && node scripts/tests/test-http-concurrency.mjs",
     "warm-cache": "node scripts/warm-cache-local.mjs --validate"
   },

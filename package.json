@@ -30,7 +30,7 @@
     "cors": "^2.8.5",
     "express": "^5.1.0",
     "sqlite-vec": "0.1.9",
-    "zod": "^3.25.0"
+    "zod": "^4.0.0"
   },
   "devDependencies": {
     "@mcpjam/sdk": "^0.8.16",

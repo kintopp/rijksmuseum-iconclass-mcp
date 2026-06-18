@@ -88,12 +88,14 @@ export class EmbeddingModel {
       normalize: true,
     });
 
-    let vec = new Float32Array(output.data);
+    // output.data is the pipeline's raw typed array (Float32Array for a normalized
+    // feature-extraction run). The transformers DataArray union widens the static
+    // type to include integer/bigint arrays, so coerce to a numeric ArrayLike for the
+    // Float32Array constructor (TS's generic typed-array types reject the bare union).
+    const vec = new Float32Array(output.data as ArrayLike<number>);
 
     // MRL truncation: when the DB was built at a lower dimension than the model
     // outputs, truncate and re-normalize so the query vector matches stored embeddings.
-    vec = mrlTruncate(vec, this.targetDim);
-
-    return vec;
+    return mrlTruncate(vec, this.targetDim);
   }
 }

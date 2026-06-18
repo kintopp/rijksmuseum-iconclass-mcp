@@ -23,7 +23,7 @@
     "warm-cache": "node scripts/warm-cache-local.mjs --validate"
   },
   "dependencies": {
-    "@huggingface/transformers": "3.8.1",
+    "@huggingface/transformers": "4.2.0",
     "@modelcontextprotocol/sdk": "^1.26.0",
     "better-sqlite3": "^12.6.2",
     "compression": "^1.8.1",

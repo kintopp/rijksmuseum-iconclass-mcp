@@ -37,11 +37,9 @@ There is no test framework — the suites are standalone Node scripts under
 | `npm test` | Pure-function + unit tests | nothing (runs in CI) |
 | `npm run test:tools` | Integration tests via the MCP client | the main `data/iconclass.db` |
 | `npm run test:http` | HTTP concurrency smoke test | a built `dist/` |
-| `npm run test:e2e` | LLM-driven end-to-end (tool selection) | `data/iconclass.db` **and** `ANTHROPIC_API_KEY` |
 
-Only `npm test` runs in CI; the integration and E2E layers need the large
-database (and, for E2E, a paid API key), so run them locally. The E2E suite
-skips itself with a notice when `ANTHROPIC_API_KEY` is not set.
+Only `npm test` runs in CI; the integration layer needs the large database, so
+run it locally.
 
 ## Artwork counts
 

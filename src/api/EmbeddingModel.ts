@@ -19,15 +19,24 @@ export class EmbeddingModel {
   private _modelId: string = "";
   private queryPrefix = "query: ";
   private targetDim = 0;
+  // Cached load promise. init() is called once at startup to KICK OFF the load
+  // without awaiting it (so the ~seconds-long e5-base ONNX load never gates
+  // app.listen() / a scale-to-zero wake), and embed() awaits this same promise
+  // lazily. Idempotent — the model loads exactly once.
+  private initPromise: Promise<void> | null = null;
 
   /**
-   * Initialize the model. Downloads from HuggingFace Hub on first use,
-   * or loads from a local cache/path.
+   * Begin loading the model; returns a promise that settles when it is ready
+   * (loaded or failed). Idempotent — repeated calls return the same in-flight
+   * or settled promise. Downloads from HuggingFace Hub on first use, or loads
+   * from a local cache/path. Callers that need the model ready should await the
+   * returned promise (or call whenReady()).
    *
    * @param modelId   - HuggingFace model ID or local path
    * @param targetDim - MRL truncation target dimension (0 = no truncation).
    */
-  async init(modelId: string = DEFAULT_MODEL_ID, targetDim = 0): Promise<void> {
+  init(modelId: string = DEFAULT_MODEL_ID, targetDim = 0): Promise<void> {
+    if (this.initPromise) return this.initPromise;
     this._modelId = modelId;
     this.targetDim = targetDim;
 
@@ -36,6 +45,11 @@ export class EmbeddingModel {
       this.queryPrefix = "task: search result | query: ";
     }
 
+    this.initPromise = this.load(modelId, targetDim);
+    return this.initPromise;
+  }
+
+  private async load(modelId: string, targetDim: number): Promise<void> {
     try {
       const { pipeline, env } = await import("@huggingface/transformers");
 
@@ -73,6 +87,13 @@ export class EmbeddingModel {
   get available(): boolean { return this.pipe !== null; }
   get modelId(): string { return this._modelId; }
 
+  /** Resolve once the load kicked off by init() settles (whether it loaded or
+   *  failed). No-op if init() was never called. Lets a query lazily wait for a
+   *  model that is still loading in the background after a wake. */
+  async whenReady(): Promise<void> {
+    if (this.initPromise) await this.initPromise;
+  }
+
   /**
    * Embed a single query string. Returns a Float32Array.
    *
@@ -81,6 +102,7 @@ export class EmbeddingModel {
    * targetDim, truncates and re-normalizes (MRL truncation).
    */
   async embed(text: string): Promise<Float32Array> {
+    await this.whenReady();   // the model may still be loading in the background
     if (!this.pipe) throw new Error("Embedding model not initialized");
 
     const output = await this.pipe(this.queryPrefix + text, {

@@ -79,14 +79,34 @@ async function initDatabase(): Promise<void> {
     embeddingModel = new EmbeddingModel();
     const modelId = process.env.EMBEDDING_MODEL_ID ?? DEFAULT_MODEL_ID;
     const targetDim = iconclassDb.embeddingDimensions;
-    await embeddingModel.init(modelId, targetDim);
+    // KICK OFF the e5-base load without awaiting it — the ~seconds-long ONNX
+    // init must not gate app.listen() / a scale-to-zero wake. embed() awaits
+    // this same load lazily (so the first semantic query after a wake waits,
+    // within the /mcp 30s net), and runStdio() awaits whenReady() to keep
+    // stdio startup eager. warmCorePages() likewise moves off the boot path.
+    embeddingModel.init(modelId, targetDim);
   }
-
-  iconclassDb.warmCorePages();
 
   // Per-tool usage telemetry (#326). Instantiated once here (both runStdio and
   // runHttp call initDatabase), shared read-only by every per-request server.
   usageStats = new UsageStats();
+}
+
+/** Non-blocking warm-up run AFTER the transport is serving: pages in the DB
+ *  mmap regions and waits on the (already-kicked-off) model load, yielding to
+ *  the event loop first so a concurrent /health or MCP `initialize` during a
+ *  wake is never starved. Not awaited by HTTP mode. */
+async function warmInBackground(): Promise<void> {
+  const yieldTick = (): Promise<void> => new Promise((resolve) => setImmediate(resolve));
+  try {
+    await yieldTick(); // let listen()'s callback + any queued wake requests flush first
+    iconclassDb?.warmCorePages();
+    await embeddingModel?.whenReady();
+    console.error("Background warmup complete");
+    console.error(formatMemorySnapshotDetailed(captureMemorySnapshot(buildMemoryDbHandles())));
+  } catch (err) {
+    console.error(`Background warmup failed: ${err instanceof Error ? err.message : err}`);
+  }
 }
 
 // ─── Create a configured McpServer ──────────────────────────────────
@@ -135,6 +155,10 @@ async function runStdio(): Promise<void> {
     console.error("FATAL: Iconclass DB is not available — cannot register tools. Exiting.");
     process.exit(1);
   }
+  // stdio has no wake/connect-race concern, so keep startup eager: finish the
+  // model load (kicked off non-blocking in initDatabase) and warm before serving.
+  await embeddingModel?.whenReady();
+  iconclassDb.warmCorePages();
   const server = createServer();
   const transport = new StdioServerTransport();
   await server.connect(transport);
@@ -245,8 +269,14 @@ async function runHttp(): Promise<void> {
     console.error(`  Health:       GET  /health`);
     console.error(`  Memory:       GET  /debug/memory`);
     console.error(`  Stats:        GET  /debug/stats`);
-    console.error(formatMemorySnapshotDetailed(captureMemorySnapshot(buildMemoryDbHandles())));
   });
+
+  // Warm AFTER listen() so /health + the DB-free MCP `initialize` handshake
+  // answer within ~node-boot time on a cold scale-to-zero wake, instead of
+  // waiting on the e5-base model load + mmap warm. The model load was already
+  // kicked off (non-blocking) in initDatabase(); this pages in the DB and logs
+  // a post-warm memory snapshot.
+  void warmInBackground();
 }
 
 // ─── Graceful shutdown ──────────────────────────────────────────────

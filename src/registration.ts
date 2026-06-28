@@ -215,7 +215,11 @@ export function registerTools(
   stats?: UsageStats,
 ): void {
   const withLogging = createLogger(stats);
-  const semanticAvailable = db.embeddingsAvailable && embeddingModel?.available;
+  // Gate on the model being CONFIGURED (instance exists), not yet loaded: the
+  // e5-base load runs in the background after a wake, so `.available` can be
+  // briefly false. The handler lazily awaits readiness, so semantic is offered
+  // as soon as the DB has embeddings — it just waits for the load on first use.
+  const semanticAvailable = db.embeddingsAvailable && embeddingModel != null;
   const keysAvailable = db.hasKeyExpansion;
 
   // ── search ─────────────────────────────────────────────────────
@@ -280,9 +284,18 @@ export function registerTools(
 
       // Semantic search mode
       if (args.semanticQuery !== undefined) {
-        if (!embeddingModel?.available || !db.embeddingsAvailable) {
+        if (!db.embeddingsAvailable || !embeddingModel) {
           return errorResponse(
             "Semantic search requires embeddings and an embedding model (not available). " +
+            "Use query (keyword search) instead."
+          );
+        }
+        // The model loads in the background after a wake; wait for it (within the
+        // /mcp 30s net) rather than failing fast on an otherwise-ready server.
+        await embeddingModel.whenReady();
+        if (!embeddingModel.available) {
+          return errorResponse(
+            "Semantic search is temporarily unavailable — the embedding model failed to load. " +
             "Use query (keyword search) instead."
           );
         }

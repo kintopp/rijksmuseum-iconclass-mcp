@@ -434,6 +434,14 @@ const s8fr = sc(r8fr);
 assert(s8fr.entry.text !== s8de.entry.text, "French text differs from German");
 assert(s8fr.entry.text.length > 0, `French text present: "${s8fr.entry.text.slice(0, 50)}"`);
 
+// Invalid lang is now rejected at the schema layer (was silently coerced to 'en').
+const rBadLang = await client.callTool({
+  name: "resolve",
+  arguments: { notation: "73D6", lang: "xx" },
+}).then(r => r, e => ({ thrown: true, error: e }));
+assert(rBadLang.thrown === true || rBadLang.isError === true,
+  "invalid lang 'xx' is rejected (schema-level enum)");
+
 // ══════════════════════════════════════════════════════════════════
 //  9. Regression: search_prefix pagination with collection filter
 // ══════════════════════════════════════════════════════════════════

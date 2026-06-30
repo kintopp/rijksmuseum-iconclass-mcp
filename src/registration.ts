@@ -194,6 +194,9 @@ const TOOL_LIMITS = {
 
 const LANG_CODES = ["en", "nl", "de", "fr", "it", "es", "pt", "fi", "cz", "hu", "pl", "jp", "zh"] as const;
 const LANG_DESC = `Preferred language for labels (default: 'en'). Available: ${LANG_CODES.join(", ")}.`;
+/** Factory — fresh enum per call to avoid JSON-Schema $ref dedup. Accepts only
+ *  the 13 supported codes; defaults to 'en'. */
+const LangField = () => z.enum(LANG_CODES).default("en").describe(LANG_DESC);
 
 // ─── Tool annotations ───────────────────────────────────────────────
 // All Iconclass tools are pure SQLite reads (semantic search uses local
@@ -262,7 +265,7 @@ export function registerTools(
           .describe("Filter to notations with artworks in this specific collection (e.g. 'rijksmuseum')."),
         parentNotation: optStr()
           .describe("Restrict results to a subtree — only notations starting with this prefix (e.g. '11F' for Virgin Mary, '73D' for life of Christ)."),
-        lang: z.string().default("en").describe(LANG_DESC),
+        lang: LangField(),
         maxResults: z
           .number().int()
           .min(1).max(TOOL_LIMITS.search.max)
@@ -352,7 +355,7 @@ export function registerTools(
         "To list all key variants of a notation, use expand_keys instead of includeKeys.",
       inputSchema: z.object({
         notation: z.string().min(1).describe("Iconclass notation to browse (e.g. '31A33', '73D82')."),
-        lang: z.string().default("en").describe(LANG_DESC),
+        lang: LangField(),
         depth: z.number().int().min(1).max(3).default(1).optional()
           .describe("How many levels deep to expand children (1-3, default 1). Use 2 for narrative exploration; 3 only for narrow branches."),
         includeKeys: z.boolean().default(false).optional()
@@ -439,7 +442,7 @@ export function registerTools(
           z.string().min(1),
           z.array(z.string().min(1)).min(1).max(TOOL_LIMITS.resolve.max),
         ]).describe("One notation or array of notations to resolve (max 25)."),
-        lang: z.string().default("en").describe(LANG_DESC),
+        lang: LangField(),
       }).strict(),
       ...withOutputSchema(ResolveOutput),
       annotations: READ_ONLY_ANNOTATIONS,
@@ -479,7 +482,7 @@ export function registerTools(
         (keysAvailable ? "" : " [currently unavailable — DB does not include key-expanded notations]"),
       inputSchema: z.object({
         notation: z.string().min(1).describe("Base notation to expand (e.g. '25F23'). Must not be a key-expanded notation like '25F23(+46)'."),
-        lang: z.string().default("en").describe(LANG_DESC),
+        lang: LangField(),
         maxResults: z.number().int().min(1).max(335).default(25)
           .describe("Maximum key variants to return (1-335, default 25)."),
         offset: z.number().int().min(0).default(0).optional()
@@ -531,7 +534,7 @@ export function registerTools(
         "use the first page to orient, then narrow the prefix rather than paginating exhaustively.",
       inputSchema: z.object({
         notation: z.string().min(1).describe("Notation prefix (e.g. '73D8', '25F'). Matches all notations starting with this prefix."),
-        lang: z.string().default("en").describe(LANG_DESC),
+        lang: LangField(),
         collectionId: optStr()
           .describe("Filter to notations with artworks in this collection."),
         maxResults: z
@@ -584,7 +587,7 @@ export function registerTools(
           z.string().min(1),
           z.array(z.string().min(1)).min(1).max(TOOL_LIMITS.find_artworks.max),
         ]).describe(`One notation or array of notations (max ${TOOL_LIMITS.find_artworks.max}).`),
-        lang: optStr().default("en").describe(LANG_DESC),
+        lang: LangField(),
       }).strict(),
       ...withOutputSchema(FindArtworksOutput),
       annotations: READ_ONLY_ANNOTATIONS,

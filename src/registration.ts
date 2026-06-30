@@ -175,6 +175,7 @@ const FindArtworksOutput = {
     notation: z.string(),
     text: z.string(),
     collections: z.array(ArtworkCollectionShape()),
+    artResearchUrl: z.string(),
   })),
   collections: z.array(CollectionInfoShape()),
   error: z.string().optional(),
@@ -574,19 +575,10 @@ export function registerTools(
         "and link-out URLs where available. " +
         "An empty collections array means no loaded collection has artworks for that notation — " +
         "the top-level 'collections' field lists all loaded collections. " +
-        "Use after search or browse to discover where a subject appears across collections.\n\n" +
-        "Beyond the loaded collections, also offer the user a search link to " +
-        "ArtResearch.net — the PHAROS consortium aggregator covering ~601K works tagged with " +
-        "~128K Iconclass notations from Hertziana, Frick, Zeri, KHI, and other photo archives. " +
-        "Construct the link as: " +
-        "https://artresearch.net/resource/?uri=http%3A%2F%2Ficonclass.org%2F{N} " +
-        "where {N} is the notation with '(' ')' ':' '+' percent-encoded twice " +
-        "('%2528', '%2529', '%253A', '%252B'). Examples: " +
-        "'25F23' → 'https://artresearch.net/resource/?uri=http%3A%2F%2Ficonclass.org%2F25F23'; " +
-        "'25F23(LION)' → 'https://artresearch.net/resource/?uri=http%3A%2F%2Ficonclass.org%2F25F23%2528LION%2529'; " +
-        "'73D82:11H(JOHN)' → 'https://artresearch.net/resource/?uri=http%3A%2F%2Ficonclass.org%2F73D82%253A11H%2528JOHN%2529'. " +
-        "The page returns matching artworks and all narrower / key-expanded descendants — " +
-        "a single link covers an entire notation subtree.",
+        "Use after search or browse to discover where a subject appears across collections. " +
+        "Each notation also returns an `artResearchUrl` — a ready-to-use link to ArtResearch.net " +
+        "(the PHAROS consortium aggregator, ~601K works) covering that notation and all its " +
+        "narrower/key-expanded descendants; offer it to the user alongside the loaded-collection results.",
       inputSchema: z.object({
         notation: z.union([
           z.string().min(1),
@@ -606,14 +598,15 @@ export function registerTools(
       }
 
       const lines = result.notations.map(entry => {
+        const artResearch = `\n  ArtResearch (all collections + descendants): ${entry.artResearchUrl}`;
         if (entry.collections.length === 0) {
-          return `${entry.notation} "${entry.text}" — no collections`;
+          return `${entry.notation} "${entry.text}" — no loaded collection has artworks${artResearch}`;
         }
         const cols = entry.collections.map(a => {
           const urlPart = a.url ? ` → ${a.url}` : "";
           return `  ${a.label}: ${a.count.toLocaleString()} artworks${urlPart}`;
         });
-        return `${entry.notation} "${entry.text}"\n${cols.join("\n")}`;
+        return `${entry.notation} "${entry.text}"\n${cols.join("\n")}${artResearch}`;
       });
 
       return structuredResponse(result, lines.join("\n\n"));

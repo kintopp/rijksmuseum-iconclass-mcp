@@ -4,7 +4,7 @@
  * Run:  node scripts/tests/test-pure-functions.mjs
  * Requires: npm run build (imports from dist/)
  */
-import { escapeFts5, escapeFts5Terms } from "../../dist/utils/db.js";
+import { escapeFts5, escapeFts5Terms, artResearchUrl } from "../../dist/utils/db.js";
 import { formatCollections, formatEntryLine } from "../../dist/registration.js";
 import { assertEq, section, report } from "./_assert.mjs";
 
@@ -98,6 +98,15 @@ assertEq(
   '31A33 (rijksmuseum, met) "smell" [3]',
   "multiple collections"
 );
+
+// ── artResearchUrl ──────────────────────────────────────────────
+
+section("artResearchUrl");
+const AR = "https://artresearch.net/resource/?uri=http%3A%2F%2Ficonclass.org%2F";
+assertEq(artResearchUrl("25F23"), AR + "25F23", "plain notation, no special chars");
+assertEq(artResearchUrl("25F23(LION)"), AR + "25F23%2528LION%2529", "named key — double-encoded parens");
+assertEq(artResearchUrl("73D82:11H(JOHN)"), AR + "73D82%253A11H%2528JOHN%2529", "colon + parens double-encoded");
+assertEq(artResearchUrl("25F23(+46)"), AR + "25F23%2528%252B46%2529", "plus + parens double-encoded");
 
 // ── Summary ─────────────────────────────────────────────────────
 

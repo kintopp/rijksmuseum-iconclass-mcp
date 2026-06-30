@@ -22,6 +22,19 @@ export function escapeFts5Terms(value: string): string | null {
   return words.map(w => `"${w}"`).join(" AND ");
 }
 
+/** Build the ArtResearch.net resource URL for a notation. The notation is a
+ *  path segment inside a `uri=` query-param value that is itself a URL, so it is
+ *  percent-encoded twice. encodeURIComponent handles ':' '+' and friends but
+ *  leaves '(' ')' alone, so those are encoded explicitly in the first pass. */
+export function artResearchUrl(notation: string): string {
+  const once = encodeURIComponent(notation).replace(
+    /[()]/g,
+    (c) => "%" + c.charCodeAt(0).toString(16).toUpperCase(),
+  );
+  const twice = encodeURIComponent(once);
+  return `https://artresearch.net/resource/?uri=http%3A%2F%2Ficonclass.org%2F${twice}`;
+}
+
 /** Resolve a database path from environment variable or default data/ location.
  *  Returns null if the file doesn't exist at either location. */
 export function resolveDbPath(envVarName: string, defaultFilename: string): string | null {

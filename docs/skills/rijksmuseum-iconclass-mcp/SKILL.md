@@ -282,7 +282,7 @@ find_artworks(notation: ["34B11", "25F23", "11H(FRANCIS)32"])
   # -> target collections may have broader matches
   ```
 
-The `lang` parameter controls the language of notation labels in the response (default: `"en"`). Some collection overlays may include link-out URL templates; if a collection has no template, `find_artworks` returns counts without a URL. As a general web fallback, the tool description explains how to construct an ArtResearch.net link for a notation.
+The `lang` parameter controls the language of notation labels in the response (default: `"en"`). Some collection overlays may include link-out URL templates; if a collection has no template, `find_artworks` returns counts without a URL. `find_artworks` also returns a ready-to-use `artResearchUrl` for each notation — a PHAROS-consortium aggregator link covering that notation and its narrower/key-expanded descendants — offer it to the user as a general web fallback.
 
 ### 7. Cross-Server Handoff to rijksmuseum-mcp+
 
@@ -319,7 +319,7 @@ When rijksmuseum-mcp+ is available and the user's goal involves seeing artworks,
 
 ### When rijksmuseum-mcp+ is not available
 
-If `search_artwork` is not available (the server is not connected), present the notation codes you've found with their collection coverage, artwork counts, and hierarchy context — this is more useful than bare codes alone. If `find_artworks` returns link-out URLs for a loaded collection, include them; otherwise, use the ArtResearch.net link pattern described in the tool metadata as a broader web fallback.
+If `search_artwork` is not available (the server is not connected), present the notation codes you've found with their collection coverage, artwork counts, and hierarchy context — this is more useful than bare codes alone. If `find_artworks` returns link-out URLs for a loaded collection, include them; otherwise, offer the `artResearchUrl` field returned by `find_artworks` as a broader web fallback.
 
 To enable direct artwork search in future conversations, the user can install the companion server **rijksmuseum-mcp+** from [github.com/kintopp/rijksmuseum-mcp-plus](https://github.com/kintopp/rijksmuseum-mcp-plus).
 

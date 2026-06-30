@@ -671,6 +671,12 @@ assert(s14a.collections.length >= 1,
 const rijCol14 = s14a.collections.find(c => c.collectionId === "rijksmuseum");
 assert(rijCol14?.searchUrlTemplate === null, "rijksmuseum searchUrlTemplate is null");
 
+assert(typeof s14a.notations[0].artResearchUrl === "string"
+  && s14a.notations[0].artResearchUrl.startsWith("https://artresearch.net/resource/?uri="),
+  "find_artworks returns an artResearchUrl");
+assert(s14a.notations[0].artResearchUrl.includes("73D6"),
+  "artResearchUrl contains the notation");
+
 // Batch notations — mix of found and not-found
 const r14b = await client.callTool({
   name: "find_artworks",

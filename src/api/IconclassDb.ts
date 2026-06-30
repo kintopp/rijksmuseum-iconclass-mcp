@@ -1,6 +1,6 @@
 import Database, { type Database as DatabaseType, type Statement } from "better-sqlite3";
 import { createRequire } from "node:module";
-import { escapeFts5, escapeFts5Terms, resolveDbPath } from "../utils/db.js";
+import { escapeFts5, escapeFts5Terms, resolveDbPath, artResearchUrl } from "../utils/db.js";
 
 const require = createRequire(import.meta.url);
 
@@ -105,6 +105,7 @@ export interface FindArtworksResult {
     notation: string;
     text: string;
     collections: ArtworkCollectionInfo[];
+    artResearchUrl: string;
   }[];
   collections: CollectionInfo[];
 }
@@ -733,7 +734,7 @@ export class IconclassDb {
         cols.sort((a, b) => b.count - a.count);
       }
 
-      results.push({ notation, text, collections: cols });
+      results.push({ notation, text, collections: cols, artResearchUrl: artResearchUrl(notation) });
     }
 
     return { notations: results, collections: this._collections };

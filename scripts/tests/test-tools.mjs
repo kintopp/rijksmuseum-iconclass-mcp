@@ -708,6 +708,96 @@ if (keyEntry14.collections.length > 0) {
 }
 
 // ══════════════════════════════════════════════════════════════════
+//  16. Regression: FTS phrase→terms auto-fallback
+// ══════════════════════════════════════════════════════════════════
+
+section("16. Regression: FTS phrase→terms auto-fallback");
+
+// Fixture pinned by the offline raw-FTS gate (run 2026-06-30):
+//   texts_fts    MATCH '"angel trumpet"'  -> 0
+//   keywords_fts MATCH '"angel trumpet"'  -> 0
+//   texts_fts    MATCH '"trumpet angel"'  -> 0
+//   keywords_fts MATCH '"trumpet angel"'  -> 0   (both orderings phrase-empty)
+//   texts_fts    MATCH '"angel" AND "trumpet"' -> 38   (fallback finds these)
+// If a future corpus gives either ordering a phrase hit, re-pin the fixture.
+const r16a = await client.callTool({
+  name: "search", arguments: { query: "angel trumpet", maxResults: 50 },
+});
+const r16b = await client.callTool({
+  name: "search", arguments: { query: "trumpet angel", maxResults: 50 },
+});
+assert(!r16a.isError && !r16b.isError, "fallback queries: no error");
+const t16a = sc(r16a).totalResults, t16b = sc(r16b).totalResults;
+// Commutative AND-terms fallback: both orderings must agree AND be non-empty.
+// A phrase hit on either ordering would skip the fallback and break this.
+assert(t16a > 0, `phrase-empty query falls back to AND-terms hits (got ${t16a})`);
+assertEq(t16b, t16a,
+  "both word orders return the identical AND-terms result set (commutative fallback ran)");
+
+// Single-word queries must NOT use the fallback (escapeFts5Terms returns null
+// for <2 words) — a one-word miss stays a clean zero, not an error.
+const r16c = await client.callTool({
+  name: "search", arguments: { query: "zzzqqxnonsenseword" },
+});
+assert(!r16c.isError, "single-word miss: no error");
+assertEq(sc(r16c).totalResults, 0, "single-word miss returns 0 (no fallback)");
+
+// ══════════════════════════════════════════════════════════════════
+//  17. Regression: semantic parentNotation + collectionId combined
+// ══════════════════════════════════════════════════════════════════
+
+section("17. Regression: semantic parentNotation + collectionId combined");
+
+const Q17 = "ships on a stormy sea";   // pinned via the control call below
+const SUB = "41";
+
+// CONTROL: a GLOBAL semantic search (no filters) must carry ZERO in-subtree
+// notations in its top-25. This is what makes the fixture discriminating — it
+// proves the query's global neighbourhood excludes SUB, so the only way the
+// filtered calls below can fill is the prefix-filtered KNN branch actually
+// searching within SUB (a global+post-filter regression would return 0).
+const r17ctl = await client.callTool({
+  name: "search", arguments: { semanticQuery: Q17, maxResults: 25 },
+});
+if (r17ctl.isError) {
+  console.log(`  ⚠ Semantic search unavailable: ${txt(r17ctl)}`);
+} else {
+  const ctlInSub = sc(r17ctl).results.filter(e => e.notation.startsWith(SUB)).length;
+  assert(ctlInSub === 0,
+    `control: global top-25 carries no ${SUB} notations (got ${ctlInSub}) — fixture is discriminating`);
+
+  // PREFIX-ONLY: parentNotation set, no collection. Takes the prefix-filtered KNN
+  // branch (overfetch ×5). Because the control proved the global neighbourhood has
+  // no SUB content, filling the page here can ONLY come from the prefix branch.
+  const r17pre = await client.callTool({
+    name: "search", arguments: { semanticQuery: Q17, parentNotation: SUB, maxResults: 5 },
+  });
+  assert(!r17pre.isError, "prefix-filtered semantic: no error");
+  const s17pre = sc(r17pre);
+  assert(s17pre.results.length >= 3,
+    `prefix-filtered branch fills the page from within ${SUB} (got ${s17pre.results.length})`);
+  assert(s17pre.results.every(e => e.notation.startsWith(SUB)),
+    `all prefix-filtered results are in the ${SUB} subtree`);
+
+  // COMBINED: parentNotation + collectionId. Same prefix-filtered KNN branch (×5)
+  // AND the collection post-filter. Every result must satisfy BOTH constraints.
+  const r17 = await client.callTool({
+    name: "search",
+    arguments: { semanticQuery: Q17, parentNotation: SUB, collectionId: "rijksmuseum", maxResults: 5 },
+  });
+  assert(!r17.isError, "combined semantic filters: no error");
+  const s17 = sc(r17);
+  for (const e of s17.results) {
+    assert(e.notation.startsWith(SUB), `combined: ${e.notation} is in the ${SUB} subtree`);
+    assert(e.collections.includes("rijksmuseum"), `combined: ${e.notation} has rijksmuseum presence`);
+  }
+  // The collection post-filter may legitimately thin the page; the prefix-only call
+  // above already pinned the ×5 branch's fill, so a floor of 1 is enough here.
+  assert(s17.results.length >= 1,
+    `combined filters still return at least one result (got ${s17.results.length})`);
+}
+
+// ══════════════════════════════════════════════════════════════════
 //  Summary
 // ══════════════════════════════════════════════════════════════════
 

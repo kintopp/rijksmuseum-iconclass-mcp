@@ -171,7 +171,11 @@ export class IconclassDb {
       const countsPath = resolveDbPath("COUNTS_DB_PATH", "iconclass-counts.db");
       if (countsPath) {
         try {
-          this.db.exec(`ATTACH DATABASE '${countsPath}' AS counts`);
+          // Bind the path as a parameter rather than interpolating it — a quote
+          // in a valid filesystem path (e.g. /Volumes/O'Hara/…) would otherwise
+          // produce invalid SQL and silently discard the sidecar. ATTACH is
+          // read-only per SQLite, so this is permitted on the readonly handle.
+          this.db.prepare("ATTACH DATABASE ? AS counts").run(countsPath);
           this.db.prepare("SELECT 1 FROM counts.collection_counts LIMIT 1").get();
           this.countsDbPath_ = countsPath;
 

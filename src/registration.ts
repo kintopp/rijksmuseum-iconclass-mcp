@@ -596,9 +596,13 @@ export function registerTools(
       const notations = Array.isArray(args.notation) ? args.notation : [args.notation];
       const result = db.findArtworks(notations, args.lang);
 
-      if (result.notations.length === 0) {
-        return errorResponse("None of the requested notations were found.");
-      }
+      // No "not found" guard by design: find_artworks returns one row per input
+      // notation regardless of whether it exists in the local CC0 dump. A code
+      // absent from the dump (e.g. a synthesized/named-key notation) still gets a
+      // useful artResearchUrl covering it and its descendants, so filtering such
+      // notations out would drop legitimate results. Unlike resolve (which errors
+      // on unknown codes), an empty collections array here means "no loaded
+      // collection has artworks", not "invalid notation".
 
       const lines = result.notations.map(entry => {
         const artResearch = `\n  ArtResearch (all collections + descendants): ${entry.artResearchUrl}`;

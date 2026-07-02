@@ -5,6 +5,7 @@ import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/
 import express from "express";
 import cors from "cors";
 import compression from "compression";
+import { execSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -25,6 +26,26 @@ const SERVER_NAME = "rijksmuseum-iconclass-mcp";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "package.json"), "utf-8"));
 const SERVER_VERSION: string = pkg.version;
+
+function getGitCommit(): string {
+  // Railway webhook deploys inject the SHA — no .git needed at runtime.
+  if (process.env.RAILWAY_GIT_COMMIT_SHA) {
+    return process.env.RAILWAY_GIT_COMMIT_SHA.slice(0, 7);
+  }
+  // `railway up` / CLI deploys — read the hash baked into dist/ at build time.
+  try {
+    const commitFile = new URL("commit.txt", import.meta.url);
+    return fs.readFileSync(commitFile, "utf-8").trim();
+  } catch { /* no build artifact */ }
+  // Local dev with git repo available.
+  try {
+    return execSync("git rev-parse --short HEAD", { encoding: "utf-8" }).trim();
+  } catch {
+    return "unknown";
+  }
+}
+
+const GIT_COMMIT = getGitCommit();
 
 // ─── Determine transport mode ────────────────────────────────────────
 
@@ -238,6 +259,7 @@ async function runHttp(): Promise<void> {
       status: "ok",
       server: SERVER_NAME,
       version: SERVER_VERSION,
+      commit: GIT_COMMIT,
       notations: iconclassDb?.available ? "loaded" : "unavailable",
       embeddings: iconclassDb?.embeddingsAvailable ? "loaded" : "unavailable",
       collections: iconclassDb?.collections.map(c => c.collectionId) ?? [],

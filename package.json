@@ -9,7 +9,7 @@
   },
   "main": "dist/index.js",
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && (git rev-parse --short HEAD > dist/commit.txt 2>/dev/null || true)",
     "build:skill": "bash scripts/build-skill.sh",
     "typecheck": "tsc --noEmit",
     "start": "node dist/index.js",

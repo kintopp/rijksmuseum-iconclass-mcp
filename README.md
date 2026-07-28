@@ -12,13 +12,13 @@ The tool was developed as a technology demo by the [Research and Infrastructure 
 
 ## Quick start
 
-For the best results, add rijksmuseum-iconclass-mcp as a custom connector in [Claude Desktop](https://claude.com/download) or [claude.ai](https://claude.ai) using the URL below. This currently requires a paid ('Pro') or higher [subscription](https://claude.com/pricing) from Anthropic.
+For the best results, add rijksmuseum-iconclass-mcp as a custom connector in [Claude Desktop](https://claude.com/download) or [claude.ai](https://claude.ai) using the URL below. This currently free for one custom connector – additional connectors requires a paid ('Pro') or higher [subscription](https://claude.com/pricing) from Anthropic.
 
 ```
 https://rijksmuseum-iconclass-mcp-production.up.railway.app/mcp
 ```
 
-Go to _Settings_ → _Connectors_ → _Add custom connector_ → name it as you like and paste the URL into the _Remote MCP Server URL_ field. You can ignore the Authentication section. Once configured, optionally set the permissions for its tools (e.g. 'Always allow'). See Anthropic's [instructions](https://support.claude.com/en/articles/11175166-get-started-with-custom-connectors-using-remote-mcp) for  details. To learn how to use rijksmuseum-iconclass-mcp with a different AI assistant **without a paid subscription**, please see [Choosing an AI System](#choosing-an-ai-system) below.
+Go to _Settings_ → _Connectors_ → _Add custom connector_ → name it as you like and paste the URL into the _Remote MCP Server URL_ field. You can ignore the Authentication section. Once configured, optionally set the permissions for its tools (e.g. 'Always allow'). See Anthropic's [instructions](https://support.claude.com/en/articles/11175166-get-started-with-custom-connectors-using-remote-mcp) for  details. For further options for using rijksmuseum-iconclass-mcp with a different AI assistant, please see [Choosing an AI System](#choosing-an-ai-system) below.
 
 **Recommended:** Next, follow the same procedure to install its companion resource, [rijksmuseum-mcp+](https://github.com/kintopp/rijksmuseum-mcp-plus). This allows you to explore over 830,000 artworks and metadata records from the Rijksmuseum with semantic search, provenance analysis, similarity comparisons, and spatial reasoning. 
 

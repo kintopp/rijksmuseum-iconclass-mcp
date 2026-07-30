@@ -1,13 +1,14 @@
 #!/usr/bin/env node
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
+import { McpServer, createMcpHandler } from "@modelcontextprotocol/server";
+import { serveStdio } from "@modelcontextprotocol/server/stdio";
 import express from "express";
 import cors from "cors";
 import compression from "compression";
 import { execSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
+import { Readable } from "node:stream";
+import type { ReadableStream } from "node:stream/web";
 import { fileURLToPath } from "node:url";
 
 import { IconclassDb } from "./api/IconclassDb.js";
@@ -137,6 +138,13 @@ function createServer(): McpServer {
     { name: SERVER_NAME, version: SERVER_VERSION },
     {
       capabilities: { tools: {} },
+      // The tool list is static per process: the only variance (the
+      // semantic-search availability note in `search`) is fixed at
+      // registration time, and a restart invalidates any client cache anyway.
+      // Emitted only on the 2026-era wire; 2025-era responses are unchanged.
+      cacheHints: {
+        "tools/list": { ttlMs: 86_400_000, cacheScope: "public" },
+      },
       instructions:
         "Iconclass subject classification explorer — a hierarchical taxonomy for art subjects " +
         "covering 1.3 million notations across 13 languages.\n\n" +
@@ -180,9 +188,11 @@ async function runStdio(): Promise<void> {
   // model load (kicked off non-blocking in initDatabase) and warm before serving.
   await embeddingModel?.whenReady();
   iconclassDb.warmCorePages();
-  const server = createServer();
-  const transport = new StdioServerTransport();
-  await server.connect(transport);
+  // The factory is invoked once per connection; the opening exchange pins the
+  // era (2025-era clients are served exactly as the hand-wired transport did).
+  serveStdio(() => createServer(), {
+    onerror: (err) => console.error(`[${SERVER_NAME}] transport error:`, err),
+  });
   console.error(`${SERVER_NAME} v${SERVER_VERSION} running on stdio`);
 }
 
@@ -211,10 +221,11 @@ async function runHttp(): Promise<void> {
 
   // ── MCP endpoint (stateless — no sessions, no SSE streams) ─────
   //
-  // A fresh McpServer + transport is created per request. The MCP SDK enforces
-  // one transport per server (Protocol.connect rejects re-binding), so a shared
-  // server breaks under concurrent POSTs. The expensive state — IconclassDb
-  // and EmbeddingModel — is initialized once in initDatabase() and shared
+  // createMcpHandler invokes the server factory per request, so a fresh
+  // McpServer still backs every POST: the SDK enforces one transport per
+  // server (Protocol.connect rejects re-binding), so a shared server breaks
+  // under concurrent POSTs. The expensive state — IconclassDb and
+  // EmbeddingModel — is initialized once in initDatabase() and shared
   // read-only via the closure captured by registerTools().
 
   // 30s safety net — respond 504 before Railway's proxy kills the connection silently
@@ -227,18 +238,41 @@ async function runHttp(): Promise<void> {
     next();
   });
 
+  // One handler for the endpoint's lifetime; it invokes the factory per
+  // request internally. 2026-era requests are served statelessly; 2025-era
+  // clients fall back to the same `sessionIdGenerator: undefined` idiom this
+  // replaces, so existing connectors keep working unchanged.
+  const mcpHandler = createMcpHandler(() => createServer());
+
   app.post("/mcp", async (req: express.Request, res: express.Response) => {
-    const server = createServer();
-    const transport = new StreamableHTTPServerTransport({
-      sessionIdGenerator: undefined,
-    });
-    res.on("close", () => {
-      transport.close().catch(() => {});
-      server.close().catch(() => {});
-    });
     try {
-      await server.connect(transport);
-      await transport.handleRequest(req, res, req.body);
+      const headers = new Headers();
+      for (const [key, value] of Object.entries(req.headers)) {
+        // Framing headers describe the raw stream express.json() already
+        // consumed and decoded; re-sending them would misdescribe the body.
+        if (key === "content-length" || key === "content-encoding") continue;
+        if (typeof value === "string") headers.set(key, value);
+        else if (Array.isArray(value)) for (const v of value) headers.append(key, v);
+      }
+      const response = await mcpHandler.fetch(
+        new Request(`http://${req.headers.host ?? "localhost"}/mcp`, {
+          method: "POST",
+          headers,
+          body: JSON.stringify(req.body),
+        }),
+        { parsedBody: req.body }
+      );
+      res.status(response.status);
+      response.headers.forEach((value, key) => {
+        // Let Node recompute framing; compression middleware may transform.
+        if (key === "content-length") return;
+        res.setHeader(key, value);
+      });
+      if (response.body) {
+        Readable.fromWeb(response.body as ReadableStream).pipe(res);
+      } else {
+        res.end();
+      }
     } catch (err) {
       console.error("MCP endpoint error:", err);
       if (!res.headersSent) {

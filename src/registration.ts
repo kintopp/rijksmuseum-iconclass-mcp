@@ -1,4 +1,4 @@
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import { IconclassDb } from "./api/IconclassDb.js";
 import { EmbeddingModel } from "./api/EmbeddingModel.js";
@@ -116,13 +116,13 @@ const IconclassEntryShape = () => z.object({
   collections: z.array(z.string()),
 });
 
-const SearchOutput = {
+const SearchOutput = z.object({
   query: z.string(),
   totalResults: z.number().int(),
   results: z.array(IconclassEntryShape().extend({ similarity: z.number().optional() })),
   collections: z.array(CollectionInfoShape()),
   error: z.string().optional(),
-};
+});
 
 const SubtreeEntryShape = () => IconclassEntryShape().extend({
   depth: z.number().int(),
@@ -130,7 +130,7 @@ const SubtreeEntryShape = () => IconclassEntryShape().extend({
   truncated: z.boolean(),
 });
 
-const BrowseOutput = {
+const BrowseOutput = z.object({
   notation: z.string(),
   entry: IconclassEntryShape(),
   subtree: z.array(SubtreeEntryShape()),
@@ -138,30 +138,30 @@ const BrowseOutput = {
   totalKeyVariants: z.number().int().optional(),
   collections: z.array(CollectionInfoShape()),
   error: z.string().optional(),
-};
+});
 
-const ResolveOutput = {
+const ResolveOutput = z.object({
   notations: z.array(IconclassEntryShape()),
   collections: z.array(CollectionInfoShape()),
   error: z.string().optional(),
-};
+});
 
-const ExpandKeysOutput = {
+const ExpandKeysOutput = z.object({
   notation: z.string(),
   baseEntry: IconclassEntryShape(),
   totalKeyVariants: z.number().int(),
   keyVariants: z.array(IconclassEntryShape()),
   collections: z.array(CollectionInfoShape()),
   error: z.string().optional(),
-};
+});
 
-const PrefixSearchOutput = {
+const PrefixSearchOutput = z.object({
   prefix: z.string(),
   totalResults: z.number().int(),
   results: z.array(IconclassEntryShape()),
   collections: z.array(CollectionInfoShape()),
   error: z.string().optional(),
-};
+});
 
 const ArtworkCollectionShape = () => z.object({
   collectionId: z.string(),
@@ -170,7 +170,7 @@ const ArtworkCollectionShape = () => z.object({
   url: z.string().nullable(),
 });
 
-const FindArtworksOutput = {
+const FindArtworksOutput = z.object({
   notations: z.array(z.object({
     notation: z.string(),
     text: z.string(),
@@ -179,7 +179,7 @@ const FindArtworksOutput = {
   })),
   collections: z.array(CollectionInfoShape()),
   error: z.string().optional(),
-};
+});
 
 // ─── Tool limits ────────────────────────────────────────────────────
 

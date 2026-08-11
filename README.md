@@ -12,7 +12,7 @@ The tool was developed as a technology demo by the [Research and Infrastructure 
 
 ## Sample Queries
 
-The system is designed to let you can search, explore and ask questions about the Iconclass in natural language. For examples of the kinds of queries it can answer, please see these [example prompts](docs/example-prompts.md). The links following each prompt demonstrate you how that query was previously answered in Claude Desktop. For more examples, see the related discussion in the [IconClass Forum](https://forum.iconclass.org/t/working-with-the-elephant/339/2).
+The system is designed to let you can search, explore and ask questions about the Iconclass in natural language. For examples of the kinds of queries it can answer, please see these [example prompts](docs/example-prompts.md). The links following each prompt demonstrate you that query was previously answered in Claude Desktop. For more examples, see the related discussion in the [IconClass Forum](https://forum.iconclass.org/t/working-with-the-elephant/339/2).
 
 ## Quick start
 

@@ -10,6 +10,10 @@ It includes data from the [Rijksmuseum](https://www.rijksmuseum.nl/en/collection
 
 The tool was developed as a technology demo by the [Research and Infrastructure Support](https://rise.unibas.ch/en/) (RISE) group at the University of Basel. We are particularly interested in exploring the research opportunities, methodological risks, and technical challenges posed by retrieving and analysing data with LLMs. If you are interested in collaborating with us in this area, please [get in touch](mailto:rise@unibas.ch).
 
+## Sample Queries
+
+The system is designed to let you can search, explore and ask questions about the Iconclass in natural language. For examples of the kinds of queries it can answer, please see these [example prompts](docs/example-prompts.md). The links following each prompt demonstrate you how that query was previously answered in Claude Desktop. For more examples, see the related discussion in the [IconClass Forum](https://forum.iconclass.org/t/working-with-the-elephant/339/2).
+
 ## Quick start
 
 For the best results, add rijksmuseum-iconclass-mcp as a custom, _remotely hosted_ connector in [Claude Desktop](https://claude.com/download) or [claude.ai](https://claude.ai) using the URL below. This currently free for one custom connector – additional connectors requires a paid ('Pro') or higher [subscription](https://claude.com/pricing) from Anthropic.
@@ -27,10 +31,6 @@ Alternatively, you can install the Globalise MCP server _locally_ on your own co
 ## Research skill
 
 The [`rijksmuseum-iconclass-mcp.skill.zip`](docs/skills/rijksmuseum-iconclass-mcp.skill.zip) file (.zip archive) is a [research skill](https://support.claude.com/en/articles/12512176-what-are-skills) that gives the AI assistant detailed guidance on how best to use this resource effectively: which tool (see [How it works](#how-it-works)) to choose for a given question type, how to combine searches, important metadata distinctions (e.g. `subject` terms vs `iconclass` notations), and known limitations. Installing the skill is optional but will significantly improve the quality and efficiency of your AI assistant's responses. Skill files were originally developed by Anthropic for their Claude products but have since become an [open standard](https://agentskills.io/home). The skill can be installed in Claude by following [these instructions](https://claude.com/resources/tutorials/teach-claude-your-way-of-working-using-skills).
-
-## Sample Queries
-
-After you've connected the resource to your AI system, you can search, explore and ask questions about the Iconclass in natural language. For examples of the kinds of queries the systems can answer, please see these [example prompts](docs/example-prompts.md). The links following each prompt demonstrate you how that query was previously answered in Claude Desktop. 
 
 ## How it works
 

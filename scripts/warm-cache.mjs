@@ -6,9 +6,8 @@
  * exercises tool calls defined in a TSV file to warm the SQLite mmap page
  * cache and embedding model.
  *
- * Also preflights the 2026-07-28 wire (see probeModernWire) before the legacy
- * run, since the v1 client used below cannot reach it. A modern-wire failure
- * fails the whole script.
+ * Also preflights the 2026-07-28 wire (see probeModernWire); a modern-wire
+ * failure fails the whole script.
  *
  * Usage:
  *   node scripts/warm-cache.mjs [--url URL] [--file PATH] [--concurrency N]
@@ -109,7 +108,12 @@ async function runCall(client, { name, args }, index, total) {
  */
 async function probeModernWire(url) {
   const start = performance.now();
+  const log = (verdict) =>
+    console.log(`modern wire (${MODERN_VERSION})  ${(performance.now() - start).toFixed(0)}ms  ${verdict}`);
   try {
+    // Restated literally rather than shared with test-modern-wire.mjs on
+    // purpose: a shared builder would let both drift together, and this probes
+    // a remote deploy that may run a different SDK build.
     const res = await fetch(url, {
       method: "POST",
       headers: {
@@ -131,21 +135,18 @@ async function probeModernWire(url) {
         },
       }),
     });
-    const ms = (performance.now() - start).toFixed(0);
     const body = JSON.parse(await res.text());
     const tools = body?.result?.tools?.length;
-    if (res.status !== 200 || !tools) {
-      const why = body?.error ? `${body.error.code} ${body.error.message}` : `HTTP ${res.status}`;
-      console.log(`modern wire (${MODERN_VERSION})  ${ms}ms  FAIL  -> ${String(why).slice(0, 140)}`);
-      return false;
+    if (res.status === 200 && tools) {
+      log(`OK  ${tools} tools`);
+      return true;
     }
-    console.log(`modern wire (${MODERN_VERSION})  ${ms}ms  OK  ${tools} tools`);
-    return true;
+    const why = body?.error ? `${body.error.code} ${body.error.message}` : `HTTP ${res.status}`;
+    log(`FAIL  -> ${String(why).slice(0, 140)}`);
   } catch (e) {
-    const ms = (performance.now() - start).toFixed(0);
-    console.log(`modern wire (${MODERN_VERSION})  ${ms}ms  FAIL  -> ${e.message?.slice(0, 140)}`);
-    return false;
+    log(`FAIL  -> ${e.message?.slice(0, 140)}`);
   }
+  return false;
 }
 
 async function main() {
@@ -163,7 +164,6 @@ async function main() {
 
   const modernOk = await probeModernWire(opts.url);
 
-  // The v1 client below is the deliberate 2025-era compatibility gate.
   const transport = new StreamableHTTPClientTransport(new URL(opts.url));
   const client = new Client({ name: "warm-cache", version: "1.0.0" });
   await client.connect(transport);

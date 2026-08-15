@@ -16,15 +16,10 @@
  * Run:  node scripts/tests/test-modern-wire.mjs
  * Requires: npm run build, data/iconclass.db present
  */
-import { spawn } from "node:child_process";
-import { fileURLToPath } from "node:url";
-import path from "node:path";
-
 import { assert, assertEq, section, atest, report } from "./_assert.mjs";
+import { bootHttpServer } from "./_server.mjs";
 
-const PROJECT_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const PORT = process.env.TEST_PORT ?? "31338";
-const MCP_URL = `http://127.0.0.1:${PORT}/mcp`;
 
 const MODERN = "2026-07-28";
 const LEGACY = "2025-11-25";
@@ -36,25 +31,8 @@ const envelope = (version = MODERN) => ({
   "io.modelcontextprotocol/clientCapabilities": {},
 });
 
-// ── Boot HTTP server ────────────────────────────────────────────
-
-const child = spawn("node", ["dist/index.js"], {
-  cwd: PROJECT_DIR,
-  env: { ...process.env, PORT, STRUCTURED_CONTENT: "true" },
-  stdio: ["ignore", "inherit", "pipe"],
-});
-
-let stderr = "";
-child.stderr.on("data", (chunk) => { stderr += chunk.toString(); });
-
-await new Promise((resolve, reject) => {
-  const t = setTimeout(() => reject(new Error("server didn't start within 20s")), 20_000);
-  const check = () => {
-    if (stderr.includes("listening on http://")) { clearTimeout(t); resolve(); }
-  };
-  child.stderr.on("data", check);
-  check();
-});
+const server = await bootHttpServer({ port: PORT });
+const MCP_URL = server.url;
 
 console.log(`\nServer up on ${MCP_URL}`);
 
@@ -82,30 +60,37 @@ async function post(headers, body) {
   return { status: res.status, contentType: res.headers.get("content-type"), body: parseBody(await res.text()) };
 }
 
-/** A well-formed modern request: headers and envelope consistent with the body. */
-function modern(method, params = {}, { version = MODERN, name } = {}) {
-  return post(
-    {
-      "mcp-protocol-version": version,
-      "mcp-method": method,
-      ...(name ? { "mcp-name": name } : {}),
-    },
-    { jsonrpc: "2.0", id: 1, method, params: { ..._params(params, name), _meta: envelope(version) } }
+// Well-formed modern requests: headers and envelope consistent with the body.
+// The malformed variants in sections 4-5 build their own bodies inline, since
+// the malformation is the thing under test.
+
+const modernList = (version = MODERN) =>
+  post(
+    { "mcp-protocol-version": version, "mcp-method": "tools/list" },
+    { jsonrpc: "2.0", id: 1, method: "tools/list", params: { _meta: envelope(version) } }
   );
-}
 
-function _params(params, name) {
-  return name ? { name, ...params } : params;
-}
+const modernCall = (name, args) =>
+  post(
+    { "mcp-protocol-version": MODERN, "mcp-method": "tools/call", "mcp-name": name },
+    {
+      jsonrpc: "2.0", id: 1, method: "tools/call",
+      params: { name, arguments: args, _meta: envelope() },
+    }
+  );
 
-const modernCall = (name, args) => modern("tools/call", { arguments: args }, { name });
+const initialize = (version, headers = {}) =>
+  post(headers, {
+    jsonrpc: "2.0", id: 1, method: "initialize",
+    params: { protocolVersion: version, capabilities: {}, clientInfo: { name: "t", version: "0" } },
+  });
 
 // ── Tests ───────────────────────────────────────────────────────
 
 try {
   section("1. Modern wire — tools/list");
 
-  const list = await modern("tools/list");
+  const list = await modernList();
   assertEq(list.status, 200, "tools/list over the 2026-07-28 wire returns HTTP 200");
   assertEq(list.contentType, "application/json", "modern wire answers as application/json (not SSE)");
   assertEq(list.body?.result?.tools?.length, 6, "all 6 tools are listed");
@@ -249,13 +234,7 @@ try {
   });
 
   await atest("a legacy initialize carrying a modern header is rejected", async () => {
-    const r = await post(
-      { "mcp-protocol-version": MODERN },
-      {
-        jsonrpc: "2.0", id: 1, method: "initialize",
-        params: { protocolVersion: MODERN, capabilities: {}, clientInfo: { name: "t", version: "0" } },
-      }
-    );
+    const r = await initialize(MODERN, { "mcp-protocol-version": MODERN });
     assertEq(r.status, 400, "mixing the legacy handshake with a modern header returns HTTP 400");
     assertEq(r.body?.error?.code, -32020, "the wire mix-up is -32020");
   });
@@ -263,7 +242,7 @@ try {
   section("6. Modern wire — version negotiation");
 
   await atest("an unsupported future revision is refused with the supported list", async () => {
-    const r = await modern("tools/list", {}, { version: "2099-01-01" });
+    const r = await modernList("2099-01-01");
     assertEq(r.status, 400, "an unknown revision returns HTTP 400");
     assertEq(r.body?.error?.code, -32022, "an unknown revision is -32022 (unsupported protocol version)");
     assert(
@@ -275,13 +254,7 @@ try {
   section("7. Legacy wire regression (the claude.ai path today)");
 
   await atest("the legacy handshake still negotiates 2025-11-25", async () => {
-    const r = await post(
-      {},
-      {
-        jsonrpc: "2.0", id: 1, method: "initialize",
-        params: { protocolVersion: LEGACY, capabilities: {}, clientInfo: { name: "t", version: "0" } },
-      }
-    );
+    const r = await initialize(LEGACY);
     assertEq(r.status, 200, "legacy initialize returns HTTP 200");
     assertEq(r.body?.result?.protocolVersion, LEGACY, "legacy initialize negotiates 2025-11-25");
     assert(
@@ -291,13 +264,7 @@ try {
   });
 
   await atest("an older revision is still honoured", async () => {
-    const r = await post(
-      {},
-      {
-        jsonrpc: "2.0", id: 1, method: "initialize",
-        params: { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "t", version: "0" } },
-      }
-    );
+    const r = await initialize("2025-06-18");
     assertEq(r.body?.result?.protocolVersion, "2025-06-18", "legacy initialize honours 2025-06-18");
   });
 
@@ -310,8 +277,7 @@ try {
     assertEq(r.body?.result?.ttlMs, undefined, "SEP-2549 ttlMs is not emitted to 2025-era clients");
   });
 } finally {
-  child.kill("SIGTERM");
-  await new Promise((r) => child.once("exit", r));
+  await server.stop();
 }
 
 report();

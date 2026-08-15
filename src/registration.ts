@@ -593,6 +593,8 @@ export function registerTools(
         "and link-out URLs where available. " +
         "An empty collections array means no loaded collection has artworks for that notation — " +
         "the top-level 'collections' field lists all loaded collections. " +
+        "Notations are not validated against the local database: unknown codes are echoed back " +
+        "(with the code as their own label) rather than rejected — use resolve to verify existence. " +
         "Use after search or browse to discover where a subject appears across collections. " +
         "Each notation also returns an `artResearchUrl` — a ready-to-use link to ArtResearch.net " +
         "(the PHAROS consortium aggregator, ~601K works) covering that notation and all its " +

@@ -18,7 +18,8 @@
     "test": "node scripts/tests/test-pure-functions.mjs && node scripts/tests/test-units.mjs",
     "test:tools": "node scripts/tests/test-tools.mjs",
     "test:http": "node scripts/tests/test-http-concurrency.mjs",
-    "test:all": "node scripts/tests/test-pure-functions.mjs && node scripts/tests/test-tools.mjs && node scripts/tests/test-http-concurrency.mjs",
+    "test:modern": "node scripts/tests/test-modern-wire.mjs",
+    "test:all": "node scripts/tests/test-pure-functions.mjs && node scripts/tests/test-tools.mjs && node scripts/tests/test-http-concurrency.mjs && node scripts/tests/test-modern-wire.mjs",
     "warm-cache": "node scripts/warm-cache-local.mjs --validate"
   },
   "dependencies": {

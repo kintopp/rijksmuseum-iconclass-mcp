@@ -7,16 +7,12 @@
  * Run:  node scripts/tests/test-http-concurrency.mjs
  * Requires: npm run build, data/iconclass.db present
  */
-import { spawn } from "node:child_process";
-import { fileURLToPath } from "node:url";
-import path from "node:path";
-
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 
-const PROJECT_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
+import { bootHttpServer } from "./_server.mjs";
+
 const PORT = process.env.TEST_PORT ?? "31337";
-const MCP_URL = `http://127.0.0.1:${PORT}/mcp`;
 
 let passed = 0;
 let failed = 0;
@@ -28,28 +24,8 @@ function assert(cond, msg) {
 
 // ── Boot HTTP server ────────────────────────────────────────────
 
-const child = spawn("node", ["dist/index.js"], {
-  cwd: PROJECT_DIR,
-  env: { ...process.env, PORT, STRUCTURED_CONTENT: "true" },
-  stdio: ["ignore", "inherit", "pipe"],
-});
-
-let stderr = "";
-child.stderr.on("data", (chunk) => {
-  const s = chunk.toString();
-  stderr += s;
-  process.stderr.write(s);
-});
-
-// Wait for "listening" line in stderr or 10s timeout
-await new Promise((resolve, reject) => {
-  const t = setTimeout(() => reject(new Error("server didn't start within 10s")), 10_000);
-  const check = () => {
-    if (stderr.includes("listening on http://")) { clearTimeout(t); resolve(); }
-  };
-  child.stderr.on("data", check);
-  check();
-});
+const server = await bootHttpServer({ port: PORT });
+const MCP_URL = server.url;
 
 console.log(`\nServer up on ${MCP_URL}\n`);
 
@@ -89,12 +65,11 @@ try {
 
   assert(ok.length === N, `${N} concurrent sessions all succeeded (got ${ok.length}/${N})`);
   assert(
-    !stderr.includes("Already connected to a transport"),
+    !server.stderr().includes("Already connected to a transport"),
     "no 'Already connected to a transport' errors in server logs"
   );
 } finally {
-  child.kill("SIGTERM");
-  await new Promise((r) => child.once("exit", r));
+  await server.stop();
 }
 
 console.log(`\n${passed} passed, ${failed} failed`);

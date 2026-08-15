@@ -6,6 +6,9 @@
  * exercises tool calls defined in a TSV file to warm the SQLite mmap page
  * cache and embedding model.
  *
+ * Also preflights the 2026-07-28 wire (see probeModernWire); a modern-wire
+ * failure fails the whole script.
+ *
  * Usage:
  *   node scripts/warm-cache.mjs [--url URL] [--file PATH] [--concurrency N]
  *
@@ -34,6 +37,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const DEFAULT_URL = "https://rijksmuseum-iconclass-mcp-production.up.railway.app/mcp";
 const DEFAULT_FILE = resolve(__dirname, "warm-cache-prompts.tsv");
+const MODERN_VERSION = "2026-07-28";
 
 function parseArgs() {
   const args = process.argv.slice(2);
@@ -96,6 +100,55 @@ async function runCall(client, { name, args }, index, total) {
   }
 }
 
+/**
+ * Raw-fetch tools/list on the 2026-07-28 wire. The v1 client below caps at
+ * 2025-11-25 and cannot reach this path, so without this probe a deploy that
+ * lost modern-wire support would look perfectly healthy here — while claude.ai,
+ * which now probes 2026-07-28, got HTTP 400.
+ */
+async function probeModernWire(url) {
+  const start = performance.now();
+  const log = (verdict) =>
+    console.log(`modern wire (${MODERN_VERSION})  ${(performance.now() - start).toFixed(0)}ms  ${verdict}`);
+  try {
+    // Restated literally rather than shared with test-modern-wire.mjs on
+    // purpose: a shared builder would let both drift together, and this probes
+    // a remote deploy that may run a different SDK build.
+    const res = await fetch(url, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        accept: "application/json, text/event-stream",
+        "mcp-protocol-version": MODERN_VERSION,
+        "mcp-method": "tools/list",
+      },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "tools/list",
+        params: {
+          _meta: {
+            "io.modelcontextprotocol/protocolVersion": MODERN_VERSION,
+            "io.modelcontextprotocol/clientInfo": { name: "warm-cache", version: "1.0.0" },
+            "io.modelcontextprotocol/clientCapabilities": {},
+          },
+        },
+      }),
+    });
+    const body = JSON.parse(await res.text());
+    const tools = body?.result?.tools?.length;
+    if (res.status === 200 && tools) {
+      log(`OK  ${tools} tools`);
+      return true;
+    }
+    const why = body?.error ? `${body.error.code} ${body.error.message}` : `HTTP ${res.status}`;
+    log(`FAIL  -> ${String(why).slice(0, 140)}`);
+  } catch (e) {
+    log(`FAIL  -> ${e.message?.slice(0, 140)}`);
+  }
+  return false;
+}
+
 async function main() {
   const opts = parseArgs();
   const prompts = parseTsv(opts.file);
@@ -108,6 +161,8 @@ async function main() {
   console.log(`Connecting to ${opts.url}`);
   console.log(`Loaded ${prompts.length} tool calls from ${opts.file}`);
   console.log(`Concurrency: ${opts.concurrency}\n`);
+
+  const modernOk = await probeModernWire(opts.url);
 
   const transport = new StreamableHTTPClientTransport(new URL(opts.url));
   const client = new Client({ name: "warm-cache", version: "1.0.0" });
@@ -132,13 +187,14 @@ async function main() {
   const totalSec = ((performance.now() - totalStart) / 1000).toFixed(1);
 
   console.log(`\n--- Summary ---`);
-  console.log(`Total:     ${prompts.length} calls`);
-  console.log(`Succeeded: ${successes}`);
-  console.log(`Failed:    ${failures}`);
-  console.log(`Time:      ${totalSec}s`);
+  console.log(`Total:       ${prompts.length} calls`);
+  console.log(`Succeeded:   ${successes}`);
+  console.log(`Failed:      ${failures}`);
+  console.log(`Modern wire: ${modernOk ? "ok" : "FAILED"}`);
+  console.log(`Time:        ${totalSec}s`);
 
   await client.close();
-  process.exit(failures > 0 ? 1 : 0);
+  process.exit(failures > 0 || !modernOk ? 1 : 0);
 }
 
 main().catch((e) => {

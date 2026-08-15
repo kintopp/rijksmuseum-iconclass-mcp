@@ -142,6 +142,8 @@ const BrowseOutput = z.object({
 
 const ResolveOutput = z.object({
   notations: z.array(IconclassEntryShape()),
+  // Always present, so callers need not infer misses from a short array.
+  notFound: z.array(z.string()),
   collections: z.array(CollectionInfoShape()),
   error: z.string().optional(),
 });
@@ -239,7 +241,7 @@ export function registerTools(
         "Multi-word queries try phrase match first, then individual terms (AND). " +
         "Inflected forms often work, but spelling variants (odour/odor) do not. " +
         "Use parentNotation to restrict results to a subtree.\n" +
-        "• semanticQuery — find notations by meaning (e.g. 'domestic animals' finds dogs, cats, horses)" +
+        "• semanticQuery — find notations by meaning, across branches (e.g. 'grief and mourning' finds scenes in the Bible, burial-rite and mythology branches)" +
         (semanticAvailable ? "" : " [currently unavailable — embeddings not loaded]") + "\n\n" +
         "Results ranked by collection coverage. " +
         "Pass resulting notation codes to a collection server's search_artwork(iconclass=...) to find matching artworks — multiple codes are AND-combined.\n\n" +
@@ -436,7 +438,9 @@ export function registerTools(
       description:
         "Look up one or more Iconclass notations by code. Returns full metadata: " +
         "text, keywords, hierarchy path, children, cross-references, key info, and collection presence. " +
-        "Accepts up to 25 notations in a single call.",
+        "Accepts up to 25 notations in a single call. " +
+        "Codes absent from the database are reported in notFound rather than silently omitted, " +
+        "so this is a reliable way to verify uncertain notations.",
       inputSchema: z.object({
         notation: z.union([
           z.string().min(1),
@@ -451,8 +455,13 @@ export function registerTools(
       const notations = Array.isArray(args.notation) ? args.notation : [args.notation];
       const entries = db.resolve(notations, args.lang);
 
+      // resolveEntry() matches the primary key exactly, so a returned notation is
+      // byte-identical to its input and set difference is safe.
+      const found = new Set(entries.map(e => e.notation));
+      const notFound = notations.filter(n => !found.has(n));
+
       if (entries.length === 0) {
-        return errorResponse(`None of the requested notations were found.`);
+        return errorResponse(`None of the requested notations were found: ${notFound.join(", ")}`);
       }
 
       const lines = entries.map(e => {
@@ -462,7 +471,11 @@ export function registerTools(
         if (e.keywords.length > 0) line += ` kw: ${e.keywords.join(", ")}`;
         return line;
       });
-      const data = { notations: entries, collections: db.collections };
+      // A silently short list reads as "verified" to a caller checking codes.
+      if (notFound.length > 0) {
+        lines.push(`\nnot found (${notFound.length}): ${notFound.join(", ")}`);
+      }
+      const data = { notations: entries, notFound, collections: db.collections };
       return structuredResponse(data, lines.join("\n"));
     })
   );
@@ -475,8 +488,10 @@ export function registerTools(
       title: "Expand Iconclass Keys",
       description:
         "List all key-expanded variants of a base notation with pagination. " +
-        "Key expansions add specificity — e.g. 25F23 (beasts of prey) → " +
-        "25F23(+1) 'swimming', 25F23(+46) 'sleeping'. " +
+        "Key expansions add specificity — e.g. 25F23 (beasts of prey) → 25F23(+46) 'sleeping animal(s)'. " +
+        "Key meanings are branch-specific: the same (+N) suffix means different things under different bases " +
+        "(25F23(+1) 'animals used symbolically' vs 48C7323(+1) 'artist at work'), so read the returned label " +
+        "rather than assuming a key's meaning. " +
         "Use this when you need the full list of variants; " +
         "use browse with includeKeys for a quick preview alongside children." +
         (keysAvailable ? "" : " [currently unavailable — DB does not include key-expanded notations]"),
@@ -600,8 +615,8 @@ export function registerTools(
       // notation regardless of whether it exists in the local CC0 dump. A code
       // absent from the dump (e.g. a synthesized/named-key notation) still gets a
       // useful artResearchUrl covering it and its descendants, so filtering such
-      // notations out would drop legitimate results. Unlike resolve (which errors
-      // on unknown codes), an empty collections array here means "no loaded
+      // notations out would drop legitimate results. Unlike resolve (which reports
+      // unknown codes in notFound), an empty collections array here means "no loaded
       // collection has artworks", not "invalid notation".
 
       const lines = result.notations.map(entry => {

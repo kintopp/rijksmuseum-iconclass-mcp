@@ -1,6 +1,6 @@
 ---
 name: iconclass-mcp
-version: "0.4.2"
+version: "0.4.3"
 description: >
   Companion vocabulary layer to rijksmuseum-mcp+: maps art-subject concepts
   to Iconclass notation codes (~1.3M codes across 13 languages) and checks
@@ -74,7 +74,17 @@ Iconclass notations encode hierarchy left-to-right. Understanding the syntax hel
 
 **Named notations** add a parenthesised qualifier for specific entities: `11H(FRANCIS)` (St. Francis), `25F26(WOMBAT)` (wombat). The name is part of the notation — `11H(FRANCIS)` and `11H(JEROME)` are siblings under `11H(...)` (male saints). Named notations for female saints use `11HH(...)`.
 
-**Key-expanded notations** add modifiers in `(+N)` suffixes: `25F23(+46)` means "beasts of prey, sleeping." Key codes are standardised across the system — `(+46)` always means "sleeping" regardless of the base notation. But be careful: the `(+4...)` group concerns **artistic production and works of art as objects** (stages of creation, damage, restoration), not the depicted condition of things within a scene. `48C7323(+42)` means "lute as a work of art being damaged," not "a lute with a broken string in a painting." This is a common misclassification trap.
+**Key-expanded notations** add modifiers in `(+N)` suffixes: `25F23(+46)` means "beasts of prey, sleeping."
+
+**Key meanings are branch-specific, not global** — the most common trap. A `(+N)` is an index into whichever key set the base notation's branch uses, so the same suffix means unrelated things under different bases:
+
+| Suffix | under `25F23` (beasts of prey) | under `48C7323` (lute) |
+|---|---|---|
+| `(+1)` | animals used symbolically | artist at work |
+| `(+42)` | feeding and care of young | damage and repair of work of art |
+| `(+46)` | sleeping animal(s) | *(no such variant)* |
+
+Read the label before using a variant: `expand_keys` the base, or `resolve` the variant. Never carry a key's meaning across branches, and never construct a variant you haven't seen in a response — it may not exist under that base.
 
 When using `expand_keys`, pass the **base notation** — `25F23`, not `25F23(+46)`. Named notations like `25F23(LION)` are not base notations either; use `25F23` to expand keys for all beasts of prey, lion included.
 
@@ -114,7 +124,9 @@ The keyword search (`query`) uses FTS5 across labels (13 languages) and keywords
 
 **Single words are usually best.** FTS matches whole words against the Iconclass vocabulary, so a single specific word ("salamander", "crucifixion", "lute") has the highest recall. Multi-word queries are useful when a single word is too broad — "broken string" to distinguish from intact string instruments, or "Last Supper" to avoid matching other uses of "supper."
 
-**When FTS fails, switch to semantic search.** If the exact vocabulary term is unknown — or you're searching by concept rather than keyword — use `semanticQuery`. It finds notations by meaning: "domestic animals" finds dogs, cats, horses even though none contain that exact phrase. Semantic search bridges the gap between your language and Iconclass's vocabulary.
+**When FTS fails, switch to semantic search.** Use `semanticQuery` when the vocabulary term is unknown or the query is conceptual. Its strength is reaching across branches: "grief and mourning" returns `73D72` (dead Christ), `42E131` (burial rites) and `94G44` (funeral of Hector) together, including labels containing neither query word. It returns a small fixed candidate set (~15), so use it to locate the right branch, then `browse` or `search_prefix` to enumerate it.
+
+**Keyword search counts rows, not concepts.** Key variants are indexed alongside base notations, so a narrow term can fill the result window with `(+N)` variants of one notation — `search(query: "salamander")` reports 426 matches, all variants of `25FF412`. Add `onlyWithArtworks: true` to collapse to base notations with coverage (426 → 1). Read `totalResults` as a row count.
 
 **Non-English queries work.** FTS covers all 13 languages. Dutch "kruisiging", German "Kreuzigung", and French "crucifixion" all find the same notation.
 
@@ -129,7 +141,7 @@ Both can show key-expanded variants (e.g. `25F23(+46)` "beasts of prey, sleeping
 - `browse` with `includeKeys: true`: quick preview of key variants alongside the entry's children, path, and cross-refs. Use for orientation — "what modifiers exist for this notation?"
 - `expand_keys`: paginated list of all key variants with full metadata. Use when you need the complete inventory — some base notations have 200+ variants and `browse` only shows the first 25.
 
-When working with key expansions, remember that the `(+4...)` group is about artistic production (damage, restoration, stages of creation), not depicted object condition — see Notation Syntax.
+When working with key expansions, remember that key meanings are branch-specific — the same `(+N)` means different things under different bases, so read the returned label rather than assuming — see Notation Syntax.
 
 ### `search` with `parentNotation` vs `search_prefix`
 
@@ -149,13 +161,17 @@ If `parentNotation` returns zero results, the concept may exist in a different b
 Start with keyword search. If the term is unknown or the concept is atmospheric/interpretive, use semantic search.
 
 ```
-# Known term
+# Known term — 844 matches; the canonical code is not ranked first
 search(query: "crucifixion")
-# -> 73D6 (rijksmuseum) "the Crucifixion of Christ" [7 > 73 > 73D]
+# -> 31E2356 "violent death by crucifixion" [3 > 31 > 31E]
+# -> ... 73D6 (rijksmuseum) "the crucifixion of Christ" [7 > 73 > 73D]  <- 16th
+# Scan the full result set — FTS ranks by relevance, not by canonicalness.
 
-# Unknown vocabulary — concept search
-search(semanticQuery: "domestic animals")
-# -> 34B1 "pets, domestic animals" [3 > 34 > 34B]
+# Unknown vocabulary — concept search, reaches across branches
+search(semanticQuery: "grief and mourning")
+# -> 73D72 "the mourning over the dead Christ" [7 > 73 > 73D]
+# -> 42E131 "mourning the dead" [4 > 42 > 42E]
+# -> 94G44 "funeral and mourning of Hector" [9 > 94 > 94G]
 ```
 
 ### 2. Explore a Hierarchy Branch
@@ -179,7 +195,7 @@ Use `depth: 3` only on narrow branches where you can see the full structure. For
 ### 3. Cross-Branch Discovery
 
 The same concept can appear in multiple Iconclass branches because the system classifies by context, not just identity. A dog might be:
-- `34B11` — pets, domestic animals: dog (zoological classification)
+- `34B11` — "dog", under `34B1` "domestic animals, kept in the house" (the `34` man-and-animal branch, not the zoological tree — there is no dog notation under `25F` at all)
 - `11H(BERNARD)` — St. Bernard with a white dog among his possible attributes (saint iconography)
 - `25FF21` — fabulous animals ~ domestic animals (fabulous-animal context)
 
@@ -333,12 +349,15 @@ To enable direct artwork search in future conversations, the user can install th
 | Wide branches truncated at 25 per parent | Use `search_prefix` to enumerate all notations, or paginate with `offset`. |
 | Resolve batch limit of 25 | Use `search` for discovery, `resolve` only for the 3–5 notations you need full metadata on. |
 | `parentNotation` returns 0 but concept exists | The concept may live in a different branch. Remove the scope and search globally. |
-| Key expansion labels can mislead | Verify a key's meaning in context. The `(+4...)` group is about artistic production, not depicted object condition. See Notation Syntax. |
+| Key expansion labels can mislead | Key meanings are branch-specific — `(+42)` is "feeding and care of young" under `25F23`, "damage and repair of work of art" under `48C7323`. Read the label via `expand_keys`/`resolve`. See Notation Syntax. |
+| Keyword search floods with key variants | Add `onlyWithArtworks: true` to collapse variants to base notations ("salamander" 426 → 1). `totalResults` is a row count, not a concept count. |
+| Key variant labels are untranslated | In non-English `lang`, a base and all its variants render identically (`73D6`, `(+0)`, `(+1)`, `(+3)` are all "kruisdood"). Read the notation code, or re-resolve in `en`. |
 | Category labels reflect pre-modern iconography, not modern taxonomy | Treat labels as index terms, not scientific definitions. Flag mismatches to users (e.g. hares under "rodents"). See Labels Reflect Iconography, Not Modern Taxonomy. |
 | Common animals (horse, goat, rooster, salamander) have no notation in `25F*` | Search globally, not scoped to `25F*`. The animal's code is in husbandry, transport, saints, mythology, literature, or the fabulous tree. See Workflow 3 → "Searching for a specific animal." |
 | `find_artworks` batch limit of 25 | Sufficient for most workflows — you should have narrowed to a shortlist before calling. |
 | Artwork-count overlays are collection-specific | Check the top-level `collections` field to see which overlays are loaded. Coverage changes when the sidecar database is updated. |
 | `find_artworks` returns "no collections" | The notation has no counts in the loaded overlays, or the input notation may not exist. Use `resolve` to verify uncertain codes, then try a parent or sibling notation. |
+| Verifying a notation exists | `resolve` lists absent codes in `notFound` rather than dropping them. On a batch call check `notFound`, not the length of `notations`. |
 
 ---
 

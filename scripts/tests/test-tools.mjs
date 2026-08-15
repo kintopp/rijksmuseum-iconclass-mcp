@@ -293,6 +293,8 @@ const s5 = sc(r5);
 assertEq(s5.notations.length, 1, "1 entry resolved");
 assertEq(s5.notations[0].notation, "73D6", "notation is 73D6");
 assert(s5.notations[0].keywords.length > 0, "has keywords");
+assert(Array.isArray(s5.notFound), "notFound present on success");
+assertEq(s5.notFound.length, 0, "notFound empty when all resolved");
 
 // Batch resolve
 const r5b = await client.callTool({
@@ -306,6 +308,12 @@ assertEq(s5b.notations[2].notation, "25F23(+46)", "third is key-expanded");
 assert(s5b.notations[2].isKeyExpanded === true, "key-expanded flag set");
 assertEq(s5b.notations[2].baseNotation, "25F23", "base notation correct");
 assertEq(s5b.notations[2].keyId, "+46", "key ID correct");
+assertEq(s5b.notFound.length, 1, "partial miss reported in notFound");
+assertEq(s5b.notFound[0], "NONEXISTENT", "notFound names the missing code");
+assert(
+  r5b.content[0].text.includes("not found"),
+  "partial miss surfaced in text content, not just structured",
+);
 
 // All nonexistent
 const r5c = await client.callTool({

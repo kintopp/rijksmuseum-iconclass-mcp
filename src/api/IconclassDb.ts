@@ -1,6 +1,7 @@
 import Database, { type Database as DatabaseType, type Statement } from "better-sqlite3";
 import { createRequire } from "node:module";
 import { escapeFts5, escapeFts5Terms, resolveDbPath, artResearchUrl } from "../utils/db.js";
+import { logInfo, logWarn, logError } from "../utils/log.js";
 
 const require = createRequire(import.meta.url);
 
@@ -158,7 +159,7 @@ export class IconclassDb {
   constructor() {
     const dbPath = resolveDbPath("ICONCLASS_DB_PATH", "iconclass.db");
     if (!dbPath) {
-      console.error("Iconclass DB not found — all tools disabled");
+      logError("Iconclass DB not found — all tools disabled");
       return;
     }
 
@@ -244,7 +245,7 @@ export class IconclassDb {
             LIMIT ? OFFSET ?
           `);
 
-          console.error(`  Counts DB attached: ${countsPath} (${this._collections.length} collections, ${this._countsDbVersion?.releaseTag ?? "no tag"})`);
+          logInfo(`  Counts DB attached: ${countsPath} (${this._collections.length} collections, ${this._countsDbVersion?.releaseTag ?? "no tag"})`);
         } catch (err) {
           // Schema mismatch or missing tables — fully discard the sidecar so tools
           // don't expose stale/inconsistent collection data.
@@ -259,7 +260,7 @@ export class IconclassDb {
           this._collectionsMap = new Map();
           this._countsDbVersion = null;
           try { this.db!.exec("DETACH DATABASE counts"); } catch { /* already detached or never attached */ }
-          console.error(`  Counts DB not available: ${err instanceof Error ? err.message : err}`);
+          logWarn("  Counts DB not available", err);
         }
       }
 
@@ -311,14 +312,14 @@ export class IconclassDb {
         const expectedCount = expectedRow ? parseInt(expectedRow.value, 10) : null;
 
         if (!embeddingsCountConsistent(expectedCount, embCount)) {
-          console.error(
+          logWarn(
             `  Iconclass embeddings INCOMPLETE: expected ${expectedCount}, found ${embCount.toLocaleString()} — ` +
             `disabling semantic search (likely an interrupted embedding build)`
           );
           this._hasEmbeddings = false;
         } else {
           this._hasEmbeddings = true;
-          console.error(`  Iconclass embeddings: ${embCount.toLocaleString()} vectors (${this._embeddingDimensions}d)`);
+          logInfo(`  Iconclass embeddings: ${embCount.toLocaleString()} vectors (${this._embeddingDimensions}d)`);
         }
       } catch { /* no embeddings */ }
 
@@ -363,9 +364,9 @@ export class IconclassDb {
         "SELECT COUNT(*) as n FROM notations WHERE base_notation = ?"
       );
 
-      console.error(`Iconclass DB loaded: ${dbPath} (${count.toLocaleString()} notations, ${this._collections.length} collection overlays)`);
+      logInfo(`Iconclass DB loaded: ${dbPath} (${count.toLocaleString()} notations, ${this._collections.length} collection overlays)`);
     } catch (err) {
-      console.error(`Failed to open Iconclass DB: ${err instanceof Error ? err.message : err}`);
+      logError("Failed to open Iconclass DB", err);
       this.stmtGetCollectionCounts = null;
       this.stmtPresenceJoin = null;
       this.stmtBatchInsert = null;
@@ -401,7 +402,7 @@ export class IconclassDb {
       if (this.stmtGetCollectionCounts) {
         this.stmtGetCollectionCounts.all("11F");
       }
-      console.error(`  Iconclass DB core pages warmed in ${Date.now() - t0}ms`);
+      logInfo(`  Iconclass DB core pages warmed in ${Date.now() - t0}ms`);
 
       if (this._hasEmbeddings && this.stmtQuantize && this.stmtKnn) {
         const t1 = Date.now();
@@ -411,10 +412,10 @@ export class IconclassDb {
         if (this.stmtPrefixFilteredKnn) {
           this.stmtPrefixFilteredKnn.all(quantized.v, "11F%", 1);
         }
-        console.error(`  Iconclass embeddings pages warmed in ${Date.now() - t1}ms`);
+        logInfo(`  Iconclass embeddings pages warmed in ${Date.now() - t1}ms`);
       }
     } catch (err) {
-      console.error(`  Iconclass DB warmup failed: ${err instanceof Error ? err.message : err}`);
+      logWarn("  Iconclass DB warmup failed", err);
     }
   }
 

@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { logWarn } from "./log.js";
 
 // Project root: this file is src/utils/UsageStats.ts, so ../.. from its dir.
 // Kept self-contained (db.ts keeps its own PROJECT_ROOT private) so this util
@@ -86,7 +87,7 @@ export class UsageStats {
       fs.renameSync(tmp, this.filePath);
       this.dirty = false;
     } catch (err) {
-      console.error("[UsageStats] flush failed:", err);
+      logWarn("[UsageStats] flush failed", err);
     }
   }
 

@@ -3,6 +3,7 @@ import fs from "node:fs";
 import { fileURLToPath } from "node:url";
 import { pipeline } from "node:stream/promises";
 import { createGunzip } from "node:zlib";
+import { logInfo, logWarn, logError } from "./log.js";
 
 const PROJECT_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 
@@ -100,14 +101,14 @@ async function tryChunkedDownload(baseUrl: string, destPath: string, assembledPa
     try {
       await fetchToFile(partUrl, assembledPath, i === 0 ? "w" : "a");
       chunkCount++;
-      console.error(`  chunk ${chunkCount} (${chunkSuffix(i)}) ✓`);
+      logInfo(`  chunk ${chunkCount} (${chunkSuffix(i)}) ✓`);
     } catch {
       if (i === 0) return false; // no chunks exist
       break; // end of chunk sequence
     }
   }
 
-  console.error(`  ${chunkCount} chunks downloaded, decompressing...`);
+  logInfo(`  ${chunkCount} chunks downloaded, decompressing...`);
   if (isGzip) {
     await pipeline(fs.createReadStream(assembledPath), createGunzip(), fs.createWriteStream(destPath));
     fs.unlinkSync(assembledPath);
@@ -136,13 +137,13 @@ export async function ensureDb(spec: DbSpec): Promise<void> {
       if (!row) throw new Error("validation query returned no rows");
       return;
     } catch {
-      console.error(`${spec.name} DB invalid or outdated — will re-download`);
+      logWarn(`${spec.name} DB invalid or outdated — will re-download`);
     }
   }
 
   if (!url) return;
 
-  console.error(shouldRefresh ? `Refreshing ${spec.name} DB from ${spec.urlEnvVar}...` : `Downloading ${spec.name} DB...`);
+  logInfo(shouldRefresh ? `Refreshing ${spec.name} DB from ${spec.urlEnvVar}...` : `Downloading ${spec.name} DB...`);
   const dir = path.dirname(dbPath);
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 
@@ -154,7 +155,7 @@ export async function ensureDb(spec: DbSpec): Promise<void> {
     // Try chunked download first (split-for-release.sh assets), fall back to single file
     const chunked = await tryChunkedDownload(url, tmpPath, gzTmpPath, isGzip);
     if (!chunked) {
-      console.error("  single-file download...");
+      logInfo("  single-file download...");
       await fetchToFile(url, isGzip ? gzTmpPath : tmpPath);
       if (isGzip) {
         await pipeline(fs.createReadStream(gzTmpPath), createGunzip(), fs.createWriteStream(tmpPath));
@@ -174,9 +175,9 @@ export async function ensureDb(spec: DbSpec): Promise<void> {
     }
 
     fs.renameSync(tmpPath, dbPath);
-    console.error(`${spec.name} DB ready: ${dbPath}`);
+    logInfo(`${spec.name} DB ready: ${dbPath}`);
   } catch (err) {
-    console.error(`Failed to download ${spec.name} DB: ${err instanceof Error ? err.message : err}`);
+    logError(`Failed to download ${spec.name} DB`, err);
     for (const f of [tmpPath, gzTmpPath]) {
       if (fs.existsSync(f)) fs.unlinkSync(f);
     }

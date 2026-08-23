@@ -1,4 +1,5 @@
 import type { FeatureExtractionPipeline } from "@huggingface/transformers";
+import { logInfo, logError } from "../utils/log.js";
 
 export const DEFAULT_MODEL_ID = "Xenova/multilingual-e5-base";
 
@@ -62,7 +63,7 @@ export class EmbeddingModel {
       // not pre-exist — the volume just has to be mounted.
       if (process.env.HF_HOME) {
         env.cacheDir = process.env.HF_HOME;
-        console.error(`Embedding model cache dir: ${env.cacheDir}`);
+        logInfo(`Embedding model cache dir: ${env.cacheDir}`);
       }
 
       // pipeline()'s generic return type Promise<AllTasks[T]> is too wide for
@@ -77,9 +78,9 @@ export class EmbeddingModel {
       this.pipe = await featurePipeline("feature-extraction", modelId, {
         dtype: "q8",   // int8 quantized ONNX
       });
-      console.error(`Embedding model loaded: ${modelId}${targetDim > 0 ? ` (MRL ${targetDim}d)` : ""}`);
+      logInfo(`Embedding model loaded: ${modelId}${targetDim > 0 ? ` (MRL ${targetDim}d)` : ""}`);
     } catch (err) {
-      console.error(`Failed to load embedding model: ${err instanceof Error ? err.message : err}`);
+      logError("Failed to load embedding model", err);
       this.pipe = null;
     }
   }

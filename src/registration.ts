@@ -3,6 +3,7 @@ import { z } from "zod";
 import { IconclassDb } from "./api/IconclassDb.js";
 import { EmbeddingModel } from "./api/EmbeddingModel.js";
 import { UsageStats } from "./utils/UsageStats.js";
+import { logInfo, logError } from "./utils/log.js";
 
 // ─── Structured per-call logging ────────────────────────────────────
 //
@@ -10,6 +11,12 @@ import { UsageStats } from "./utils/UsageStats.js";
 // On Railway this is consumed by `railway logs --json` and analysed by
 // scripts/analyse-railway-logs.{sh,py}. Shape mirrors rijksmuseum-mcp-plus
 // (registration.ts createLogger) so the analyser's data-shape contract holds.
+//
+// The level tracks `ok` rather than being fixed: Railway defaults every stderr
+// line to level=error, so a constant level would bury real failures among
+// successful calls in `--filter "@level:error"`. `tool`/`ms`/`ok`/`input` stay
+// top-level fields — the analyser keys off them, and Railway makes them
+// queryable (@tool:, @ms:>500).
 //
 // createLogger(stats) optionally also records the call into a persistent
 // UsageStats instance (#326), mirroring the rijksmuseum-mcp-plus shape.
@@ -42,18 +49,23 @@ function createLogger(stats?: UsageStats) {
       const input = rawInput ? truncateInput(rawInput) : undefined;
       const start = performance.now();
       let ok = true;
-      let error: string | undefined;
+      // The thrown value is kept whole rather than pre-stringified so logError
+      // can also surface its stack; a tool returning isError leaves it unset,
+      // since there is no exception to report.
+      let caught: unknown;
       try {
         const result = await fn(...args);
         ok = !(result && typeof result === "object" && "isError" in result && result.isError);
         return result;
       } catch (err) {
         ok = false;
-        error = err instanceof Error ? err.message : String(err);
+        caught = err;
         throw err;
       } finally {
         const ms = Math.round(performance.now() - start);
-        console.error(JSON.stringify({ tool: toolName, ms, ok, ...(error !== undefined && { error }), ...(input && { input }) }));
+        const fields = { tool: toolName, ms, ok, ...(input && { input }) };
+        if (ok) logInfo(toolName, fields);
+        else logError(toolName, caught, fields);
         stats?.record(toolName, ms, ok);
       }
     };

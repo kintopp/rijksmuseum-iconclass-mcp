@@ -14,6 +14,7 @@ import { fileURLToPath } from "node:url";
 import { IconclassDb } from "./api/IconclassDb.js";
 import { EmbeddingModel, DEFAULT_MODEL_ID } from "./api/EmbeddingModel.js";
 import { ensureDb, type DbSpec } from "./utils/db.js";
+import { logInfo, logWarn, logError } from "./utils/log.js";
 import {
   captureMemorySnapshot,
   formatMemorySnapshotDetailed,
@@ -124,10 +125,13 @@ async function warmInBackground(): Promise<void> {
     await yieldTick(); // let listen()'s callback + any queued wake requests flush first
     iconclassDb?.warmCorePages();
     await embeddingModel?.whenReady();
-    console.error("Background warmup complete");
-    console.error(formatMemorySnapshotDetailed(captureMemorySnapshot(buildMemoryDbHandles())));
+    logInfo("Background warmup complete");
+    // The snapshot is multi-line; JSON-encoding collapses it into one Railway
+    // entry rather than one per line, which is what makes it readable there.
+    logInfo(formatMemorySnapshotDetailed(captureMemorySnapshot(buildMemoryDbHandles())));
   } catch (err) {
-    console.error(`Background warmup failed: ${err instanceof Error ? err.message : err}`);
+    // Warm failure only costs latency on the first real query — the server serves.
+    logWarn("Background warmup failed", err);
   }
 }
 
@@ -181,7 +185,7 @@ function createServer(): McpServer {
 async function runStdio(): Promise<void> {
   await initDatabase();
   if (!iconclassDb?.available) {
-    console.error("FATAL: Iconclass DB is not available — cannot register tools. Exiting.");
+    logError("FATAL: Iconclass DB is not available — cannot register tools. Exiting.");
     process.exit(1);
   }
   // stdio has no wake/connect-race concern, so keep startup eager: finish the
@@ -191,9 +195,9 @@ async function runStdio(): Promise<void> {
   // The factory is invoked once per connection; the opening exchange pins the
   // era (2025-era clients are served exactly as the hand-wired transport did).
   serveStdio(() => createServer(), {
-    onerror: (err) => console.error(`[${SERVER_NAME}] transport error:`, err),
+    onerror: (err) => logError(`[${SERVER_NAME}] transport error`, err),
   });
-  console.error(`${SERVER_NAME} v${SERVER_VERSION} running on stdio`);
+  logInfo(`${SERVER_NAME} v${SERVER_VERSION} running on stdio`);
 }
 
 // ─── HTTP mode ──────────────────────────────────────────────────────
@@ -203,7 +207,7 @@ let httpServer: import("node:http").Server | undefined;
 async function runHttp(): Promise<void> {
   await initDatabase();
   if (!iconclassDb?.available) {
-    console.error("FATAL: Iconclass DB is not available — cannot register tools. Exiting.");
+    logError("FATAL: Iconclass DB is not available — cannot register tools. Exiting.");
     process.exit(1);
   }
   const port = getHttpPort();
@@ -274,7 +278,7 @@ async function runHttp(): Promise<void> {
         res.end();
       }
     } catch (err) {
-      console.error("MCP endpoint error:", err);
+      logError("MCP endpoint error", err);
       if (!res.headersSent) {
         res.status(500).json({ error: "Internal server error" });
       }
@@ -320,11 +324,13 @@ async function runHttp(): Promise<void> {
   // ── Start ──────────────────────────────────────────────────────
 
   httpServer = app.listen(port, () => {
-    console.error(`${SERVER_NAME} v${SERVER_VERSION} listening on http://localhost:${port}`);
-    console.error(`  MCP endpoint: POST /mcp`);
-    console.error(`  Health:       GET  /health`);
-    console.error(`  Memory:       GET  /debug/memory`);
-    console.error(`  Stats:        GET  /debug/stats`);
+    // scripts/tests/_server.mjs waits on the raw substring "listening on
+    // http://" in stderr — keep it intact and on one line.
+    logInfo(`${SERVER_NAME} v${SERVER_VERSION} listening on http://localhost:${port}`);
+    logInfo(`  MCP endpoint: POST /mcp`);
+    logInfo(`  Health:       GET  /health`);
+    logInfo(`  Memory:       GET  /debug/memory`);
+    logInfo(`  Stats:        GET  /debug/stats`);
   });
 
   // Warm AFTER listen() so /health + the DB-free MCP `initialize` handshake
@@ -338,16 +344,16 @@ async function runHttp(): Promise<void> {
 // ─── Graceful shutdown ──────────────────────────────────────────────
 
 function shutdown() {
-  console.error("Shutting down...");
+  logInfo("Shutting down...");
   usageStats?.flush(); // persist any pending counters (#326)
   if (httpServer) {
     httpServer.close(() => {
-      console.error("All connections closed.");
+      logInfo("All connections closed.");
       process.exit(0);
     });
     // Force exit after 5s if connections don't drain
     setTimeout(() => {
-      console.error("Forcing shutdown after timeout.");
+      logWarn("Forcing shutdown after timeout.");
       process.exit(1);
     }, 5000).unref();
   } else {
@@ -362,12 +368,12 @@ process.on("SIGINT", shutdown);
 
 if (shouldUseHttp()) {
   runHttp().catch((err) => {
-    console.error("Failed to start HTTP server:", err);
+    logError("Failed to start HTTP server", err);
     process.exit(1);
   });
 } else {
   runStdio().catch((err) => {
-    console.error("Failed to start stdio server:", err);
+    logError("Failed to start stdio server", err);
     process.exit(1);
   });
 }

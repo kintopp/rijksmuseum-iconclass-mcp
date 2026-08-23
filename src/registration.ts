@@ -3,7 +3,7 @@ import { z } from "zod";
 import { IconclassDb } from "./api/IconclassDb.js";
 import { EmbeddingModel } from "./api/EmbeddingModel.js";
 import { UsageStats } from "./utils/UsageStats.js";
-import { logInfo, logError } from "./utils/log.js";
+import { log } from "./utils/log.js";
 
 // ─── Structured per-call logging ────────────────────────────────────
 //
@@ -11,12 +11,6 @@ import { logInfo, logError } from "./utils/log.js";
 // On Railway this is consumed by `railway logs --json` and analysed by
 // scripts/analyse-railway-logs.{sh,py}. Shape mirrors rijksmuseum-mcp-plus
 // (registration.ts createLogger) so the analyser's data-shape contract holds.
-//
-// The level tracks `ok` rather than being fixed: Railway defaults every stderr
-// line to level=error, so a constant level would bury real failures among
-// successful calls in `--filter "@level:error"`. `tool`/`ms`/`ok`/`input` stay
-// top-level fields — the analyser keys off them, and Railway makes them
-// queryable (@tool:, @ms:>500).
 //
 // createLogger(stats) optionally also records the call into a persistent
 // UsageStats instance (#326), mirroring the rijksmuseum-mcp-plus shape.
@@ -49,9 +43,7 @@ function createLogger(stats?: UsageStats) {
       const input = rawInput ? truncateInput(rawInput) : undefined;
       const start = performance.now();
       let ok = true;
-      // The thrown value is kept whole rather than pre-stringified so logError
-      // can also surface its stack; a tool returning isError leaves it unset,
-      // since there is no exception to report.
+      // Kept whole, not stringified, so the stack can be logged too.
       let caught: unknown;
       try {
         const result = await fn(...args);
@@ -64,8 +56,11 @@ function createLogger(stats?: UsageStats) {
       } finally {
         const ms = Math.round(performance.now() - start);
         const fields = { tool: toolName, ms, ok, ...(input && { input }) };
-        if (ok) logInfo(toolName, fields);
-        else logError(toolName, caught, fields);
+        // Only a thrown exception is an operator problem. An isError result is a
+        // rejected input (bad params, notation not found) — normal for an LLM
+        // exploring the taxonomy, and logging it at error would refill
+        // `@level:error` with client typos instead of startup noise.
+        log(caught !== undefined ? "error" : ok ? "info" : "warn", toolName, caught, fields);
         stats?.record(toolName, ms, ok);
       }
     };

@@ -8,46 +8,42 @@
 // parses that field; without it, everything on stderr defaults to level=error
 // and `railway logs --filter "@level:error"` returns every successful startup
 // line alongside the real failures. Fields beyond `message` become queryable
-// attributes (`@tool:`, `@ms:>500`).
+// attributes (`@tool:`, `@ms:>500`), so prefer a constant `message` plus fields
+// over interpolating variable data into the message.
 //
-// Two consumers bind to this shape — check both before editing:
-//   * scripts/analyse-railway-logs.py matches STARTUP_PATTERNS as substrings of
-//     `message`, so startup text must stay byte-identical.
-//   * scripts/tests/_server.mjs waits for the raw substring "listening on
-//     http://" in stderr. It survives JSON encoding only because the sentinel
-//     is plain ASCII; a quote or backslash in it would be escaped and the
-//     readiness wait would hang.
+// Three consumers substring-match `message`; keep these fragments intact:
+//   * scripts/analyse-railway-logs.py — every entry in its STARTUP_PATTERNS
+//   * scripts/tests/_server.mjs — "listening on http://"
+//   * scripts/test-wake-timing.mjs — "Background warmup complete"
 
 type LogLevel = "info" | "warn" | "error";
 
 type LogFields = Record<string, unknown>;
 
 /**
- * `cause` is unpacked into `error` (and `stack` when present) rather than
- * folded into the message, so the stack survives on one line and stays
- * filterable instead of being flattened into prose. Keeping the message a
- * constant string also lets Railway group recurrences of the same failure.
+ * `cause` is unpacked into `error`/`stack` so a stack survives on one line and
+ * stays filterable instead of being flattened into prose. `fields` is spread
+ * last, so it must not carry a `level` or `message` key of its own.
  */
-function emit(level: LogLevel, message: string, cause?: unknown, fields?: LogFields): void {
-  const extra: LogFields = { ...fields };
+export function log(level: LogLevel, message: string, cause?: unknown, fields?: LogFields): void {
+  const line: LogFields = { level, message, ...fields };
   if (cause !== undefined) {
-    extra.error = cause instanceof Error ? cause.message : String(cause);
-    if (cause instanceof Error && cause.stack) extra.stack = cause.stack;
+    line.error = cause instanceof Error ? cause.message : String(cause);
+    if (cause instanceof Error && cause.stack) line.stack = cause.stack;
   }
-  console.error(JSON.stringify({ level, message, ...extra }));
+  console.error(JSON.stringify(line));
 }
 
-/** No `cause` parameter: an informational line has no failure to attach. */
 export function logInfo(message: string, fields?: LogFields): void {
-  emit("info", message, undefined, fields);
+  log("info", message, undefined, fields);
 }
 
 /** Degraded-but-running: an optional subsystem failed and was skipped. */
-export function logWarn(message: string, cause?: unknown, fields?: LogFields): void {
-  emit("warn", message, cause, fields);
+export function logWarn(message: string, cause?: unknown): void {
+  log("warn", message, cause);
 }
 
 /** Something the operator must act on. */
-export function logError(message: string, cause?: unknown, fields?: LogFields): void {
-  emit("error", message, cause, fields);
+export function logError(message: string, cause?: unknown): void {
+  log("error", message, cause);
 }

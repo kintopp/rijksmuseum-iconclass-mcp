@@ -1,5 +1,5 @@
 import type { FeatureExtractionPipeline } from "@huggingface/transformers";
-import { logInfo, logError } from "../utils/log.js";
+import { logInfo, logWarn } from "../utils/log.js";
 
 export const DEFAULT_MODEL_ID = "Xenova/multilingual-e5-base";
 
@@ -80,7 +80,9 @@ export class EmbeddingModel {
       });
       logInfo(`Embedding model loaded: ${modelId}${targetDim > 0 ? ` (MRL ${targetDim}d)` : ""}`);
     } catch (err) {
-      logError("Failed to load embedding model", err);
+      // Same degraded state as an incomplete embeddings table: semantic search
+      // is gone, FTS still serves. Kept at the same level as that path.
+      logWarn("Failed to load embedding model", err);
       this.pipe = null;
     }
   }

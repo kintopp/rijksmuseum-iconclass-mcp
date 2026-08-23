@@ -101,14 +101,14 @@ async function tryChunkedDownload(baseUrl: string, destPath: string, assembledPa
     try {
       await fetchToFile(partUrl, assembledPath, i === 0 ? "w" : "a");
       chunkCount++;
-      logInfo(`  chunk ${chunkCount} (${chunkSuffix(i)}) ✓`);
+      logInfo(`chunk ${chunkCount} (${chunkSuffix(i)}) ✓`);
     } catch {
       if (i === 0) return false; // no chunks exist
       break; // end of chunk sequence
     }
   }
 
-  logInfo(`  ${chunkCount} chunks downloaded, decompressing...`);
+  logInfo(`${chunkCount} chunks downloaded, decompressing...`);
   if (isGzip) {
     await pipeline(fs.createReadStream(assembledPath), createGunzip(), fs.createWriteStream(destPath));
     fs.unlinkSync(assembledPath);
@@ -155,7 +155,7 @@ export async function ensureDb(spec: DbSpec): Promise<void> {
     // Try chunked download first (split-for-release.sh assets), fall back to single file
     const chunked = await tryChunkedDownload(url, tmpPath, gzTmpPath, isGzip);
     if (!chunked) {
-      logInfo("  single-file download...");
+      logInfo("single-file download...");
       await fetchToFile(url, isGzip ? gzTmpPath : tmpPath);
       if (isGzip) {
         await pipeline(fs.createReadStream(gzTmpPath), createGunzip(), fs.createWriteStream(tmpPath));

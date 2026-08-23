@@ -87,7 +87,7 @@ export class UsageStats {
       fs.renameSync(tmp, this.filePath);
       this.dirty = false;
     } catch (err) {
-      logWarn("[UsageStats] flush failed", err);
+      logWarn("usage stats flush failed", err);
     }
   }
 

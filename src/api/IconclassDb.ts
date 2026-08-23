@@ -159,7 +159,9 @@ export class IconclassDb {
   constructor() {
     const dbPath = resolveDbPath("ICONCLASS_DB_PATH", "iconclass.db");
     if (!dbPath) {
-      logError("Iconclass DB not found — all tools disabled");
+      // Whether a missing DB is fatal is the caller's call — it isn't in a test
+      // harness. Both server entry points log the FATAL error before exiting.
+      logWarn("Iconclass DB not found — all tools disabled");
       return;
     }
 
@@ -245,7 +247,7 @@ export class IconclassDb {
             LIMIT ? OFFSET ?
           `);
 
-          logInfo(`  Counts DB attached: ${countsPath} (${this._collections.length} collections, ${this._countsDbVersion?.releaseTag ?? "no tag"})`);
+          logInfo(`Counts DB attached: ${countsPath} (${this._collections.length} collections, ${this._countsDbVersion?.releaseTag ?? "no tag"})`);
         } catch (err) {
           // Schema mismatch or missing tables — fully discard the sidecar so tools
           // don't expose stale/inconsistent collection data.
@@ -260,7 +262,7 @@ export class IconclassDb {
           this._collectionsMap = new Map();
           this._countsDbVersion = null;
           try { this.db!.exec("DETACH DATABASE counts"); } catch { /* already detached or never attached */ }
-          logWarn("  Counts DB not available", err);
+          logWarn("Counts DB not available", err);
         }
       }
 
@@ -313,13 +315,13 @@ export class IconclassDb {
 
         if (!embeddingsCountConsistent(expectedCount, embCount)) {
           logWarn(
-            `  Iconclass embeddings INCOMPLETE: expected ${expectedCount}, found ${embCount.toLocaleString()} — ` +
+            `Iconclass embeddings INCOMPLETE: expected ${expectedCount}, found ${embCount.toLocaleString()} — ` +
             `disabling semantic search (likely an interrupted embedding build)`
           );
           this._hasEmbeddings = false;
         } else {
           this._hasEmbeddings = true;
-          logInfo(`  Iconclass embeddings: ${embCount.toLocaleString()} vectors (${this._embeddingDimensions}d)`);
+          logInfo(`Iconclass embeddings: ${embCount.toLocaleString()} vectors (${this._embeddingDimensions}d)`);
         }
       } catch { /* no embeddings */ }
 
@@ -402,7 +404,7 @@ export class IconclassDb {
       if (this.stmtGetCollectionCounts) {
         this.stmtGetCollectionCounts.all("11F");
       }
-      logInfo(`  Iconclass DB core pages warmed in ${Date.now() - t0}ms`);
+      logInfo(`Iconclass DB core pages warmed in ${Date.now() - t0}ms`);
 
       if (this._hasEmbeddings && this.stmtQuantize && this.stmtKnn) {
         const t1 = Date.now();
@@ -412,10 +414,10 @@ export class IconclassDb {
         if (this.stmtPrefixFilteredKnn) {
           this.stmtPrefixFilteredKnn.all(quantized.v, "11F%", 1);
         }
-        logInfo(`  Iconclass embeddings pages warmed in ${Date.now() - t1}ms`);
+        logInfo(`Iconclass embeddings pages warmed in ${Date.now() - t1}ms`);
       }
     } catch (err) {
-      logWarn("  Iconclass DB warmup failed", err);
+      logWarn("Iconclass DB warmup failed", err);
     }
   }
 

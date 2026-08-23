@@ -126,8 +126,8 @@ async function warmInBackground(): Promise<void> {
     iconclassDb?.warmCorePages();
     await embeddingModel?.whenReady();
     logInfo("Background warmup complete");
-    // The snapshot is multi-line; JSON-encoding collapses it into one Railway
-    // entry rather than one per line, which is what makes it readable there.
+    // One entry, not one per line: JSON-encoding collapses the multi-line
+    // snapshot. Don't split it into a loop.
     logInfo(formatMemorySnapshotDetailed(captureMemorySnapshot(buildMemoryDbHandles())));
   } catch (err) {
     // Warm failure only costs latency on the first real query — the server serves.
@@ -195,7 +195,7 @@ async function runStdio(): Promise<void> {
   // The factory is invoked once per connection; the opening exchange pins the
   // era (2025-era clients are served exactly as the hand-wired transport did).
   serveStdio(() => createServer(), {
-    onerror: (err) => logError(`[${SERVER_NAME}] transport error`, err),
+    onerror: (err) => logError("transport error", err),
   });
   logInfo(`${SERVER_NAME} v${SERVER_VERSION} running on stdio`);
 }
@@ -326,11 +326,12 @@ async function runHttp(): Promise<void> {
   httpServer = app.listen(port, () => {
     // scripts/tests/_server.mjs waits on the raw substring "listening on
     // http://" in stderr — keep it intact and on one line.
-    logInfo(`${SERVER_NAME} v${SERVER_VERSION} listening on http://localhost:${port}`);
-    logInfo(`  MCP endpoint: POST /mcp`);
-    logInfo(`  Health:       GET  /health`);
-    logInfo(`  Memory:       GET  /debug/memory`);
-    logInfo(`  Stats:        GET  /debug/stats`);
+    logInfo(`${SERVER_NAME} v${SERVER_VERSION} listening on http://localhost:${port}`, {
+      mcp: "POST /mcp",
+      health: "GET /health",
+      memory: "GET /debug/memory",
+      stats: "GET /debug/stats",
+    });
   });
 
   // Warm AFTER listen() so /health + the DB-free MCP `initialize` handshake
@@ -353,7 +354,9 @@ function shutdown() {
     });
     // Force exit after 5s if connections don't drain
     setTimeout(() => {
-      logWarn("Forcing shutdown after timeout.");
+      // Connections that never drained mean a leaked handle or a wedged
+      // request — the one shutdown path worth alerting on.
+      logError("Forcing shutdown after timeout.");
       process.exit(1);
     }, 5000).unref();
   } else {

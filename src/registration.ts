@@ -543,7 +543,7 @@ export function registerTools(
       description:
         "Search all notations under a hierarchy subtree by notation prefix. " +
         "Leverages Iconclass's left-to-right hierarchical encoding — " +
-        "e.g. '73D8' finds everything under 'Passion of Christ'. " +
+        "e.g. '73D' finds everything under 'Passion of Christ'. " +
         "Results are ordered alphabetically by notation. " +
         "Broad prefixes (1–2 chars) can match thousands of notations — " +
         "use the first page to orient, then narrow the prefix rather than paginating exhaustively.",

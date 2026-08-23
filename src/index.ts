@@ -154,7 +154,7 @@ function createServer(): McpServer {
         "• browse — navigate the hierarchy: entry + children + cross-references + key variants\n" +
         "• resolve — batch lookup of specific notation codes (up to 25)\n" +
         "• expand_keys — list all key-expanded variants of a base notation\n" +
-        "• search_prefix — find all notations under a hierarchy subtree (e.g. '73D8' = Passion of Christ)\n" +
+        "• search_prefix — find all notations under a hierarchy subtree (e.g. '73D' = Passion of Christ)\n" +
         "• find_artworks — see which collections have artworks for given notations, with links\n\n" +
 
         "Notations are hierarchical and encode left-to-right: broader → narrower. " +

@@ -30,7 +30,7 @@ Iconclass is a retrieval tool, not a descriptive language. A notation's meaning 
 
 Most of the ~40K base notations are "theoretical" — they exist in the taxonomy but no loaded collection has tagged artworks with them. Check the `collections` array before handing a code to a collection server. An empty array means no loaded collection has artwork-count data for that notation; if you specifically need Rijksmuseum coverage, look for `rijksmuseum`. The `find_artworks` tool returns per-notation artwork counts by loaded collection.
 
-**Never truncate discovery queries.** When searching for notation codes, use the default `maxResults` (25) or higher — never set a lower value. You need to see enough of the result set, including collection-presence markers, to evaluate which codes are useful. Cutting results short means you miss relevant notations and can't make informed handoff decisions.
+For discovery searches, keep `maxResults` at the default (25) or higher. The collection-presence markers across the full result set are what tell you which codes are worth handing off; a short page hides them.
 
 ---
 
@@ -124,7 +124,7 @@ The keyword search (`query`) uses FTS5 across labels (13 languages) and keywords
 
 **Single words are usually best.** FTS matches whole words against the Iconclass vocabulary, so a single specific word ("salamander", "crucifixion", "lute") has the highest recall. Multi-word queries are useful when a single word is too broad — "broken string" to distinguish from intact string instruments, or "Last Supper" to avoid matching other uses of "supper."
 
-**When FTS fails, switch to semantic search.** Use `semanticQuery` when the vocabulary term is unknown or the query is conceptual. Its strength is reaching across branches: "grief and mourning" returns `73D72` (dead Christ), `42E131` (burial rites) and `94G44` (funeral of Hector) together, including labels containing neither query word. It returns a small fixed candidate set (~15), so use it to locate the right branch, then `browse` or `search_prefix` to enumerate it.
+**When FTS fails, switch to semantic search.** Use `semanticQuery` when the vocabulary term is unknown or the query is conceptual. Its strength is reaching across branches: "grief and mourning" returns `73D72` (dead Christ), `42E131` (burial rites) and `94G44` (funeral of Hector) together, including labels containing neither query word. It honours `maxResults` and `offset` like keyword search, but only base notations are embedded — key-expanded variants never appear in semantic results — so use it to locate the right branch, then `browse`, `expand_keys` or `search_prefix` to enumerate it.
 
 **Keyword search counts rows, not concepts.** Key variants are indexed alongside base notations, so a narrow term can fill the result window with `(+N)` variants of one notation — `search(query: "salamander")` reports 426 matches, all variants of `25FF412`. Add `onlyWithArtworks: true` to collapse to base notations with coverage (426 → 1). Read `totalResults` as a row count.
 
@@ -141,7 +141,7 @@ Both can show key-expanded variants (e.g. `25F23(+46)` "beasts of prey, sleeping
 - `browse` with `includeKeys: true`: quick preview of key variants alongside the entry's children, path, and cross-refs. Use for orientation — "what modifiers exist for this notation?"
 - `expand_keys`: paginated list of all key variants with full metadata. Use when you need the complete inventory — some base notations have 200+ variants and `browse` only shows the first 25.
 
-When working with key expansions, remember that key meanings are branch-specific — the same `(+N)` means different things under different bases, so read the returned label rather than assuming — see Notation Syntax.
+Key meanings are branch-specific — see Notation Syntax.
 
 ### `search` with `parentNotation` vs `search_prefix`
 
@@ -176,7 +176,7 @@ search(semanticQuery: "grief and mourning")
 
 ### 2. Explore a Hierarchy Branch
 
-Use `browse` with `depth: 2` for narrative exploration — it returns the entry, its children, and their children in one call, avoiding the sequential browse-per-child pattern that would cost 8+ tool calls on a branch like St. Francis.
+Use `browse` with `depth: 2` for narrative exploration — it returns the entry, its children, and their children in one call.
 
 ```
 browse(notation: "73D6", depth: 2)
@@ -331,8 +331,6 @@ search_artwork(iconclass: ["11H(JEROME)", "25F23"])
 # -> artworks tagged with BOTH St. Jerome AND beasts of prey
 ```
 
-When rijksmuseum-mcp+ is available and the user's goal involves seeing artworks, the natural next step is to call `search_artwork` with the notation codes you've found. The two servers are companions — notation codes flow from this server to that one directly.
-
 ### When rijksmuseum-mcp+ is not available
 
 If `search_artwork` is not available (the server is not connected), present the notation codes you've found with their collection coverage, artwork counts, and hierarchy context — this is more useful than bare codes alone. If `find_artworks` returns link-out URLs for a loaded collection, include them; otherwise, offer the `artResearchUrl` field returned by `find_artworks` as a broader web fallback.
@@ -347,14 +345,14 @@ To enable direct artwork search in future conversations, the user can install th
 |---|---|
 | British/American spelling — "odour" vs "odor" | Try both spellings. `semanticQuery` handles this automatically. |
 | Wide branches truncated at 25 per parent | Use `search_prefix` to enumerate all notations, or paginate with `offset`. |
-| Resolve batch limit of 25 | Use `search` for discovery, `resolve` only for the 3–5 notations you need full metadata on. |
+| Resolve batch limit of 25 | Discover with `search`; `resolve` the shortlist you need full metadata on. |
 | `parentNotation` returns 0 but concept exists | The concept may live in a different branch. Remove the scope and search globally. |
 | Key expansion labels can mislead | Key meanings are branch-specific — `(+42)` is "feeding and care of young" under `25F23`, "damage and repair of work of art" under `48C7323`. Read the label via `expand_keys`/`resolve`. See Notation Syntax. |
 | Keyword search floods with key variants | Add `onlyWithArtworks: true` to collapse variants to base notations ("salamander" 426 → 1). `totalResults` is a row count, not a concept count. |
 | Key variant labels are untranslated | In non-English `lang`, a base and all its variants render identically (`73D6`, `(+0)`, `(+1)`, `(+3)` are all "kruisdood"). Read the notation code, or re-resolve in `en`. |
 | Category labels reflect pre-modern iconography, not modern taxonomy | Treat labels as index terms, not scientific definitions. Flag mismatches to users (e.g. hares under "rodents"). See Labels Reflect Iconography, Not Modern Taxonomy. |
 | Common animals (horse, goat, rooster, salamander) have no notation in `25F*` | Search globally, not scoped to `25F*`. The animal's code is in husbandry, transport, saints, mythology, literature, or the fabulous tree. See Workflow 3 → "Searching for a specific animal." |
-| `find_artworks` batch limit of 25 | Sufficient for most workflows — you should have narrowed to a shortlist before calling. |
+| `find_artworks` batch limit of 25 | Call it on a shortlist. For broad coverage questions use `search` with `onlyWithArtworks` or `collectionId` instead. |
 | Artwork-count overlays are collection-specific | Check the top-level `collections` field to see which overlays are loaded. Coverage changes when the sidecar database is updated. |
 | `find_artworks` returns "no collections" | The notation has no counts in the loaded overlays, or the input notation may not exist. Use `resolve` to verify uncertain codes, then try a parent or sibling notation. |
 | Verifying a notation exists | `resolve` lists absent codes in `notFound` rather than dropping them. On a batch call check `notFound`, not the length of `notations`. |

@@ -248,10 +248,10 @@ export function registerTools(
         "Multi-word queries try phrase match first, then individual terms (AND). " +
         "Inflected forms often work, but spelling variants (odour/odor) do not. " +
         "Use parentNotation to restrict results to a subtree.\n" +
-        "• semanticQuery — find notations by meaning, across branches (e.g. 'grief and mourning' finds scenes in the Bible, burial-rite and mythology branches)" +
+        "• semanticQuery — find notations by meaning, across branches (e.g. 'grief and mourning' finds scenes in the Bible, burial-rite and mythology branches). " +
+        "Covers base notations only; key-expanded variants are reachable via query" +
         (semanticAvailable ? "" : " [currently unavailable — embeddings not loaded]") + "\n\n" +
-        "Results ranked by collection coverage. " +
-        "Pass resulting notation codes to a collection server's search_artwork(iconclass=...) to find matching artworks — multiple codes are AND-combined.\n\n" +
+        "Keyword results are ranked by collection coverage, then FTS relevance; semantic results by similarity.\n\n" +
         "For enumerating all notations under a prefix, use search_prefix instead.",
       inputSchema: z.object({
         query: optStr()
@@ -552,8 +552,7 @@ export function registerTools(
         "Leverages Iconclass's left-to-right hierarchical encoding — " +
         "e.g. '73D' finds everything under 'Passion of Christ'. " +
         "Results are ordered alphabetically by notation. " +
-        "Broad prefixes (1–2 chars) can match thousands of notations — " +
-        "use the first page to orient, then narrow the prefix rather than paginating exhaustively.",
+        "Broad prefixes (1–2 chars) match thousands of notations; results are paged with maxResults/offset, and a longer prefix narrows the set.",
       inputSchema: z.object({
         notation: z.string().min(1).describe("Notation prefix (e.g. '73D8', '25F'). Matches all notations starting with this prefix."),
         lang: LangField(),
@@ -603,9 +602,9 @@ export function registerTools(
         "Notations are not validated against the local database: unknown codes are echoed back " +
         "(with the code as their own label) rather than rejected — use resolve to verify existence. " +
         "Use after search or browse to discover where a subject appears across collections. " +
-        "Each notation also returns an `artResearchUrl` — a ready-to-use link to ArtResearch.net " +
+        "Each notation also returns an `artResearchUrl` — a link to ArtResearch.net " +
         "(the PHAROS consortium aggregator, ~601K works) covering that notation and all its " +
-        "narrower/key-expanded descendants; offer it to the user alongside the loaded-collection results.",
+        "narrower/key-expanded descendants, including codes absent from the local database.",
       inputSchema: z.object({
         notation: z.union([
           z.string().min(1),

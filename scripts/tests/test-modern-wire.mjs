@@ -13,11 +13,15 @@
  *   - a params._meta envelope with protocolVersion, clientInfo, clientCapabilities
  * Header and body must agree; the server rejects any disagreement.
  *
+ * stdio has no header layer, so there the opening message alone picks the
+ * era for the whole connection (section 8). A legacy `initialize` pins
+ * 2025-11-25; a modern-enveloped request pins 2026-07-28.
+ *
  * Run:  node scripts/tests/test-modern-wire.mjs
  * Requires: npm run build, data/iconclass.db present
  */
 import { assert, assertEq, section, atest, report } from "./_assert.mjs";
-import { bootHttpServer } from "./_server.mjs";
+import { bootHttpServer, bootStdioServer } from "./_server.mjs";
 
 const PORT = process.env.TEST_PORT ?? "31338";
 
@@ -278,6 +282,82 @@ try {
   });
 } finally {
   await server.stop();
+}
+
+// ── stdio ───────────────────────────────────────────────────────
+// Boots after the HTTP process has exited so only one embedding model is
+// resident at a time.
+
+section("8. Modern wire over stdio (body-only era selection)");
+
+const modern = await bootStdioServer();
+try {
+  await atest("a modern server/discover pins the connection to 2026-07-28", async () => {
+    const r = await modern.request({
+      jsonrpc: "2.0", id: 1, method: "server/discover",
+      params: { supportedVersions: [MODERN], _meta: envelope() },
+    });
+    assert(r.result?.supportedVersions?.includes(MODERN), `discover advertises ${MODERN}`);
+    assertEq(r.result?.resultType, "complete", "discover carries the modern resultType");
+    assertEq(
+      r.result?._meta?.["io.modelcontextprotocol/serverInfo"]?.name,
+      "rijksmuseum-iconclass-mcp",
+      "serverInfo is relocated into _meta on the modern wire"
+    );
+  });
+
+  await atest("tools/list over modern stdio carries SEP-2549 cache hints", async () => {
+    const r = await modern.request({
+      jsonrpc: "2.0", id: 2, method: "tools/list", params: { _meta: envelope() },
+    });
+    assertEq(r.result?.tools?.length, 6, "modern stdio tools/list returns 6 tools");
+    assertEq(r.result?.ttlMs, 86_400_000, "ttlMs reaches stdio clients too");
+    assertEq(r.result?.cacheScope, "public", "cacheScope reaches stdio clients too");
+  });
+
+  await atest("tools/call over modern stdio returns structuredContent", async () => {
+    const r = await modern.request({
+      jsonrpc: "2.0", id: 3, method: "tools/call",
+      params: { name: "resolve", arguments: { notation: ["73D6"], lang: "en" }, _meta: envelope() },
+    });
+    assert(!r.result?.isError, "resolve is not an error result");
+    assertEq(
+      r.result?.structuredContent?.notations?.[0]?.notation,
+      "73D6",
+      "structuredContent survives the modern stdio encode seam"
+    );
+  });
+
+  await atest("a legacy initialize on a modern-pinned connection is refused", async () => {
+    const r = await modern.request({
+      jsonrpc: "2.0", id: 4, method: "initialize",
+      params: { protocolVersion: LEGACY, capabilities: {}, clientInfo: { name: "t", version: "0" } },
+    });
+    assertEq(r.error?.code, -32022, "era is pinned per connection: legacy request is -32022");
+    assert(r.error?.data?.supported?.includes(MODERN), "the refusal names the pinned revision");
+  });
+} finally {
+  await modern.stop();
+}
+
+const legacy = await bootStdioServer();
+try {
+  await atest("a legacy initialize still pins the connection to 2025-11-25", async () => {
+    const r = await legacy.request({
+      jsonrpc: "2.0", id: 1, method: "initialize",
+      params: { protocolVersion: LEGACY, capabilities: {}, clientInfo: { name: "t", version: "0" } },
+    });
+    assertEq(r.result?.protocolVersion, LEGACY, "legacy stdio initialize negotiates 2025-11-25");
+    legacy.notify({ jsonrpc: "2.0", method: "notifications/initialized" });
+  });
+
+  await atest("cache hints stay off legacy stdio", async () => {
+    const r = await legacy.request({ jsonrpc: "2.0", id: 2, method: "tools/list", params: {} });
+    assertEq(r.result?.tools?.length, 6, "legacy stdio tools/list still returns 6 tools");
+    assertEq(r.result?.ttlMs, undefined, "SEP-2549 ttlMs is not emitted to 2025-era stdio clients");
+  });
+} finally {
+  await legacy.stop();
 }
 
 report();

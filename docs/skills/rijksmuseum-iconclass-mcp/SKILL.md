@@ -1,6 +1,7 @@
 ---
 name: iconclass-mcp
-version: "0.4.3"
+metadata:
+  version: "0.4.3"
 description: >
   Companion vocabulary layer to rijksmuseum-mcp+: maps art-subject concepts
   to Iconclass notation codes (~1.3M codes across 13 languages) and checks
@@ -39,7 +40,7 @@ For discovery searches, keep `maxResults` at the default (25) or higher. The col
 This server's notation codes are the input to rijksmuseum-mcp+'s `search_artwork(iconclass: [...])` parameter. The handoff is direct:
 
 - **Single notation:** `search_artwork(iconclass: "73D6")` — finds all Rijksmuseum artworks tagged with "the Crucifixion of Christ"
-- **Multiple notations (AND):** `search_artwork(iconclass: ["11H(FRANCIS)32", "25F3"])` — finds artworks tagged with *both* codes
+- **Multiple notations (AND):** `search_artwork(iconclass: ["11H(FRANCIS)53", "25F3"])` — finds artworks tagged with *both* codes
 - **Combined with other filters:** `search_artwork(iconclass: "73D641", type: "painting")` — paintings of the crucified Christ with Mary and John
 
 The `iconclass` parameter accepts exact notation codes (language-independent). These are the same codes returned by this server's `search`, `browse`, `resolve`, and `search_prefix` tools. Note that rijksmuseum-mcp+'s `subject` parameter is different — it searches Iconclass label *text* (primarily Dutch/English), not notation codes.
@@ -139,7 +140,7 @@ The keyword search (`query`) uses FTS5 across labels (13 languages) and keywords
 Both can show key-expanded variants (e.g. `25F23(+46)` "beasts of prey, sleeping"), but they serve different purposes:
 
 - `browse` with `includeKeys: true`: quick preview of key variants alongside the entry's children, path, and cross-refs. Use for orientation — "what modifiers exist for this notation?"
-- `expand_keys`: paginated list of all key variants with full metadata. Use when you need the complete inventory — some base notations have 200+ variants and `browse` only shows the first 25.
+- `expand_keys`: paginated list of all key variants with full metadata. Use when you need the complete inventory — some base notations have 200+ variants; `browse` shows 25 by default (`maxKeyVariants` up to 335, `keyOffset` to page) alongside everything else it returns.
 
 Key meanings are branch-specific — see Notation Syntax.
 
@@ -165,7 +166,7 @@ Start with keyword search. If the term is unknown or the concept is atmospheric/
 search(query: "crucifixion")
 # -> 31E2356 "violent death by crucifixion" [3 > 31 > 31E]
 # -> ... 73D6 (rijksmuseum) "the crucifixion of Christ" [7 > 73 > 73D]  <- 16th
-# Scan the full result set — FTS ranks by relevance, not by canonicalness.
+# Scan the full result set — keyword results rank by collection coverage, then FTS relevance, not by canonicalness.
 
 # Unknown vocabulary — concept search, reaches across branches
 search(semanticQuery: "grief and mourning")
@@ -251,7 +252,7 @@ Complex artworks carry codes from multiple branches because a single image conta
 ```
 # Scene
 search(query: "Francis", parentNotation: "11H")
-# -> 11H(FRANCIS)32 "St. Francis preaching to the birds"
+# -> 11H(FRANCIS)53 "St. Francis of Assisi preaching to the birds"
 
 # Animals
 search(query: "birds", parentNotation: "25F")
@@ -262,7 +263,7 @@ browse(notation: "25H1", depth: 2)
 # -> landscape subcategories
 ```
 
-When passed to rijksmuseum-mcp+, these codes AND-combine — `search_artwork(iconclass: ["11H(FRANCIS)32", "25F3"])` finds artworks tagged with *both* codes. This is how you express compound iconographic queries.
+When passed to rijksmuseum-mcp+, these codes AND-combine — `search_artwork(iconclass: ["11H(FRANCIS)53", "25F3"])` finds artworks tagged with *both* codes. This is how you express compound iconographic queries.
 
 When no notation exactly captures a nuanced concept (e.g., a broken lute string as a vanitas symbol), use the closest codes (`11R7` vanitas symbols + `48C7323` lute) and note the interpretive nuance separately. Verify the key's actual meaning before using key expansions (see Notation Syntax above).
 
@@ -277,7 +278,7 @@ find_artworks(notation: "73D6")
 #      Rijksmuseum, Amsterdam: matching artworks
 
 # Batch: compare counts across multiple notations (up to 25)
-find_artworks(notation: ["34B11", "25F23", "11H(FRANCIS)32"])
+find_artworks(notation: ["34B11", "25F23", "11H(FRANCIS)53"])
 # -> per-notation breakdown with per-collection artwork counts
 ```
 
@@ -344,7 +345,7 @@ To enable direct artwork search in future conversations, the user can install th
 | Issue | Workaround |
 |---|---|
 | British/American spelling — "odour" vs "odor" | Try both spellings. `semanticQuery` handles this automatically. |
-| Wide branches truncated at 25 per parent | Use `search_prefix` to enumerate all notations, or paginate with `offset`. |
+| `browse` caps children at 25 per parent | Use `search_prefix` (paged with `maxResults`/`offset`) to enumerate the full branch. |
 | Resolve batch limit of 25 | Discover with `search`; `resolve` the shortlist you need full metadata on. |
 | `parentNotation` returns 0 but concept exists | The concept may live in a different branch. Remove the scope and search globally. |
 | Key expansion labels can mislead | Key meanings are branch-specific — `(+42)` is "feeding and care of young" under `25F23`, "damage and repair of work of art" under `48C7323`. Read the label via `expand_keys`/`resolve`. See Notation Syntax. |

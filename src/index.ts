@@ -339,21 +339,25 @@ async function runHttp(): Promise<void> {
 function shutdown() {
   logInfo("Shutting down...");
   usageStats?.flush(); // persist any pending counters (#326)
-  if (httpServer) {
-    httpServer.close(() => {
-      logInfo("All connections closed.");
-      process.exit(0);
-    });
-    // Force exit after 5s if connections don't drain
-    setTimeout(() => {
-      // Connections that never drained mean a leaked handle or a wedged
-      // request — the one shutdown path worth alerting on.
-      logError("Forcing shutdown after timeout.");
-      process.exit(1);
-    }, 5000).unref();
-  } else {
+  if (!httpServer) {
     process.exit(0);
   }
+
+  // Backstop: force exit before SIGKILL if a connection never closes. Exit 0 —
+  // Railway reports any non-zero exit on redeploy as "Deploy Crashed".
+  const forceExit = setTimeout(() => {
+    logWarn("Drain timed out; forcing exit.");
+    process.exit(0);
+  }, 5000);
+  forceExit.unref();
+
+  httpServer.closeIdleConnections(); // release idle keep-alive sockets
+  httpServer.close(() => {
+    // wait only on in-flight requests
+    clearTimeout(forceExit);
+    logInfo("All connections closed.");
+    process.exit(0);
+  });
 }
 
 process.on("SIGTERM", shutdown);

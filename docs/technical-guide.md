@@ -132,7 +132,7 @@ The server's download logic auto-detects chunked assets (`.part-aa`, `.part-ab`,
 | `ICONCLASS_DB_URL` | — | URL to download main DB if missing (supports `.gz`) |
 | `COUNTS_DB_PATH` | `data/iconclass-counts.db` | Sidecar database (artwork counts) |
 | `COUNTS_DB_URL` | — | URL to download sidecar DB if missing (supports `.gz`) |
-| `EMBEDDING_MODEL_ID` | `Xenova/multilingual-e5-base` | HuggingFace model for query embedding |
+| `EMBEDDING_MODEL_ID` | `kintopp/multilingual-e5-base-iconclass` | HuggingFace model for query embedding |
 | `HF_HOME` | — | HuggingFace cache directory |
 | `ALLOWED_ORIGINS` | `*` | CORS origins for HTTP mode |
 | `STRUCTURED_CONTENT` | `true` | Set `false` to disable `outputSchema` |
@@ -172,7 +172,7 @@ In HTTP mode (`PORT` set or `--http`):
 
 ### Embedding model
 
-The server uses [`intfloat/multilingual-e5-base`](https://huggingface.co/intfloat/multilingual-e5-base) for semantic search — a 278M-parameter multilingual model that produces 768-dimensional embeddings. It was chosen because it supports 100+ languages and runs efficiently on CPU via 8-bit ONNX quantisation (~350 MB memory). The base variant (768d) was preferred over the small variant (384d) for better discrimination between closely related concepts.
+The server uses [`intfloat/multilingual-e5-base`](https://huggingface.co/intfloat/multilingual-e5-base) for semantic search — a 278M-parameter multilingual model that produces 768-dimensional embeddings. It was chosen because it supports 100+ languages and runs efficiently on CPU via 8-bit ONNX quantisation. The query encoder is [`kintopp/multilingual-e5-base-iconclass`](https://huggingface.co/kintopp/multilingual-e5-base-iconclass), a copy whose 250K-piece vocabulary is trimmed to the pieces Iconclass texts and common query languages use — about 0.55 GB less memory, identical vectors for those inputs. The base variant (768d) was preferred over the small variant (384d) for better discrimination between closely related concepts.
 
 E5-base has a 512-token context window. The composite texts fed to the model (label + Dutch label + keywords + category path) have a mean length of 122 and a 99th percentile of 298. A single entry in the taxonomy tops out at 478 tokens. The model's token limit is therefore not a constraint.
 

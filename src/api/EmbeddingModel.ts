@@ -1,7 +1,9 @@
 import type { FeatureExtractionPipeline } from "@huggingface/transformers";
 import { logInfo, logWarn } from "../utils/log.js";
 
-export const DEFAULT_MODEL_ID = "Xenova/multilingual-e5-base";
+// Vocabulary-trimmed multilingual-e5-base (built by rijksmuseum-mcp-plus
+// scripts/trim-embedding-vocab.py); stored vectors stay compatible with the untrimmed model.
+export const DEFAULT_MODEL_ID = "kintopp/multilingual-e5-base-iconclass";
 
 /** MRL truncation: cut a vector to targetDim and re-normalize to unit length.
  *  No-op when targetDim is 0 or the vector is already <= targetDim. */

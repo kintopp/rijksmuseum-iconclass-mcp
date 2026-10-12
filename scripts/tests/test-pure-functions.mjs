@@ -15,7 +15,6 @@
  */
 import Database from "better-sqlite3";
 import { escapeFts5, escapeFts5Terms, artResearchUrl } from "../../dist/utils/db.js";
-import { formatCollections, formatEntryLine } from "../../dist/registration.js";
 import { assert, assertEq, section, report } from "./_assert.mjs";
 
 const fts = new Database(":memory:");
@@ -85,70 +84,6 @@ assertEq(match(escapeFts5Terms("angel\u0000trumpet")).docs?.join("|"), "angel bl
 assertEq(escapeFts5Terms("crucifixion"), null, "single word → null (phrase search already covered it)");
 assertEq(escapeFts5Terms(""), null, "empty string → null");
 assertEq(escapeFts5Terms("***"), null, "only operators → null");
-
-// ── formatCollections ───────────────────────────────────────────
-
-section("formatCollections");
-
-assertEq(formatCollections([]), "", "empty → empty string");
-assertEq(formatCollections(["rijksmuseum"]), " (rijksmuseum)", "single collection");
-assertEq(formatCollections(["rijksmuseum", "met"]), " (rijksmuseum, met)", "two collections");
-assertEq(formatCollections(["rijksmuseum", "met", "louvre"]), " (rijksmuseum, met, louvre)", "three collections");
-
-// ── formatEntryLine ─────────────────────────────────────────────
-
-section("formatEntryLine");
-
-const entry = {
-  notation: "73D6",
-  text: "the crucifixion of Christ",
-  collections: ["rijksmuseum"],
-  path: [{ notation: "7" }, { notation: "73" }, { notation: "73D" }],
-};
-
-assertEq(
-  formatEntryLine(entry),
-  '73D6 (rijksmuseum) "the crucifixion of Christ" [7 > 73 > 73D]',
-  "basic entry with path and collections"
-);
-
-assertEq(
-  formatEntryLine(entry, "1. "),
-  '1. 73D6 (rijksmuseum) "the crucifixion of Christ" [7 > 73 > 73D]',
-  "with numbered prefix"
-);
-
-assertEq(
-  formatEntryLine(entry, "3. [0.879] "),
-  '3. [0.879] 73D6 (rijksmuseum) "the crucifixion of Christ" [7 > 73 > 73D]',
-  "with similarity prefix"
-);
-
-const noPath = {
-  notation: "0",
-  text: "Abstract Art",
-  collections: [],
-  path: [],
-};
-
-assertEq(
-  formatEntryLine(noPath),
-  '0 "Abstract Art"',
-  "no path, no collections"
-);
-
-const multiCol = {
-  notation: "31A33",
-  text: "smell",
-  collections: ["rijksmuseum", "met"],
-  path: [{ notation: "3" }],
-};
-
-assertEq(
-  formatEntryLine(multiCol),
-  '31A33 (rijksmuseum, met) "smell" [3]',
-  "multiple collections"
-);
 
 // ── artResearchUrl ──────────────────────────────────────────────
 

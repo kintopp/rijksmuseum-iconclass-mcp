@@ -646,13 +646,13 @@ export function registerTools(
 
 // ─── Format helpers ─────────────────────────────────────────────────
 
-export function formatCollections(collections: string[]): string {
+function formatCollections(collections: string[]): string {
   if (collections.length === 0) return "";
   return ` (${collections.join(", ")})`;
 }
 
 /** Format an entry as a compact one-liner for LLM content. */
-export function formatEntryLine(e: { notation: string; text: string; collections: string[]; path: { notation: string }[] }, prefix?: string): string {
+function formatEntryLine(e: { notation: string; text: string; collections: string[]; path: { notation: string }[] }, prefix?: string): string {
   const colStr = formatCollections(e.collections);
   let line = prefix ? `${prefix}${e.notation}${colStr} "${e.text}"` : `${e.notation}${colStr} "${e.text}"`;
   if (e.path.length > 0) line += ` [${e.path.map(p => p.notation).join(" > ")}]`;

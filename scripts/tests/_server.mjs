@@ -1,6 +1,6 @@
 /**
  * Shared server boot for the no-framework test scripts in this dir
- * (test-http-concurrency.mjs, test-modern-wire.mjs).
+ * (test-http-concurrency.mjs, test-modern-wire.mjs, test-tools.mjs).
  *
  * Owns the readiness sentinels in one place: they are the startup lines from
  * src/index.ts, so a change there breaks boot detection for every suite at

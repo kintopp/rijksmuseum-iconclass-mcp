@@ -15,11 +15,12 @@
     "start": "node dist/index.js",
     "serve": "node dist/index.js --http",
     "lint": "eslint src/",
-    "test": "node scripts/tests/test-pure-functions.mjs && node scripts/tests/test-units.mjs",
+    "test": "node scripts/tests/test-pure-functions.mjs && node scripts/tests/test-units.mjs && node scripts/tests/test-fixture-tools.mjs && node scripts/tests/test-http-concurrency.mjs && node scripts/tests/test-modern-wire.mjs",
     "test:tools": "node scripts/tests/test-tools.mjs",
+    "test:fixture": "node scripts/tests/test-fixture-tools.mjs",
     "test:http": "node scripts/tests/test-http-concurrency.mjs",
     "test:modern": "node scripts/tests/test-modern-wire.mjs",
-    "test:all": "node scripts/tests/test-pure-functions.mjs && node scripts/tests/test-units.mjs && node scripts/tests/test-tools.mjs && node scripts/tests/test-http-concurrency.mjs && node scripts/tests/test-modern-wire.mjs",
+    "test:all": "npm test && node scripts/tests/test-tools.mjs",
     "warm-cache": "node scripts/warm-cache-local.mjs --validate"
   },
   "dependencies": {

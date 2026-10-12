@@ -4,19 +4,20 @@
  * request must get its own server instance.
  *
  * Run:  node scripts/tests/test-http-concurrency.mjs
- * Requires: npm run build, data/iconclass.db present
+ * Requires: npm run build (runs on the fixture DB)
  */
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 
 import { assert, report } from "./_assert.mjs";
 import { bootHttpServer } from "./_server.mjs";
+import { fixtureEnv } from "./fixture-client.mjs";
 
 const PORT = process.env.TEST_PORT ?? "31337";
 
 // ── Boot HTTP server ────────────────────────────────────────────
 
-const server = await bootHttpServer({ port: PORT });
+const server = await bootHttpServer({ port: PORT, env: fixtureEnv("http") });
 const MCP_URL = server.url;
 
 console.log(`\nServer up on ${MCP_URL}\n`);

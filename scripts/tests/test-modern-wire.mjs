@@ -18,10 +18,12 @@
  * 2025-11-25; a modern-enveloped request pins 2026-07-28.
  *
  * Run:  node scripts/tests/test-modern-wire.mjs
- * Requires: npm run build, data/iconclass.db present
+ * Requires: npm run build (runs on the fixture DB, so semantic search is off; the
+ * embedding path over HTTP is covered in test-tools.mjs)
  */
 import { assert, assertEq, section, atest, report } from "./_assert.mjs";
 import { bootHttpServer, bootStdioServer } from "./_server.mjs";
+import { fixtureEnv } from "./fixture-client.mjs";
 
 const PORT = process.env.TEST_PORT ?? "31338";
 
@@ -35,7 +37,7 @@ const envelope = (version = MODERN) => ({
   "io.modelcontextprotocol/clientCapabilities": {},
 });
 
-const server = await bootHttpServer({ port: PORT });
+const server = await bootHttpServer({ port: PORT, env: fixtureEnv("modern-http") });
 const MCP_URL = server.url;
 
 console.log(`\nServer up on ${MCP_URL}`);
@@ -158,12 +160,13 @@ try {
     assert(r.body?.result?.structuredContent?.results?.length > 0, "FTS search returns at least one result");
   });
 
-  await atest("search (semantic) drives the embedding path end-to-end", async () => {
+  await atest("a tool error comes back as an isError result, not a JSON-RPC error", async () => {
     const r = await modernCall("search", { semanticQuery: "ships on a stormy sea", maxResults: 3 });
-    assert(!r.body?.result?.isError, "semantic search is not an error result");
-    assert(
-      r.body?.result?.structuredContent?.results?.length > 0,
-      "semantic search returns at least one result (embedding model reachable over the modern wire)"
+    assertEq(r.body?.result?.isError, true, "semantic search without embeddings is an isError result");
+    assertEq(
+      r.body?.result?.content?.[0]?.text,
+      "Semantic search requires embeddings and an embedding model (not available). Use query (keyword search) instead.",
+      "the tool's error text is carried intact"
     );
   });
 
@@ -285,12 +288,10 @@ try {
 }
 
 // ── stdio ───────────────────────────────────────────────────────
-// Boots after the HTTP process has exited so only one embedding model is
-// resident at a time.
 
 section("8. Modern wire over stdio (body-only era selection)");
 
-const modern = await bootStdioServer();
+const modern = await bootStdioServer({ env: fixtureEnv("modern-stdio") });
 try {
   await atest("a modern server/discover pins the connection to 2026-07-28", async () => {
     const r = await modern.request({
@@ -340,7 +341,7 @@ try {
   await modern.stop();
 }
 
-const legacy = await bootStdioServer();
+const legacy = await bootStdioServer({ env: fixtureEnv("legacy-stdio") });
 try {
   await atest("a legacy initialize still pins the connection to 2025-11-25", async () => {
     const r = await legacy.request({

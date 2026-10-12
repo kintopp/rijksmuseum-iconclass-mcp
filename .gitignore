@@ -19,3 +19,6 @@ docs/superpowers/
 .agents/
 .claude/
 
+
+# Fixture DBs, rebuilt at test time from scripts/tests/fixtures/*.sql
+scripts/tests/fixtures/.generated/

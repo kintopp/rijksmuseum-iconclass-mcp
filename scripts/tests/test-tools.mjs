@@ -7,9 +7,11 @@
  */
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { assert, assertEq, section, report } from "./_assert.mjs";
+import { bootHttpServer } from "./_server.mjs";
 
 const PROJECT_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 
@@ -770,8 +772,25 @@ if (assert(!r17ctl.isError, `control call: no error (got: ${txt(r17ctl).slice(0,
 }
 
 // ══════════════════════════════════════════════════════════════════
-//  Summary
+//  18. Semantic search over HTTP
 // ══════════════════════════════════════════════════════════════════
 
+section("18. semantic search over HTTP");
+
+// HTTP mode loads the model in the background after it starts serving (stdio,
+// above, loads before serving). Whether this call actually waits on that load
+// depends on timing, so it pins only that semantic search works in HTTP mode.
 await client.close();
+const http = await bootHttpServer({ port: process.env.TEST_PORT ?? "31339" });
+try {
+  const httpClient = new Client({ name: "test-tools-http", version: "0.1" });
+  await httpClient.connect(new StreamableHTTPClientTransport(new URL(http.url)));
+  const r18 = await httpClient.callTool({ name: "search", arguments: { semanticQuery: "ships on a stormy sea", maxResults: 3 } });
+  if (assert(!r18.isError, `semantic search over HTTP: no error (got: ${txt(r18).slice(0, 80)})`))
+    assertEq(sc(r18).results.length, 3, "semantic search over HTTP fills the page");
+  await httpClient.close();
+} finally {
+  await http.stop();
+}
+
 report();

@@ -3,37 +3,88 @@
  *
  * Run:  node scripts/tests/test-pure-functions.mjs
  * Requires: npm run build (imports from dist/)
+ *
+ * FTS escaping failure modes (what the escapers exist to prevent):
+ *   - user text reaches FTS5 as query syntax and throws (operators, quotes,
+ *     parens, control characters such as NUL)
+ *   - stripping removes so much that a real phrase no longer matches
+ *   - the phrase form matches scattered words (phrase semantics lost)
+ *   - the terms form drops a word, so the AND-fallback over-matches
+ *   - nothing searchable is left, but the caller still gets a query (must be null)
+ * Checked against a real in-memory FTS5 table rather than by output string.
  */
+import Database from "better-sqlite3";
 import { escapeFts5, escapeFts5Terms, artResearchUrl } from "../../dist/utils/db.js";
 import { formatCollections, formatEntryLine } from "../../dist/registration.js";
-import { assertEq, section, report } from "./_assert.mjs";
+import { assert, assertEq, section, report } from "./_assert.mjs";
+
+const fts = new Database(":memory:");
+fts.exec("CREATE VIRTUAL TABLE f USING fts5(t)");
+const DOCS = [
+  "the crucifixion of Christ",
+  "beasts of prey sleeping",
+  "prey of beasts",
+  "angel blowing a trumpet",
+  "say hello world",
+  "mother-child relationship",
+];
+const ins = fts.prepare("INSERT INTO f(rowid, t) VALUES (?, ?)");
+DOCS.forEach((t, i) => ins.run(i + 1, t));
+const matchStmt = fts.prepare("SELECT t FROM f WHERE f MATCH ? ORDER BY rowid");
+
+/** Run an FTS5 MATCH; returns the matched docs, or the error message if FTS5 rejects the query. */
+function match(q) {
+  try {
+    return { docs: matchStmt.all(q).map(r => r.t) };
+  } catch (err) {
+    return { error: err.message };
+  }
+}
+
+const ADVERSARIAL = [
+  'say "hello"', '"', '""', "dog*", "AND OR NOT", "NEAR(a b)", "a - b", "- -", "+ +",
+  "x + y", "col:val", "^start", "a/b c", "{a} [b]", "a\\b", "sleeping animal(s)",
+  "angel\u0000trumpet", "crucifixion\u0000", "tab\there", "line\nbreak", "😀 angel",
+];
 
 // ── escapeFts5 ──────────────────────────────────────────────────
 
 section("escapeFts5");
 
-assertEq(escapeFts5("crucifixion"), '"crucifixion"', "simple word");
-assertEq(escapeFts5("beasts of prey"), '"beasts of prey"', "multi-word phrase");
-assertEq(escapeFts5("sleeping animal(s)"), '"sleeping animals"', "strips parentheses");
-assertEq(escapeFts5('say "hello"'), '"say ""hello"""', "escapes double quotes");
-assertEq(escapeFts5("dog*"), '"dog"', "strips wildcard");
-assertEq(escapeFts5("AND OR NOT"), '"AND OR NOT"', "reserved words safe inside quotes");
+for (const input of ADVERSARIAL) {
+  const q = escapeFts5(input);
+  const r = q === null ? {} : match(q);
+  assert(!r.error, `phrase: ${JSON.stringify(input)} never reaches FTS5 as invalid syntax${r.error ? ` (${r.error})` : ""}`);
+}
+
+assertEq(match(escapeFts5("crucifixion")).docs?.join("|"), "the crucifixion of Christ", "single word matches");
+assertEq(match(escapeFts5("dog*")).docs?.length, 0, "wildcard stripped, not honoured (dog* does not prefix-match)");
+assertEq(match(escapeFts5("crucifixion*")).docs?.join("|"), "the crucifixion of Christ", "stripping an operator keeps the word searchable");
+assertEq(match(escapeFts5("beasts of prey")).docs?.join("|"), "beasts of prey sleeping", "multi-word input is a phrase: word order matters");
+assertEq(match(escapeFts5("mother-child")).docs?.join("|"), "mother-child relationship", "hyphenated term still matches");
+assertEq(match(escapeFts5('say "hello"')).docs?.join("|"), "say hello world", "embedded quotes do not break the phrase");
+assertEq(match(escapeFts5("angel\u0000blowing")).docs?.join("|"), "angel blowing a trumpet", "a NUL separates words like whitespace");
 assertEq(escapeFts5(""), null, "empty string → null");
 assertEq(escapeFts5("***"), null, "only operators → null");
-assertEq(escapeFts5("Christ's death"), '"Christ\'s death"', "apostrophe preserved");
-assertEq(escapeFts5("mother-child"), '"mother-child"', "hyphen preserved (safe in FTS5 phrases)");
+assertEq(escapeFts5("\u0000"), null, "only a control character → null");
 
 // ── escapeFts5Terms ─────────────────────────────────────────────
 
 section("escapeFts5Terms");
 
-assertEq(escapeFts5Terms("Marriage Cana"), '"Marriage" AND "Cana"', "two words AND-ed");
-assertEq(escapeFts5Terms("broken string instrument"), '"broken" AND "string" AND "instrument"', "three words AND-ed");
-assertEq(escapeFts5Terms("crucifixion"), null, "single word → null (use escapeFts5 instead)");
+for (const input of ADVERSARIAL) {
+  const q = escapeFts5Terms(input);
+  const r = q === null ? {} : match(q);
+  assert(!r.error, `terms: ${JSON.stringify(input)} never reaches FTS5 as invalid syntax${r.error ? ` (${r.error})` : ""}`);
+}
+
+assertEq(match(escapeFts5Terms("trumpet angel")).docs?.join("|"), "angel blowing a trumpet", "words AND-ed in any order");
+assertEq(match(escapeFts5Terms("prey beasts")).docs?.join("|"), "beasts of prey sleeping|prey of beasts", "terms ignore word order");
+assertEq(match(escapeFts5Terms("angel crucifixion")).docs?.length, 0, "every word must match (AND, not OR)");
+assertEq(match(escapeFts5Terms("angel\u0000trumpet")).docs?.join("|"), "angel blowing a trumpet", "a NUL separates terms");
+assertEq(escapeFts5Terms("crucifixion"), null, "single word → null (phrase search already covered it)");
 assertEq(escapeFts5Terms(""), null, "empty string → null");
 assertEq(escapeFts5Terms("***"), null, "only operators → null");
-assertEq(escapeFts5Terms("sleeping (animal)"), '"sleeping" AND "animal"', "strips parens then splits");
-assertEq(escapeFts5Terms('say "hello" world'), '"say" AND "hello" AND "world"', "strips quotes then splits");
 
 // ── formatCollections ───────────────────────────────────────────
 

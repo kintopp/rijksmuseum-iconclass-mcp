@@ -7,10 +7,14 @@ import { logInfo, logWarn, logError } from "./log.js";
 
 const PROJECT_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 
+// FTS5's query parser treats NUL as end-of-string, so a NUL inside a quoted
+// phrase throws "unterminated string". Control characters become word breaks.
+const CONTROL_CHARS = /[\u0000-\u001f\u007f]/g;
+
 /** Escape a value for safe FTS5 phrase matching. Returns null if input is empty after stripping.
  *  Strips FTS5 operators and bracket characters; preserves hyphens (safe inside quoted phrases). */
 export function escapeFts5(value: string): string | null {
-  const cleaned = value.replace(/[.*^():{}[\]\\]/g, "").replace(/"/g, '""').trim();
+  const cleaned = value.replace(CONTROL_CHARS, " ").replace(/[.*^():{}[\]\\]/g, "").replace(/"/g, '""').trim();
   if (!cleaned) return null;
   return `"${cleaned}"`;
 }
@@ -18,7 +22,7 @@ export function escapeFts5(value: string): string | null {
 /** Escape a multi-word value as individual AND-ed FTS5 terms.
  *  Returns null if fewer than 2 words remain after stripping. */
 export function escapeFts5Terms(value: string): string | null {
-  const words = value.replace(/[.*^():{}[\]\\"/]/g, " ").trim().split(/\s+/).filter(Boolean);
+  const words = value.replace(CONTROL_CHARS, " ").replace(/[.*^():{}[\]\\"/]/g, " ").trim().split(/\s+/).filter(Boolean);
   if (words.length < 2) return null;
   return words.map(w => `"${w}"`).join(" AND ");
 }

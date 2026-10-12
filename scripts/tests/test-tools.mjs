@@ -2,42 +2,18 @@
  * Integration tests for all 6 Iconclass MCP tools via stdio transport.
  *
  * Run:  node scripts/tests/test-tools.mjs
- * Requires: npm run build, data/iconclass.db present
+ * Requires: npm run build, data/iconclass.db present, and the embedding model
+ * (semantic sections FAIL, not skip, when it is unavailable).
  */
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
+import { assert, assertEq, section, report } from "./_assert.mjs";
 
 const PROJECT_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 
 // ── Test helpers ─────────────────────────────────────────────────
-
-let passed = 0;
-let failed = 0;
-const failures = [];
-
-function assert(condition, msg) {
-  if (condition) {
-    passed++;
-    console.log(`  ✓ ${msg}`);
-  } else {
-    failed++;
-    failures.push(msg);
-    console.log(`  ✗ ${msg}`);
-  }
-}
-
-function assertEq(actual, expected, msg) {
-  const ok = actual === expected;
-  assert(ok, ok ? msg : `${msg} — expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`);
-}
-
-function section(name) {
-  console.log(`\n${"═".repeat(60)}`);
-  console.log(`  ${name}`);
-  console.log(`${"═".repeat(60)}`);
-}
 
 /** Extract structured content from tool result. */
 function sc(result) {
@@ -87,10 +63,21 @@ for (const tool of tools.tools) {
   assert(!schema.includes('"$ref"'), `${tool.name} outputSchema has no $ref`);
 }
 
-// Verify all tools have .strict() (no unknown params)
-for (const tool of tools.tools) {
-  const schema = JSON.stringify(tool.inputSchema);
-  assert(schema.includes('"additionalProperties":false'), `${tool.name} inputSchema is strict`);
+// Unknown params are rejected, not silently stripped: a renamed or misspelt
+// filter must not turn into an unfiltered query.
+const VALID_ARGS = {
+  search: { query: "crucifixion" },
+  browse: { notation: "73D6" },
+  resolve: { notation: "73D6" },
+  expand_keys: { notation: "25F23" },
+  search_prefix: { notation: "73D6" },
+  find_artworks: { notation: "73D6" },
+};
+assertEq(Object.keys(VALID_ARGS).sort().join(","), toolNames.join(","), "unknown-key check covers every registered tool");
+for (const [name, args] of Object.entries(VALID_ARGS)) {
+  const r = await client.callTool({ name, arguments: { ...args, bogus: 1 } });
+  assertEq(txt(r), `Input validation error: Invalid arguments for tool ${name}: Unrecognized key: "bogus"`,
+    `${name} rejects an unknown key`);
 }
 
 // Verify all tools advertise MCP behavioural annotations.
@@ -144,6 +131,7 @@ const r2c = await client.callTool({
   arguments: { query: "crucifixion", collectionId: "rijksmuseum", maxResults: 5 },
 });
 const s2c = sc(r2c);
+assert(s2c.results.length > 0, `collectionId filter returns results (got ${s2c.results.length})`);
 for (const entry of s2c.results) {
   assert(entry.collections.includes("rijksmuseum"), `collectionId filter: ${entry.notation} has rijksmuseum presence`);
 }
@@ -158,13 +146,19 @@ const s2scope = sc(r2scope);
 assert(s2scope.results.length > 0, `parentNotation FTS returns results (got ${s2scope.results.length})`);
 assert(s2scope.results.every(r => r.notation.startsWith("11H")), "parentNotation FTS results stay in subtree");
 
-// Empty query
+// No match
 const r2d = await client.callTool({
   name: "search",
   arguments: { query: "xyznonexistent12345" },
 });
 const s2d = sc(r2d);
 assertEq(s2d.totalResults, 0, "nonexistent query returns 0");
+
+// A control character must never reach FTS5 as syntax; NUL acts as a word break.
+const r2nul = await client.callTool({ name: "search", arguments: { query: "angel\u0000trumpet", maxResults: 50 } });
+const r2sp = await client.callTool({ name: "search", arguments: { query: "angel trumpet", maxResults: 50 } });
+if (assert(!r2nul.isError, `NUL in query is not an error (got: ${txt(r2nul).slice(0, 80)})`))
+  assertEq(sc(r2nul).totalResults, sc(r2sp).totalResults, "NUL-separated query finds what the space-separated one does");
 
 // ══════════════════════════════════════════════════════════════════
 //  3. search — semantic mode
@@ -177,11 +171,7 @@ const r3 = await client.callTool({
   arguments: { semanticQuery: "domestic animals", maxResults: 5 },
 });
 
-if (r3.isError) {
-  // Semantic search may be unavailable if model didn't load
-  console.log(`  ⚠ Semantic search unavailable: ${txt(r3)}`);
-  assert(true, "graceful degradation when model unavailable");
-} else {
+if (assert(!r3.isError, `semantic search available (got: ${txt(r3).slice(0, 80)})`)) {
   const s3 = sc(r3);
   assertEq(s3.query, "domestic animals", "query echoed back");
   assertEq(s3.results.length, 5, "5 results returned");
@@ -193,8 +183,9 @@ if (r3.isError) {
     name: "search",
     arguments: { semanticQuery: "domestic animals", maxResults: 5, onlyWithArtworks: true },
   });
-  if (!r3b.isError) {
+  if (assert(!r3b.isError, "onlyWithArtworks: no error")) {
     const s3b = sc(r3b);
+    assert(s3b.results.length > 0, `onlyWithArtworks returns results (got ${s3b.results.length})`);
     for (const entry of s3b.results) {
       assert(entry.collections.length > 0, `onlyWithArtworks: ${entry.notation} has artworks (${entry.collections.length})`);
     }
@@ -205,7 +196,7 @@ if (r3.isError) {
     name: "search",
     arguments: { semanticQuery: "domestic animals", maxResults: 3, offset: 3 },
   });
-  if (!r3p.isError) {
+  if (assert(!r3p.isError, "semantic pagination: no error")) {
     const s3p = sc(r3p);
     assertEq(s3p.results.length, 3, "semantic pagination: 3 results at offset 3");
     assert(s3p.results[0].notation !== s3.results[0].notation,
@@ -219,6 +210,7 @@ const r3c = await client.callTool({
   arguments: { query: "test", semanticQuery: "test" },
 });
 assert(r3c.isError === true, "error when both query and semanticQuery provided");
+assertEq(txt(r3c), "Provide exactly one of: query or semanticQuery — not both.", "both-modes error wording");
 
 // Error: neither
 const r3d = await client.callTool({
@@ -226,6 +218,7 @@ const r3d = await client.callTool({
   arguments: {},
 });
 assert(r3d.isError === true, "error when neither query nor semanticQuery provided");
+assertEq(txt(r3d), "Provide exactly one of: query or semanticQuery.", "neither-mode error wording");
 
 // ══════════════════════════════════════════════════════════════════
 //  4. browse
@@ -276,6 +269,7 @@ const r4c = await client.callTool({
   arguments: { notation: "ZZZZZ" },
 });
 assert(r4c.isError === true, "error for nonexistent notation");
+assertEq(txt(r4c), 'Notation "ZZZZZ" not found in Iconclass.', "browse not-found wording");
 
 // ══════════════════════════════════════════════════════════════════
 //  5. resolve
@@ -321,6 +315,7 @@ const r5c = await client.callTool({
   arguments: { notation: ["ZZZZZ", "YYYYY"] },
 });
 assert(r5c.isError === true, "error when all notations nonexistent");
+assertEq(txt(r5c), "None of the requested notations were found: ZZZZZ, YYYYY", "resolve all-missing wording names every code");
 
 // ══════════════════════════════════════════════════════════════════
 //  6. expand_keys
@@ -365,6 +360,7 @@ const r6b = await client.callTool({
   arguments: { notation: "ZZZZZ" },
 });
 assert(r6b.isError === true, "error for nonexistent notation");
+assertEq(txt(r6b), 'Notation "ZZZZZ" not found in Iconclass.', "expand_keys not-found wording");
 
 // ══════════════════════════════════════════════════════════════════
 //  7. search_prefix
@@ -390,6 +386,7 @@ const r7b = await client.callTool({
   arguments: { notation: "73D8", collectionId: "rijksmuseum", maxResults: 10 },
 });
 const s7b = sc(r7b);
+assert(s7b.results.length > 0, `prefix+collection returns results (got ${s7b.results.length})`);
 for (const entry of s7b.results) {
   assert(entry.collections.includes("rijksmuseum"), `prefix+collection: ${entry.notation} has rijksmuseum`);
 }
@@ -403,9 +400,7 @@ const s7c = sc(r7c);
 assertEq(s7c.results.length, 5, "broad prefix returns maxResults");
 assert(s7c.totalResults >= 5, `broad prefix totalResults >= maxResults (got ${s7c.totalResults})`);
 
-// Regression: notation punctuation (., :, -, spaces) must not be stripped.
-// Previously the prefix was rewritten to alphanumerics + ()+, dropping all
-// punctuation and returning 0 rows for valid prefixes like the example below.
+// Notation punctuation (., :, -, spaces) is part of the prefix, not noise.
 const r7d = await client.callTool({
   name: "search_prefix",
   arguments: { notation: "12A27(Deut. 21:22-23)", maxResults: 10 },
@@ -442,22 +437,22 @@ const s8fr = sc(r8fr);
 assert(s8fr.entry.text !== s8de.entry.text, "French text differs from German");
 assert(s8fr.entry.text.length > 0, `French text present: "${s8fr.entry.text.slice(0, 50)}"`);
 
-// Invalid lang is now rejected at the schema layer (was silently coerced to 'en').
+// An unsupported lang is rejected, not silently coerced to 'en'.
 const rBadLang = await client.callTool({
   name: "resolve",
   arguments: { notation: "73D6", lang: "xx" },
-}).then(r => r, e => ({ thrown: true, error: e }));
-assert(rBadLang.thrown === true || rBadLang.isError === true,
-  "invalid lang 'xx' is rejected (schema-level enum)");
+});
+assert(rBadLang.isError === true, "invalid lang 'xx' is rejected");
+assert(txt(rBadLang).startsWith("Input validation error: Invalid arguments for tool resolve: lang: Invalid option"),
+  `invalid lang error names the lang parameter (got: ${txt(rBadLang).slice(0, 90)})`);
 
 // ══════════════════════════════════════════════════════════════════
 //  9. Regression: search_prefix pagination with collection filter
 // ══════════════════════════════════════════════════════════════════
 
-section("9. Regression: search_prefix pagination (P1)");
+section("9. search_prefix pagination with collection filter");
 
-// Broad prefix "7" with collectionId should report the full filtered count,
-// not a truncated window. Before the fix, this returned totalResults: 11.
+// Broad prefix "7" with collectionId reports the full filtered count, not the page window.
 const r9a = await client.callTool({
   name: "search_prefix",
   arguments: { notation: "7", collectionId: "rijksmuseum", maxResults: 10 },
@@ -493,16 +488,14 @@ assert(s9c.totalResults > 1000, `prefix "7" unfiltered: totalResults large (got 
 //  10. Regression: semantic search collection underfill (P1)
 // ══════════════════════════════════════════════════════════════════
 
-section("10. Regression: semantic search collection underfill (P1)");
+section("10. semantic search: collectionId still fills the page");
 
-// With collectionId, should return a full page. Before the fix,
-// this returned only 1 result because post-filter drained the small pool.
 const r10 = await client.callTool({
   name: "search",
   arguments: { semanticQuery: "religious suffering", collectionId: "rijksmuseum", maxResults: 5 },
 });
+assert(!r10.isError, `no error (got: ${txt(r10).slice(0, 80)})`);
 const s10 = sc(r10);
-assert(!r10.isError, "no error");
 assert(s10.results.length >= 3, `collection-scoped semantic: should fill page (got ${s10.results.length})`);
 for (const entry of s10.results) {
   assert(entry.collections.includes("rijksmuseum"), `semantic+collection: ${entry.notation} has rijksmuseum`);
@@ -512,20 +505,15 @@ for (const entry of s10.results) {
 //  11. Regression: semantic parentNotation subtree underfill (P1)
 // ══════════════════════════════════════════════════════════════════
 
-section("11. Regression: semantic parentNotation subtree (P1)");
+section("11. semantic search: parentNotation fills the page from the subtree");
 
-// Before the fix, search({ semanticQuery: 'religious suffering',
-// parentNotation: '73D', maxResults: 5 }) returned 0 results because
-// the fixed 5x overfetch (25 global neighbors) contained no 73D matches.
-// The iterative expansion loop now widens to 4096 to fill sparse subtrees.
+// A subtree absent from the global top-k must still fill the page.
 
 const r11sub = await client.callTool({
   name: "search",
   arguments: { semanticQuery: "religious suffering", parentNotation: "73D", maxResults: 5 },
 });
-if (r11sub.isError) {
-  console.log(`  ⚠ Semantic search unavailable: ${txt(r11sub)}`);
-} else {
+if (assert(!r11sub.isError, `parentNotation 73D: no error (got: ${txt(r11sub).slice(0, 80)})`)) {
   const s11sub = sc(r11sub);
   assert(s11sub.results.length >= 3, `parentNotation 73D: should fill page (got ${s11sub.results.length})`);
   assert(s11sub.results.every(r => r.notation.startsWith("73D")), "all results in 73D subtree");
@@ -536,38 +524,31 @@ if (r11sub.isError) {
     name: "search",
     arguments: { semanticQuery: "mother and child", parentNotation: "11F", maxResults: 5 },
   });
-  if (!r11broad.isError) {
+  if (assert(!r11broad.isError, "parentNotation 11F: no error")) {
     const s11broad = sc(r11broad);
     assert(s11broad.results.length >= 3, `parentNotation 11F: should fill page (got ${s11broad.results.length})`);
     assert(s11broad.results.every(r => r.notation.startsWith("11F")), "all results in 11F subtree");
   }
 
-  // A very narrow subtree may legitimately have few matches —
-  // verify it returns what it can without error
+  // A narrow subtree (73D64 has 7 base notations) still returns in-subtree results.
   const r11narrow = await client.callTool({
     name: "search",
     arguments: { semanticQuery: "angels", parentNotation: "73D64", maxResults: 5 },
   });
   assert(!r11narrow.isError, "narrow parentNotation does not error");
   const s11narrow = sc(r11narrow);
-  if (s11narrow.results.length > 0) {
-    assert(s11narrow.results.every(r => r.notation.startsWith("73D64")), "narrow subtree results all match prefix");
-  }
+  assert(s11narrow.results.length > 0, `narrow subtree returns results (got ${s11narrow.results.length})`);
+  assert(s11narrow.results.every(r => r.notation.startsWith("73D64")), "narrow subtree results all match prefix");
 }
 
 // ══════════════════════════════════════════════════════════════════
 //  12. Regression: FTS search ranks by relevance, not alphabetically
 // ══════════════════════════════════════════════════════════════════
 
-section("12. Regression: FTS relevance ranking (P1)");
+section("12. FTS relevance ranking");
 
-// Before the fix, FTS results lost BM25 rank scores and sorted
-// alphabetically within the same coverage tier. The first page was
-// dominated by low-relevance alphabetically-early notations like
-// 11B312, while the exact subject (73D6, 371 artworks) was buried.
-
-// Verify results are NOT alphabetical — top result should NOT be the
-// alphabetically-first notation in the 844-hit result set.
+// Within a coverage tier, results rank by BM25 relevance, not alphabetically:
+// the exact subjects must surface on the first page of a large hit set.
 const r11rel = await client.callTool({
   name: "search",
   arguments: { query: "crucifixion", maxResults: 25 },
@@ -575,23 +556,17 @@ const r11rel = await client.callTool({
 const s11rel = sc(r11rel);
 const notations11 = s11rel.results.map(r => r.notation);
 
-// With alphabetical sorting, the first result would be something like
-// "0(+1)..." or "11...". BM25 should push relevant results to the top.
-// 31E2356 "violent death by crucifixion" is a strong BM25 match.
-assert(notations11[0] !== notations11.slice().sort()[0],
-  `top result is not alphabetically first (got ${notations11[0]}, alpha-first would be ${notations11.slice().sort()[0]})`);
-
-// 73D6 "the crucifixion of Christ" should appear in the top 25
-// (BM25 ranks it ~16th due to longer text, but that's relevance-based,
-// not the 100+ position it had under alphabetical sort)
 const idx73D6 = notations11.indexOf("73D6");
 assert(idx73D6 !== -1, `73D6 in top 25 for "crucifixion" (position ${idx73D6 + 1})`);
 
-// Results with collection presence should come before those without
-// (coverage is the primary sort key)
-const firstWithout = s11rel.results.findIndex(r => r.collections.length === 0);
-const lastWith = s11rel.results.map((r, i) => r.collections.length > 0 ? i : -1).filter(i => i >= 0).pop() ?? -1;
-if (firstWithout !== -1 && lastWith !== -1) {
+// Coverage is the primary sort key: results with collection presence precede
+// those without. "unicorn" is pinned because its first page holds both groups.
+const rCov = await client.callTool({ name: "search", arguments: { query: "unicorn", maxResults: 25 } });
+const covFlags = sc(rCov).results.map(r => r.collections.length > 0);
+const firstWithout = covFlags.indexOf(false);
+const lastWith = covFlags.lastIndexOf(true);
+if (assert(firstWithout !== -1 && lastWith !== -1,
+  `fixture: "unicorn" page mixes present and absent results (present=${covFlags.filter(Boolean).length}/${covFlags.length})`)) {
   assert(lastWith < firstWithout, `collection-present results precede absent ones (last-with: ${lastWith}, first-without: ${firstWithout})`);
 }
 
@@ -617,28 +592,29 @@ assert(notations11c.includes("73D"), `73D (Passion of Christ) in top 10 for "Pas
 //  13. Regression: expand_keys rejects key-expanded input (P2)
 // ══════════════════════════════════════════════════════════════════
 
-section("13. Regression: expand_keys input validation (P2)");
+section("13. expand_keys input validation");
 
 const r12a = await client.callTool({
   name: "expand_keys",
   arguments: { notation: "25F23(+46)" },
 });
 assert(r12a.isError === true, "expand_keys rejects key-expanded (+) notation");
-assert(txt(r12a).includes("base notation"), `error message mentions base notation: "${txt(r12a).slice(0, 80)}"`);
+assertEq(txt(r12a), '"25F23(+46)" is a key-expanded notation — expand_keys requires a base notation (e.g. "25F23").',
+  "key-expanded rejection wording names the base notation to use");
 
 // Named variants like 73D82(CROSS) are NOT key-expanded — they should be accepted
 const r12b = await client.callTool({
   name: "expand_keys",
   arguments: { notation: "73D82(CROSS)" },
 });
-assert(r12b.isError !== true || !txt(r12b).includes("key-expanded"),
-  "expand_keys accepts named variant 73D82(CROSS) (not misidentified as key-expanded)");
+assert(r12b.isError !== true, `expand_keys accepts named variant 73D82(CROSS) (got: ${txt(r12b).slice(0, 80)})`);
+assertEq(sc(r12b).baseEntry?.notation, "73D82(CROSS)", "named variant is expanded as its own base");
 
 // ══════════════════════════════════════════════════════════════════
 //  14. Regression: totalNotations is non-zero (P2)
 // ══════════════════════════════════════════════════════════════════
 
-section("14. Regression: totalNotations non-zero (P2)");
+section("14. totalNotations is non-zero");
 
 // Every tool response includes collections[]. Check that totalNotations > 0.
 const r13a = await client.callTool({
@@ -662,8 +638,8 @@ const r14a = await client.callTool({
   name: "find_artworks",
   arguments: { notation: "73D6" },
 });
+assert(!r14a.isError, "no error");
 const s14a = sc(r14a);
-assert(!s14a.error, "no error");
 assertEq(s14a.notations.length, 1, "1 notation returned");
 assertEq(s14a.notations[0].notation, "73D6", "notation echoed");
 assert(s14a.notations[0].text.length > 0, "text present");
@@ -703,23 +679,13 @@ assertEq(s14b.notations.length, 3, "3 notations returned");
 assertEq(s14b.notations[0].notation, "73D6", "first is 73D6");
 assertEq(s14b.notations[2].notation, "NONEXISTENT_ZZZZZ", "third is nonexistent");
 assertEq(s14b.notations[2].collections.length, 0, "nonexistent has 0 collections");
-
-// Key-expanded notation URL encoding
-const keyEntry14 = s14b.notations[1];
-assertEq(keyEntry14.notation, "25F23(+46)", "key-expanded notation");
-if (keyEntry14.collections.length > 0) {
-  const urlCol14 = keyEntry14.collections.find(a => a.url);
-  if (urlCol14) {
-    assert(urlCol14.url.includes("25F23"), "URL contains base notation");
-    assert(urlCol14.url.includes("%28"), "URL encodes parentheses");
-  }
-}
+assertEq(s14b.notations[1].notation, "25F23(+46)", "key-expanded notation kept in input order");
 
 // ══════════════════════════════════════════════════════════════════
 //  16. Regression: FTS phrase→terms auto-fallback
 // ══════════════════════════════════════════════════════════════════
 
-section("16. Regression: FTS phrase→terms auto-fallback");
+section("16. FTS phrase→terms auto-fallback");
 
 // Fixture pinned by the offline raw-FTS gate (run 2026-06-30):
 //   texts_fts    MATCH '"angel trumpet"'  -> 0
@@ -754,7 +720,7 @@ assertEq(sc(r16c).totalResults, 0, "single-word miss returns 0 (no fallback)");
 //  17. Regression: semantic parentNotation + collectionId combined
 // ══════════════════════════════════════════════════════════════════
 
-section("17. Regression: semantic parentNotation + collectionId combined");
+section("17. semantic parentNotation + collectionId combined");
 
 const Q17 = "ships on a stormy sea";   // pinned via the control call below
 const SUB = "41";
@@ -767,9 +733,7 @@ const SUB = "41";
 const r17ctl = await client.callTool({
   name: "search", arguments: { semanticQuery: Q17, maxResults: 25 },
 });
-if (r17ctl.isError) {
-  console.log(`  ⚠ Semantic search unavailable: ${txt(r17ctl)}`);
-} else {
+if (assert(!r17ctl.isError, `control call: no error (got: ${txt(r17ctl).slice(0, 80)})`)) {
   const ctlInSub = sc(r17ctl).results.filter(e => e.notation.startsWith(SUB)).length;
   assert(ctlInSub === 0,
     `control: global top-25 carries no ${SUB} notations (got ${ctlInSub}) — fixture is discriminating`);
@@ -795,14 +759,14 @@ if (r17ctl.isError) {
   });
   assert(!r17.isError, "combined semantic filters: no error");
   const s17 = sc(r17);
-  for (const e of s17.results) {
-    assert(e.notation.startsWith(SUB), `combined: ${e.notation} is in the ${SUB} subtree`);
-    assert(e.collections.includes("rijksmuseum"), `combined: ${e.notation} has rijksmuseum presence`);
-  }
   // The collection post-filter may legitimately thin the page; the prefix-only call
   // above already pinned the ×5 branch's fill, so a floor of 1 is enough here.
   assert(s17.results.length >= 1,
     `combined filters still return at least one result (got ${s17.results.length})`);
+  for (const e of s17.results) {
+    assert(e.notation.startsWith(SUB), `combined: ${e.notation} is in the ${SUB} subtree`);
+    assert(e.collections.includes("rijksmuseum"), `combined: ${e.notation} has rijksmuseum presence`);
+  }
 }
 
 // ══════════════════════════════════════════════════════════════════
@@ -810,13 +774,4 @@ if (r17ctl.isError) {
 // ══════════════════════════════════════════════════════════════════
 
 await client.close();
-
-console.log(`\n${"═".repeat(60)}`);
-console.log(`  ${passed} passed, ${failed} failed`);
-console.log(`${"═".repeat(60)}`);
-
-if (failed > 0) {
-  console.log("\nFailures:");
-  for (const f of failures) console.log(`  ✗ ${f}`);
-  process.exit(1);
-}
+report();

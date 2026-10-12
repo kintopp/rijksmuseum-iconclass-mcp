@@ -1,8 +1,7 @@
 /**
  * Smoke test: HTTP mode handles concurrent /mcp POSTs without
- * "Already connected to a transport" or cross-request interference.
- *
- * Regression for review-issues/01-shared-mcp-server-http-concurrency.md.
+ * "Already connected to a transport" or cross-request interference — each
+ * request must get its own server instance.
  *
  * Run:  node scripts/tests/test-http-concurrency.mjs
  * Requires: npm run build, data/iconclass.db present
@@ -10,17 +9,10 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 
+import { assert, report } from "./_assert.mjs";
 import { bootHttpServer } from "./_server.mjs";
 
 const PORT = process.env.TEST_PORT ?? "31337";
-
-let passed = 0;
-let failed = 0;
-
-function assert(cond, msg) {
-  if (cond) { passed++; console.log(`  ✓ ${msg}`); }
-  else { failed++; console.log(`  ✗ ${msg}`); }
-}
 
 // ── Boot HTTP server ────────────────────────────────────────────
 
@@ -44,9 +36,8 @@ async function runSession(i) {
 }
 
 try {
-  // Fire N sessions in parallel — each does its own initialize + tool call.
-  // With the old shared-server bug, overlapping requests would race
-  // server.connect() / transport.close() and produce errors.
+  // Fire N sessions in parallel — each does its own initialize + tool call, so
+  // overlapping requests would race a shared server's connect()/close().
   const N = 8;
   const results = await Promise.allSettled(
     Array.from({ length: N }, (_, i) => runSession(i))
@@ -72,5 +63,4 @@ try {
   await server.stop();
 }
 
-console.log(`\n${passed} passed, ${failed} failed`);
-process.exit(failed === 0 ? 0 : 1);
+report();

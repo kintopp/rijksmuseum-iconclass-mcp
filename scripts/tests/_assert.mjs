@@ -1,7 +1,9 @@
 /**
- * Shared assertion harness for the no-framework test scripts in this dir
- * (test-pure-functions.mjs, test-units.mjs). Owns the pass/fail tally so
- * `report()` can print one summary and set the exit code.
+ * Shared assertion harness for the no-framework test scripts in this dir.
+ * Owns the pass/fail tally so `report()` can print one summary and set the
+ * exit code. `assert`/`assertEq` return the condition, so a failed
+ * precondition can guard dependent checks (`if (assert(...)) { … }`) — the
+ * failure is already recorded, so this is not a skip.
  */
 
 let passed = 0;
@@ -19,11 +21,12 @@ export function assert(condition, msg) {
     failures.push(msg);
     console.log(`  ✗ ${msg}`);
   }
+  return !!condition;
 }
 
 export function assertEq(actual, expected, msg) {
   const ok = actual === expected;
-  assert(ok, ok ? msg : `${msg} — expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`);
+  return assert(ok, ok ? msg : `${msg} — expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`);
 }
 
 export function section(name) {

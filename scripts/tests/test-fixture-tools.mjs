@@ -75,7 +75,11 @@ for (const t of tools) {
   const first = t.description.split(/(?<=\.)\s/)[0];
   const cps = [...first].length;
   assert(first.endsWith(".") && cps <= 120, `${t.name}: first sentence ends by code point 120 (${cps})`);
-  assert(!JSON.stringify(t.outputSchema ?? {}).includes('"$ref"'), `${t.name}: outputSchema has no $ref`);
+  assert(t.outputSchema != null && !JSON.stringify(t.outputSchema).includes('"$ref"'), `${t.name}: outputSchema present, no $ref`);
+  // All six are pure reads. An omitted destructiveHint defaults to true per spec.
+  for (const [hint, want] of Object.entries({ readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false })) {
+    assertEq(t.annotations?.[hint], want, `${t.name}: ${hint}=${want}`);
+  }
 }
 
 const VALID_ARGS = {

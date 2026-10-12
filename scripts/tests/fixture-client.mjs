@@ -10,12 +10,9 @@ import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js"
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
-import { buildFixture } from "./build-fixture-db.mjs";
+import { buildFixture, PROJECT_ROOT } from "./build-fixture-db.mjs";
 
-const PROJECT_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
-
-/** Server env for a fixture run. Exported so the HTTP boot helpers can reuse it. */
+/** Server env for a fixture run; also passed to the `_server.mjs` boot helpers. */
 export function fixtureEnv(name) {
   const { mainPath, countsPath } = buildFixture(name);
   // resolveDbPath falls back to data/ when the env path is missing, which would
@@ -36,12 +33,12 @@ export function fixtureEnv(name) {
   };
 }
 
-export async function connectFixtureClient(name, env = {}) {
+export async function connectFixtureClient(name) {
   const transport = new StdioClientTransport({
     command: process.execPath,
     args: [path.join(PROJECT_ROOT, "dist", "index.js")],
     cwd: PROJECT_ROOT,
-    env: { ...fixtureEnv(name), ...env },
+    env: fixtureEnv(name),
     stderr: "ignore",
   });
   const client = new Client({ name: `test-${name}`, version: "0.0.0" });

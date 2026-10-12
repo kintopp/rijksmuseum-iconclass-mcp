@@ -60,25 +60,14 @@ function writeInvalidDb(p) {
 
 const VALIDATION_QUERY = "SELECT 1 FROM t LIMIT 1";
 
-/** Start an HTTP server that serves `body` for the main URL and 404s any
- *  `.part-*` chunk request (so tryChunkedDownload falls through to single-file). */
-function startServer(body) {
-  return new Promise((resolve) => {
-    const server = http.createServer((req, res) => {
-      if (req.url.includes(".part-")) {
-        res.statusCode = 404;
-        res.end("no chunk");
-        return;
-      }
-      res.statusCode = 200;
-      res.end(body);
-    });
-    server.listen(0, "127.0.0.1", () => resolve(server));
-  });
+function assertNoTempFiles(dbPath, label) {
+  const left = [".tmp", ".tmp.gz"].filter((ext) => fs.existsSync(dbPath + ext));
+  assert(left.length === 0, `${label}: no temp files left behind${left.length ? ` (found ${left.join(", ")})` : ""}`);
 }
 
 /** Start an HTTP server that serves exactly `routes` (path → Buffer) and 404s
- *  everything else. */
+ *  everything else, so with no `.part-*` routes ensureDb falls through to the
+ *  single-file download. */
 function startRouteServer(routes) {
   return new Promise((resolve) => {
     const server = http.createServer((req, res) => {
@@ -250,7 +239,7 @@ try {
   });
 
   await atest("no local file + URL (uncompressed) → downloaded + valid", async () => {
-    const server = await startServer(validBuf);
+    const server = await startRouteServer({ "/db": validBuf });
     try {
       const dbPath = setupEnsureDb("c3", serverUrl(server, "/db"));
       await callEnsureDb("t3");
@@ -262,20 +251,20 @@ try {
   });
 
   await atest("no local file + .gz URL → decompressed + valid", async () => {
-    const server = await startServer(zlib.gzipSync(validBuf));
+    const server = await startRouteServer({ "/db.gz": zlib.gzipSync(validBuf) });
     try {
       const dbPath = setupEnsureDb("c4", serverUrl(server, "/db.gz"));
       await callEnsureDb("t4");
       assert(fs.existsSync(dbPath), "case 4: file downloaded");
       assert(dbValidates(dbPath), "case 4: gunzipped file validates");
-      assert(!fs.existsSync(dbPath + ".tmp.gz"), "case 4: no .tmp.gz left behind");
+      assertNoTempFiles(dbPath, "case 4");
     } finally {
       server.close();
     }
   });
 
   await atest("corrupt download + refreshOnStartup → local file preserved", async () => {
-    const server = await startServer(Buffer.from("this is not a sqlite database at all"));
+    const server = await startRouteServer({ "/db": Buffer.from("this is not a sqlite database at all") });
     try {
       const dbPath = setupEnsureDb("c5", serverUrl(server, "/db"));
       writeValidDb(dbPath);
@@ -283,15 +272,14 @@ try {
       await callEnsureDb("t5", { refreshOnStartup: true });
       assertEq(sha256(fs.readFileSync(dbPath)), hashBefore, "case 5: local file unchanged after bad refresh");
       assert(dbValidates(dbPath), "case 5: local file still valid");
-      assert(!fs.existsSync(dbPath + ".tmp"), "case 5: no .tmp left behind");
-      assert(!fs.existsSync(dbPath + ".tmp.gz"), "case 5: no .tmp.gz left behind");
+      assertNoTempFiles(dbPath, "case 5");
     } finally {
       server.close();
     }
   });
 
   await atest("existing INVALID DB + URL → replaced with valid download", async () => {
-    const server = await startServer(validBuf);
+    const server = await startRouteServer({ "/db": validBuf });
     try {
       const dbPath = setupEnsureDb("c6", serverUrl(server, "/db"));
       writeInvalidDb(dbPath);
@@ -319,7 +307,7 @@ try {
       await callEnsureDb("t7");
       assert(dbValidates(dbPath), "case 7: reassembled gzip DB validates");
       assertEq(sha256(fs.readFileSync(dbPath)), sha256(validBuf), "case 7: bytes identical to the source DB");
-      assert(!fs.existsSync(dbPath + ".tmp") && !fs.existsSync(dbPath + ".tmp.gz"), "case 7: no temp files left behind");
+      assertNoTempFiles(dbPath, "case 7");
     } finally {
       server.close();
     }
@@ -331,7 +319,7 @@ try {
       const dbPath = setupEnsureDb("c8", serverUrl(server, "/db"));
       await callEnsureDb("t8");
       assertEq(sha256(fs.readFileSync(dbPath)), sha256(validBuf), "case 8: bytes identical to the source DB");
-      assert(!fs.existsSync(dbPath + ".tmp") && !fs.existsSync(dbPath + ".tmp.gz"), "case 8: no temp files left behind");
+      assertNoTempFiles(dbPath, "case 8");
     } finally {
       server.close();
     }
@@ -362,7 +350,7 @@ try {
       const hashBefore = sha256(fs.readFileSync(dbPath));
       await callEnsureDb("t10", { refreshOnStartup: true });
       assertEq(sha256(fs.readFileSync(dbPath)), hashBefore, "case 10: local file unchanged after a corrupt reassembly");
-      assert(!fs.existsSync(dbPath + ".tmp") && !fs.existsSync(dbPath + ".tmp.gz"), "case 10: no temp files left behind");
+      assertNoTempFiles(dbPath, "case 10");
     } finally {
       server.close();
     }

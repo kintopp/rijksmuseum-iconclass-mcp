@@ -31,12 +31,12 @@ const ins = fts.prepare("INSERT INTO f(rowid, t) VALUES (?, ?)");
 DOCS.forEach((t, i) => ins.run(i + 1, t));
 const matchStmt = fts.prepare("SELECT t FROM f WHERE f MATCH ? ORDER BY rowid");
 
-/** Run an FTS5 MATCH; returns the matched docs, or the error message if FTS5 rejects the query. */
-function match(q) {
+/** Run an FTS5 MATCH; returns the matched docs joined by "|", or the FTS5 error. */
+function hits(q) {
   try {
-    return { docs: matchStmt.all(q).map(r => r.t) };
+    return matchStmt.all(q).map(r => r.t).join("|");
   } catch (err) {
-    return { error: err.message };
+    return `FTS5 error: ${err.message}`;
   }
 }
 
@@ -46,23 +46,28 @@ const ADVERSARIAL = [
   "angel\u0000trumpet", "crucifixion\u0000", "tab\there", "line\nbreak", "😀 angel",
 ];
 
+section("adversarial input");
+
+for (const [label, escape] of [["phrase", escapeFts5], ["terms", escapeFts5Terms]]) {
+  for (const input of ADVERSARIAL) {
+    const q = escape(input);
+    const r = q === null ? "" : hits(q);
+    const bad = r.startsWith("FTS5 error");
+    assert(!bad, `${label}: ${JSON.stringify(input)} never reaches FTS5 as invalid syntax${bad ? ` (${r})` : ""}`);
+  }
+}
+
 // ── escapeFts5 ──────────────────────────────────────────────────
 
 section("escapeFts5");
 
-for (const input of ADVERSARIAL) {
-  const q = escapeFts5(input);
-  const r = q === null ? {} : match(q);
-  assert(!r.error, `phrase: ${JSON.stringify(input)} never reaches FTS5 as invalid syntax${r.error ? ` (${r.error})` : ""}`);
-}
-
-assertEq(match(escapeFts5("crucifixion")).docs?.join("|"), "the crucifixion of Christ", "single word matches");
-assertEq(match(escapeFts5("dog*")).docs?.length, 0, "wildcard stripped, not honoured (dog* does not prefix-match)");
-assertEq(match(escapeFts5("crucifixion*")).docs?.join("|"), "the crucifixion of Christ", "stripping an operator keeps the word searchable");
-assertEq(match(escapeFts5("beasts of prey")).docs?.join("|"), "beasts of prey sleeping", "multi-word input is a phrase: word order matters");
-assertEq(match(escapeFts5("mother-child")).docs?.join("|"), "mother-child relationship", "hyphenated term still matches");
-assertEq(match(escapeFts5('say "hello"')).docs?.join("|"), "say hello world", "embedded quotes do not break the phrase");
-assertEq(match(escapeFts5("angel\u0000blowing")).docs?.join("|"), "angel blowing a trumpet", "a NUL separates words like whitespace");
+assertEq(hits(escapeFts5("crucifixion")), "the crucifixion of Christ", "single word matches");
+assertEq(hits(escapeFts5("dog*")), "", "wildcard stripped, not honoured (dog* does not prefix-match)");
+assertEq(hits(escapeFts5("crucifixion*")), "the crucifixion of Christ", "stripping an operator keeps the word searchable");
+assertEq(hits(escapeFts5("beasts of prey")), "beasts of prey sleeping", "multi-word input is a phrase: word order matters");
+assertEq(hits(escapeFts5("mother-child")), "mother-child relationship", "hyphenated term still matches");
+assertEq(hits(escapeFts5('say "hello"')), "say hello world", "embedded quotes do not break the phrase");
+assertEq(hits(escapeFts5("angel\u0000blowing")), "angel blowing a trumpet", "a NUL separates words like whitespace");
 assertEq(escapeFts5(""), null, "empty string → null");
 assertEq(escapeFts5("***"), null, "only operators → null");
 assertEq(escapeFts5("\u0000"), null, "only a control character → null");
@@ -71,16 +76,10 @@ assertEq(escapeFts5("\u0000"), null, "only a control character → null");
 
 section("escapeFts5Terms");
 
-for (const input of ADVERSARIAL) {
-  const q = escapeFts5Terms(input);
-  const r = q === null ? {} : match(q);
-  assert(!r.error, `terms: ${JSON.stringify(input)} never reaches FTS5 as invalid syntax${r.error ? ` (${r.error})` : ""}`);
-}
-
-assertEq(match(escapeFts5Terms("trumpet angel")).docs?.join("|"), "angel blowing a trumpet", "words AND-ed in any order");
-assertEq(match(escapeFts5Terms("prey beasts")).docs?.join("|"), "beasts of prey sleeping|prey of beasts", "terms ignore word order");
-assertEq(match(escapeFts5Terms("angel crucifixion")).docs?.length, 0, "every word must match (AND, not OR)");
-assertEq(match(escapeFts5Terms("angel\u0000trumpet")).docs?.join("|"), "angel blowing a trumpet", "a NUL separates terms");
+assertEq(hits(escapeFts5Terms("trumpet angel")), "angel blowing a trumpet", "words AND-ed in any order");
+assertEq(hits(escapeFts5Terms("prey beasts")), "beasts of prey sleeping|prey of beasts", "terms ignore word order");
+assertEq(hits(escapeFts5Terms("angel crucifixion")), "", "every word must match (AND, not OR)");
+assertEq(hits(escapeFts5Terms("angel\u0000trumpet")), "angel blowing a trumpet", "a NUL separates terms");
 assertEq(escapeFts5Terms("crucifixion"), null, "single word → null (phrase search already covered it)");
 assertEq(escapeFts5Terms(""), null, "empty string → null");
 assertEq(escapeFts5Terms("***"), null, "only operators → null");

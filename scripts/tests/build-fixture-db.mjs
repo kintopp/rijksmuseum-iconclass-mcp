@@ -21,7 +21,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const PROJECT_ROOT = path.resolve(__dirname, "..", "..");
+export const PROJECT_ROOT = path.resolve(__dirname, "..", "..");
 const FIXTURE_DIR = path.join(__dirname, "fixtures");
 const GENERATED_DIR = path.join(FIXTURE_DIR, ".generated");
 const MAIN_SCHEMA = path.join(FIXTURE_DIR, "iconclass-schema.sql");

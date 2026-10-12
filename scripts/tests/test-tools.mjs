@@ -65,37 +65,6 @@ for (const tool of tools.tools) {
   assert(!schema.includes('"$ref"'), `${tool.name} outputSchema has no $ref`);
 }
 
-// Unknown params are rejected, not silently stripped: a renamed or misspelt
-// filter must not turn into an unfiltered query.
-const VALID_ARGS = {
-  search: { query: "crucifixion" },
-  browse: { notation: "73D6" },
-  resolve: { notation: "73D6" },
-  expand_keys: { notation: "25F23" },
-  search_prefix: { notation: "73D6" },
-  find_artworks: { notation: "73D6" },
-};
-assertEq(Object.keys(VALID_ARGS).sort().join(","), toolNames.join(","), "unknown-key check covers every registered tool");
-for (const [name, args] of Object.entries(VALID_ARGS)) {
-  const r = await client.callTool({ name, arguments: { ...args, bogus: 1 } });
-  assertEq(txt(r), `Input validation error: Invalid arguments for tool ${name}: Unrecognized key: "bogus"`,
-    `${name} rejects an unknown key`);
-}
-
-// Verify all tools advertise MCP behavioural annotations.
-// All current Iconclass tools are pure SQLite reads → identical profile.
-// If a future tool needs different hints (e.g. an open-world or mutating
-// tool), update this assertion to match — but it must not be silently
-// missing, since omitted destructiveHint defaults to true per spec.
-for (const tool of tools.tools) {
-  const a = tool.annotations;
-  assert(a != null, `${tool.name} has annotations object`);
-  if (!a) continue;
-  assertEq(a.readOnlyHint, true, `${tool.name} readOnlyHint=true`);
-  assertEq(a.destructiveHint, false, `${tool.name} destructiveHint=false`);
-  assertEq(a.idempotentHint, true, `${tool.name} idempotentHint=true`);
-  assertEq(a.openWorldHint, false, `${tool.name} openWorldHint=false`);
-}
 
 // ══════════════════════════════════════════════════════════════════
 //  2. search — FTS mode
@@ -206,21 +175,6 @@ if (assert(!r3.isError, `semantic search available (got: ${txt(r3).slice(0, 80)}
   }
 }
 
-// Error: both query and semanticQuery
-const r3c = await client.callTool({
-  name: "search",
-  arguments: { query: "test", semanticQuery: "test" },
-});
-assert(r3c.isError === true, "error when both query and semanticQuery provided");
-assertEq(txt(r3c), "Provide exactly one of: query or semanticQuery — not both.", "both-modes error wording");
-
-// Error: neither
-const r3d = await client.callTool({
-  name: "search",
-  arguments: {},
-});
-assert(r3d.isError === true, "error when neither query nor semanticQuery provided");
-assertEq(txt(r3d), "Provide exactly one of: query or semanticQuery.", "neither-mode error wording");
 
 // ══════════════════════════════════════════════════════════════════
 //  4. browse
@@ -265,13 +219,6 @@ const s4b2 = sc(r4b2);
 assertEq(s4b2.keyVariants.length, 5, "key variants page size respected");
 assert(s4b2.keyVariants[0].notation !== s4b.keyVariants[0].notation, "keyOffset produces different first variant");
 
-// Browse nonexistent
-const r4c = await client.callTool({
-  name: "browse",
-  arguments: { notation: "ZZZZZ" },
-});
-assert(r4c.isError === true, "error for nonexistent notation");
-assertEq(txt(r4c), 'Notation "ZZZZZ" not found in Iconclass.', "browse not-found wording");
 
 // ══════════════════════════════════════════════════════════════════
 //  5. resolve
@@ -311,13 +258,6 @@ assert(
   "partial miss surfaced in text content, not just structured",
 );
 
-// All nonexistent
-const r5c = await client.callTool({
-  name: "resolve",
-  arguments: { notation: ["ZZZZZ", "YYYYY"] },
-});
-assert(r5c.isError === true, "error when all notations nonexistent");
-assertEq(txt(r5c), "None of the requested notations were found: ZZZZZ, YYYYY", "resolve all-missing wording names every code");
 
 // ══════════════════════════════════════════════════════════════════
 //  6. expand_keys
@@ -356,13 +296,6 @@ assert(first.keyId?.startsWith("+"), "keyId starts with +");
 assert(first.text.includes("beasts of prey"), "composed text includes base text");
 assert(first.text.includes("(+"), "composed text includes key portion");
 
-// Nonexistent
-const r6b = await client.callTool({
-  name: "expand_keys",
-  arguments: { notation: "ZZZZZ" },
-});
-assert(r6b.isError === true, "error for nonexistent notation");
-assertEq(txt(r6b), 'Notation "ZZZZZ" not found in Iconclass.', "expand_keys not-found wording");
 
 // ══════════════════════════════════════════════════════════════════
 //  7. search_prefix
@@ -595,14 +528,6 @@ assert(notations11c.includes("73D"), `73D (Passion of Christ) in top 10 for "Pas
 // ══════════════════════════════════════════════════════════════════
 
 section("13. expand_keys input validation");
-
-const r12a = await client.callTool({
-  name: "expand_keys",
-  arguments: { notation: "25F23(+46)" },
-});
-assert(r12a.isError === true, "expand_keys rejects key-expanded (+) notation");
-assertEq(txt(r12a), '"25F23(+46)" is a key-expanded notation — expand_keys requires a base notation (e.g. "25F23").',
-  "key-expanded rejection wording names the base notation to use");
 
 // Named variants like 73D82(CROSS) are NOT key-expanded — they should be accepted
 const r12b = await client.callTool({

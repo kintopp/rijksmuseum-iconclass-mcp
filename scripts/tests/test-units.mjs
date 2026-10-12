@@ -1,7 +1,7 @@
 /**
  * Unit tests for critical paths that sit between the pure-function tests and
  * the DB-backed integration suite: UsageStats persistence, ensureDb
- * download/validate/swap, and MRL vector truncation.
+ * download/validate/swap (single-file and chunked), and MRL vector truncation.
  *
  * Run:  node scripts/tests/test-units.mjs
  * Requires: npm run build (imports from dist/)
@@ -77,6 +77,30 @@ function startServer(body) {
   });
 }
 
+/** Start an HTTP server that serves exactly `routes` (path → Buffer) and 404s
+ *  everything else. */
+function startRouteServer(routes) {
+  return new Promise((resolve) => {
+    const server = http.createServer((req, res) => {
+      const body = routes[req.url];
+      res.statusCode = body ? 200 : 404;
+      res.end(body ?? "not found");
+    });
+    server.listen(0, "127.0.0.1", () => resolve(server));
+  });
+}
+
+/** Split `buf` into `n` roughly equal parts named like `split -b` output
+ *  (`<base>.part-aa`, `.part-ab`, …). */
+function splitParts(base, buf, n) {
+  const size = Math.ceil(buf.length / n);
+  const routes = {};
+  for (let i = 0; i < n; i++) {
+    routes[`${base}.part-a${String.fromCharCode(97 + i)}`] = buf.subarray(i * size, (i + 1) * size);
+  }
+  return routes;
+}
+
 function serverUrl(server, suffix = "/db") {
   const { port } = server.address();
   return `http://127.0.0.1:${port}${suffix}`;
@@ -138,13 +162,14 @@ try {
     // 2. record aggregates calls/errors/totalMs/maxMs correctly.
     const fp = path.join(tmpRoot, "stats-2.json");
     const s = new UsageStats(fp);
-    s.record("search", 100, true);
+    // Peak in the middle: a first-value or last-value maxMs would both fail.
+    s.record("search", 10, true);
     s.record("search", 100, true);
     s.record("search", 50, false);
     const t = s.toJSON().tools.search;
     assertEq(t.calls, 3, "record: calls counted");
     assertEq(t.errors, 1, "record: errors counted");
-    assertEq(t.totalMs, 250, "record: totalMs summed");
+    assertEq(t.totalMs, 160, "record: totalMs summed");
     assertEq(t.maxMs, 100, "record: maxMs is the peak");
   }
 
@@ -172,6 +197,11 @@ try {
     assertEq(t.calls, 2, "round-trip: calls loaded");
     assertEq(t.errors, 1, "round-trip: errors loaded");
     assertEq(t.totalMs, 50, "round-trip: totalMs loaded");
+    assertEq(t.maxMs, 42, "round-trip: maxMs loaded");
+    const today = new Date().toISOString().slice(0, 10);
+    assertEq(b.toJSON().daily[today]?.calls, 2, "round-trip: daily bucket loaded");
+    b.record("resolve", 99, true);
+    assertEq(b.toJSON().tools.resolve.calls, 3, "round-trip: loaded counts keep accumulating");
   }
 
   {
@@ -268,6 +298,71 @@ try {
       assert(!dbValidates(dbPath), "case 6: precondition — local file fails validation");
       await callEnsureDb("t6");
       assert(dbValidates(dbPath), "case 6: file replaced and now validates");
+    } finally {
+      server.close();
+    }
+  });
+
+  // Chunked release assets (split-for-release.sh) — the path production uses.
+  // Failure modes: parts reassembled out of order or one dropped; chunks
+  // ignored in favour of the single-file URL; reading past the first missing
+  // part; a stale orphan part from an older, larger build corrupting the file.
+  // The base URL serves garbage throughout, so only a correct reassembly of the
+  // parts can produce a DB that validates.
+  const GARBAGE = Buffer.from("single-file asset must not be used when parts exist");
+
+  await atest("chunked .gz parts → reassembled in order, decompressed, valid", async () => {
+    const gz = zlib.gzipSync(validBuf);
+    const server = await startRouteServer({ "/db.gz": GARBAGE, ...splitParts("/db.gz", gz, 3) });
+    try {
+      const dbPath = setupEnsureDb("c7", serverUrl(server, "/db.gz"));
+      await callEnsureDb("t7");
+      assert(dbValidates(dbPath), "case 7: reassembled gzip DB validates");
+      assertEq(sha256(fs.readFileSync(dbPath)), sha256(validBuf), "case 7: bytes identical to the source DB");
+      assert(!fs.existsSync(dbPath + ".tmp") && !fs.existsSync(dbPath + ".tmp.gz"), "case 7: no temp files left behind");
+    } finally {
+      server.close();
+    }
+  });
+
+  await atest("chunked uncompressed parts → reassembled, valid", async () => {
+    const server = await startRouteServer({ "/db": GARBAGE, ...splitParts("/db", validBuf, 3) });
+    try {
+      const dbPath = setupEnsureDb("c8", serverUrl(server, "/db"));
+      await callEnsureDb("t8");
+      assertEq(sha256(fs.readFileSync(dbPath)), sha256(validBuf), "case 8: bytes identical to the source DB");
+      assert(!fs.existsSync(dbPath + ".tmp") && !fs.existsSync(dbPath + ".tmp.gz"), "case 8: no temp files left behind");
+    } finally {
+      server.close();
+    }
+  });
+
+  await atest("gap in the part sequence → parts after the gap are not used", async () => {
+    // aa + ab are a complete DB; ad sits after a missing ac and is garbage.
+    const parts = splitParts("/db", validBuf, 2);
+    const server = await startRouteServer({ "/db": GARBAGE, ...parts, "/db.part-ad": GARBAGE });
+    try {
+      const dbPath = setupEnsureDb("c9", serverUrl(server, "/db"));
+      await callEnsureDb("t9");
+      assertEq(sha256(fs.readFileSync(dbPath)), sha256(validBuf), "case 9: reassembly stops at the first missing part");
+    } finally {
+      server.close();
+    }
+  });
+
+  await atest("orphan part from an older build → download rejected, local DB preserved", async () => {
+    // Fresh build = aa + ab; ac is the tail of an older, larger build that the
+    // release runbook's prune step would have deleted.
+    const fresh = splitParts("/db.gz", zlib.gzipSync(validBuf), 2);
+    const older = zlib.gzipSync(Buffer.concat([validBuf, crypto.randomBytes(4096)]));
+    const server = await startRouteServer({ ...fresh, "/db.gz.part-ac": older.subarray(older.length / 2) });
+    try {
+      const dbPath = setupEnsureDb("c10", serverUrl(server, "/db.gz"));
+      writeValidDb(dbPath);
+      const hashBefore = sha256(fs.readFileSync(dbPath));
+      await callEnsureDb("t10", { refreshOnStartup: true });
+      assertEq(sha256(fs.readFileSync(dbPath)), hashBefore, "case 10: local file unchanged after a corrupt reassembly");
+      assert(!fs.existsSync(dbPath + ".tmp") && !fs.existsSync(dbPath + ".tmp.gz"), "case 10: no temp files left behind");
     } finally {
       server.close();
     }

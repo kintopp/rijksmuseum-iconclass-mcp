@@ -14,7 +14,7 @@
  * Header and body must agree; the server rejects any disagreement.
  *
  * stdio has no header layer, so there the opening message alone picks the
- * era for the whole connection (section 8). A legacy `initialize` pins
+ * era for the whole connection (section 7). A legacy `initialize` pins
  * 2025-11-25; a modern-enveloped request pins 2026-07-28.
  *
  * Run:  node scripts/tests/test-modern-wire.mjs
@@ -119,14 +119,7 @@ try {
     "every tool still emits both inputSchema and outputSchema"
   );
 
-  section("2. Modern wire — SEP-2549 cache hints");
-
-  // cacheHints is a v2-only free win from the migration and is invisible to the
-  // legacy client, so this is the only place it can be asserted.
-  assertEq(list.body?.result?.ttlMs, 86_400_000, "tools/list carries ttlMs = 24h");
-  assertEq(list.body?.result?.cacheScope, "public", "tools/list carries cacheScope = public");
-
-  section("3. Modern wire — tools/call");
+  section("2. Modern wire — tools/call");
 
   await atest("resolve returns content + structuredContent", async () => {
     const r = await modernCall("resolve", { notation: ["73D6"], lang: "en" });
@@ -179,7 +172,7 @@ try {
     );
   });
 
-  section("4. Modern wire — envelope validation");
+  section("3. Modern wire — envelope validation");
 
   await atest("missing _meta is rejected", async () => {
     const r = await post(
@@ -207,7 +200,7 @@ try {
     );
   });
 
-  section("5. Modern wire — header/body agreement");
+  section("4. Modern wire — header/body agreement");
 
   await atest("absent Mcp-Method header is rejected", async () => {
     const r = await post(
@@ -246,7 +239,7 @@ try {
     assertEq(r.body?.error?.code, -32020, "the wire mix-up is -32020");
   });
 
-  section("6. Modern wire — version negotiation");
+  section("5. Modern wire — version negotiation");
 
   await atest("an unsupported future revision is refused with the supported list", async () => {
     const r = await modernList("2099-01-01");
@@ -258,7 +251,7 @@ try {
     );
   });
 
-  section("7. Legacy wire regression (the claude.ai path today)");
+  section("6. Legacy wire regression (the claude.ai path today)");
 
   await atest("the legacy handshake still negotiates 2025-11-25", async () => {
     const r = await initialize(LEGACY);
@@ -275,13 +268,12 @@ try {
     assertEq(r.body?.result?.protocolVersion, "2025-06-18", "legacy initialize honours 2025-06-18");
   });
 
-  await atest("cache hints stay off the legacy wire", async () => {
+  await atest("legacy tools/list still works", async () => {
     const r = await post(
       { "mcp-protocol-version": LEGACY },
       { jsonrpc: "2.0", id: 1, method: "tools/list", params: {} }
     );
     assertEq(r.body?.result?.tools?.length, 6, "legacy tools/list still returns 6 tools");
-    assertEq(r.body?.result?.ttlMs, undefined, "SEP-2549 ttlMs is not emitted to 2025-era clients");
   });
 } finally {
   await server.stop();
@@ -289,7 +281,7 @@ try {
 
 // ── stdio ───────────────────────────────────────────────────────
 
-section("8. Modern wire over stdio (body-only era selection)");
+section("7. Modern wire over stdio (body-only era selection)");
 
 const modern = await bootStdioServer({ env: fixtureEnv("modern-stdio") });
 try {
@@ -307,13 +299,11 @@ try {
     );
   });
 
-  await atest("tools/list over modern stdio carries SEP-2549 cache hints", async () => {
+  await atest("tools/list over modern stdio returns the tool list", async () => {
     const r = await modern.request({
       jsonrpc: "2.0", id: 2, method: "tools/list", params: { _meta: envelope() },
     });
     assertEq(r.result?.tools?.length, 6, "modern stdio tools/list returns 6 tools");
-    assertEq(r.result?.ttlMs, 86_400_000, "ttlMs reaches stdio clients too");
-    assertEq(r.result?.cacheScope, "public", "cacheScope reaches stdio clients too");
   });
 
   await atest("tools/call over modern stdio returns structuredContent", async () => {
@@ -352,10 +342,9 @@ try {
     legacy.notify({ jsonrpc: "2.0", method: "notifications/initialized" });
   });
 
-  await atest("cache hints stay off legacy stdio", async () => {
+  await atest("legacy stdio tools/list still works", async () => {
     const r = await legacy.request({ jsonrpc: "2.0", id: 2, method: "tools/list", params: {} });
     assertEq(r.result?.tools?.length, 6, "legacy stdio tools/list still returns 6 tools");
-    assertEq(r.result?.ttlMs, undefined, "SEP-2549 ttlMs is not emitted to 2025-era stdio clients");
   });
 } finally {
   await legacy.stop();

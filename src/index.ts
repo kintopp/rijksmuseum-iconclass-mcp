@@ -142,13 +142,6 @@ function createServer(): McpServer {
     { name: SERVER_NAME, version: SERVER_VERSION },
     {
       capabilities: { tools: {} },
-      // The tool list is static per process: the only variance (the
-      // semantic-search availability note in `search`) is fixed at
-      // registration time, and a restart invalidates any client cache anyway.
-      // Emitted only on the 2026-era wire; 2025-era responses are unchanged.
-      cacheHints: {
-        "tools/list": { ttlMs: 86_400_000, cacheScope: "public" },
-      },
       instructions:
         "Iconclass subject classification explorer — a hierarchical taxonomy for art subjects " +
         "covering 1.3 million notations across 13 languages.\n\n" +

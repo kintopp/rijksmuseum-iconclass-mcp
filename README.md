@@ -120,7 +120,7 @@ graph TB
     MCP --> T6["find_artworks"]
 
     T1 -->|"FTS keyword search"| DB["Iconclass DB"]
-    T1 -->|"semantic query"| EMB["EmbeddingModel<br/>(e5-base 768d)"]
+    T1 -->|"semantic query"| EMB["EmbeddingModel<br/>(EmbeddingGemma 2, 768d)"]
     EMB -->|"query vector"| DB
 
     T2 & T3 & T4 & T5 & T6 --> DB

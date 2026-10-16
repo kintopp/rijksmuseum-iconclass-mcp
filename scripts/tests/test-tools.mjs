@@ -431,7 +431,7 @@ const r10 = await client.callTool({
 });
 assert(!r10.isError, `no error (got: ${txt(r10).slice(0, 80)})`);
 const s10 = sc(r10);
-assert(s10.results.length >= 3, `collection-scoped semantic: should fill page (got ${s10.results.length})`);
+assertEq(s10.results.length, 5, "collection-scoped semantic: fills the page");
 for (const entry of s10.results) {
   assert(entry.collections.includes("rijksmuseum"), `semantic+collection: ${entry.notation} has rijksmuseum`);
 }
@@ -450,7 +450,7 @@ const r11sub = await client.callTool({
 });
 if (assert(!r11sub.isError, `parentNotation 73D: no error (got: ${txt(r11sub).slice(0, 80)})`)) {
   const s11sub = sc(r11sub);
-  assert(s11sub.results.length >= 3, `parentNotation 73D: should fill page (got ${s11sub.results.length})`);
+  assertEq(s11sub.results.length, 5, "parentNotation 73D: fills the page");
   assert(s11sub.results.every(r => r.notation.startsWith("73D")), "all results in 73D subtree");
   assert(s11sub.results.every(r => typeof r.similarity === "number"), "all results have similarity scores");
 
@@ -461,19 +461,39 @@ if (assert(!r11sub.isError, `parentNotation 73D: no error (got: ${txt(r11sub).sl
   });
   if (assert(!r11broad.isError, "parentNotation 11F: no error")) {
     const s11broad = sc(r11broad);
-    assert(s11broad.results.length >= 3, `parentNotation 11F: should fill page (got ${s11broad.results.length})`);
+    assertEq(s11broad.results.length, 5, "parentNotation 11F: fills the page");
     assert(s11broad.results.every(r => r.notation.startsWith("11F")), "all results in 11F subtree");
   }
 
-  // A narrow subtree (73D64 has 7 base notations) still returns in-subtree results.
+  // A narrow subtree (73D64 has 7 base notations) still fills a 5-result page.
   const r11narrow = await client.callTool({
     name: "search",
     arguments: { semanticQuery: "angels", parentNotation: "73D64", maxResults: 5 },
   });
   assert(!r11narrow.isError, "narrow parentNotation does not error");
   const s11narrow = sc(r11narrow);
-  assert(s11narrow.results.length > 0, `narrow subtree returns results (got ${s11narrow.results.length})`);
+  assertEq(s11narrow.results.length, 5, "narrow subtree fills the page");
   assert(s11narrow.results.every(r => r.notation.startsWith("73D64")), "narrow subtree results all match prefix");
+
+  // parentNotation is case-insensitive, as on the FTS path (SQL LIKE).
+  const r11lower = await client.callTool({
+    name: "search",
+    arguments: { semanticQuery: "religious suffering", parentNotation: "73d", maxResults: 5 },
+  });
+  if (assert(!r11lower.isError, "lowercase parentNotation: no error")) {
+    assertEq(sc(r11lower).results.map(r => r.notation).join(), s11sub.results.map(r => r.notation).join(),
+      "lowercase parentNotation 73d returns the same results as 73D");
+  }
+}
+
+// Cross-lingual: a German query reaches the English-described crucifixion branch.
+const r11de = await client.callTool({
+  name: "search",
+  arguments: { semanticQuery: "Kreuzigung Christi", maxResults: 3 },
+});
+if (assert(!r11de.isError, "German semantic query: no error")) {
+  assert(sc(r11de).results.some(r => r.notation.startsWith("73D6")),
+    `German "Kreuzigung Christi" → 73D6 (crucifixion) in top 3 (got ${sc(r11de).results.map(r => r.notation).join(", ")})`);
 }
 
 // ══════════════════════════════════════════════════════════════════

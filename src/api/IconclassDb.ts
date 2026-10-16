@@ -1,9 +1,11 @@
 import Database, { type Database as DatabaseType, type Statement } from "better-sqlite3";
-import { createRequire } from "node:module";
 import { escapeFts5, escapeFts5Terms, resolveDbPath, artResearchUrl } from "../utils/db.js";
 import { logInfo, logWarn, logError } from "../utils/log.js";
+import { QUERY_MODEL_ID } from "./EmbeddingModel.js";
+import { VectorIndex } from "./VectorIndex.js";
 
-const require = createRequire(import.meta.url);
+// First-pass width for semantic KNN: an MRL prefix, so its cosine already ranks well.
+const COARSE_DIMS = 256;
 
 /** Escape SQL LIKE wildcards (%, _) and the escape char so notation chars
  *  like '.', ':', '-', '(', ')' and spaces pass through as literals.
@@ -149,10 +151,10 @@ export class IconclassDb {
   private stmtBatchInsert: Statement | null = null;
   private stmtDeleteBatch: Statement | null = null;
   private batchInsertAll: ((ns: string[]) => void) | null = null;
-  private stmtQuantize: Statement | null = null;
-  private stmtKnn: Statement | null = null;
-  private stmtFilteredKnn: Statement | null = null;
-  private stmtPrefixFilteredKnn: Statement | null = null;
+  private _int8Scale = 127;
+  private vectors: VectorIndex | null = null;
+  // Row indices into `vectors` per collection id ("" = any collection), built with it.
+  private collectionRows = new Map<string, Int32Array>();
   private stmtPrefixCollCount: Statement | null = null;
   private stmtPrefixCollPage: Statement | null = null;
 
@@ -271,41 +273,16 @@ export class IconclassDb {
           "SELECT value FROM version_info WHERE key = 'embedding_dimensions'"
         ).get() as { value: string } | undefined;
         this._embeddingDimensions = dimRow ? parseInt(dimRow.value, 10) : 768;
-
-        this.db.prepare("SELECT 1 FROM iconclass_embeddings LIMIT 1").get();
-        const sqliteVec = require("sqlite-vec");
-        sqliteVec.load(this.db);
-
-        this.stmtQuantize = this.db.prepare(
-          "SELECT vec_quantize_int8(vec_normalize(?), 'unit') as v"
-        );
-        this.stmtKnn = this.db.prepare(`
-          SELECT notation, distance FROM vec_iconclass
-          WHERE embedding MATCH vec_int8(?) AND k = ?
-          ORDER BY distance
-        `);
-
-        if (this.stmtGetCollectionCounts) {
-          this.stmtFilteredKnn = this.db.prepare(`
-            SELECT ie.notation,
-                   vec_distance_cosine(vec_int8(ie.embedding), vec_int8(?)) as distance
-            FROM iconclass_embeddings ie
-            WHERE ie.notation IN (SELECT DISTINCT notation FROM counts.collection_counts)
-            ORDER BY distance LIMIT ?
-          `);
+        const meta = Object.fromEntries((this.db.prepare(
+          "SELECT key, value FROM version_info WHERE key IN ('embedding_query_model', 'embedding_int8_scale')"
+        ).all() as { key: string; value: string }[]).map(r => [r.key, r.value]));
+        if (meta.embedding_query_model !== QUERY_MODEL_ID) {
+          const msg = `Iconclass embeddings were built for ${meta.embedding_query_model ?? "an unrecorded query model"}, ` +
+            `not ${QUERY_MODEL_ID} — disabling semantic search`;
+          logWarn(msg);
+          throw new Error(msg);
         }
-
-        // Brute-force cosine over a prefix-restricted subset. The PK b-tree on
-        // notations makes the LIKE scan cheap; replaces the registration.ts
-        // overfetch loop that was paying multiple full-vec0 scans per scoped
-        // semantic query (see #237 follow-up perf review).
-        this.stmtPrefixFilteredKnn = this.db.prepare(`
-          SELECT ie.notation,
-                 vec_distance_cosine(vec_int8(ie.embedding), vec_int8(?)) as distance
-          FROM iconclass_embeddings ie
-          WHERE ie.notation LIKE ? ESCAPE '\\'
-          ORDER BY distance LIMIT ?
-        `);
+        this._int8Scale = parseFloat(meta.embedding_int8_scale ?? "127");
 
         const embCount = (this.db.prepare("SELECT COUNT(*) as n FROM iconclass_embeddings").get() as { n: number }).n;
         const expectedRow = this.db.prepare(
@@ -406,16 +383,7 @@ export class IconclassDb {
       }
       logInfo(`Iconclass DB core pages warmed in ${Date.now() - t0}ms`);
 
-      if (this._hasEmbeddings && this.stmtQuantize && this.stmtKnn) {
-        const t1 = Date.now();
-        const zeros = new Float32Array(this._embeddingDimensions);
-        const quantized = this.stmtQuantize.get(zeros) as { v: Buffer };
-        this.stmtKnn.all(quantized.v, 1);
-        if (this.stmtPrefixFilteredKnn) {
-          this.stmtPrefixFilteredKnn.all(quantized.v, "11F%", 1);
-        }
-        logInfo(`Iconclass embeddings pages warmed in ${Date.now() - t1}ms`);
-      }
+      if (this._hasEmbeddings) this.vectorIndex();
     } catch (err) {
       logWarn("Iconclass DB warmup failed", err);
     }
@@ -442,6 +410,49 @@ export class IconclassDb {
 
   get embeddingDimensions(): number {
     return this._embeddingDimensions;
+  }
+
+  /** Normalise, then quantise with the scale the stored vectors were built at
+   *  (cosine is scale-invariant, so matching it only buys query precision). */
+  private quantize(vec: Float32Array): Int8Array {
+    let norm = 0;
+    for (const v of vec) norm += v * v;
+    const k = norm > 1e-20 ? this._int8Scale / Math.sqrt(norm) : 0;
+    const q = new Int8Array(vec.length);
+    for (let i = 0; i < vec.length; i++) q[i] = Math.max(-127, Math.min(127, Math.round(vec[i] * k)));
+    return q;
+  }
+
+  /** Load every stored vector into memory on first use (~40 MB, a few hundred ms). */
+  private vectorIndex(): VectorIndex {
+    if (this.vectors) return this.vectors;
+    const t0 = Date.now();
+    const rows = this.db!.prepare(
+      "SELECT notation, embedding FROM iconclass_embeddings ORDER BY notation"
+    ).all() as { notation: string; embedding: Buffer }[];
+    const index = new VectorIndex(rows.map(r => r.notation), rows.map(r => r.embedding),
+      this._embeddingDimensions, Math.min(COARSE_DIMS, this._embeddingDimensions));
+    if (this.stmtGetCollectionCounts) {
+      const rowOf = new Map(index.notations.map((n, i) => [n, i]));
+      const byCollection = new Map<string, number[]>();
+      const presence = this.db!.prepare(
+        "SELECT DISTINCT collection_id, notation FROM counts.collection_counts"
+      ).all() as { collection_id: string; notation: string }[];
+      const any = new Set<number>();
+      for (const { collection_id, notation } of presence) {
+        const r = rowOf.get(notation);
+        if (r === undefined) continue;
+        any.add(r);
+        let list = byCollection.get(collection_id);
+        if (!list) byCollection.set(collection_id, list = []);
+        list.push(r);
+      }
+      this.collectionRows.set("", Int32Array.from(any).sort());
+      for (const [id, list] of byCollection) this.collectionRows.set(id, Int32Array.from(list).sort());
+    }
+    this.vectors = index;
+    logInfo(`Iconclass vector index: ${index.size.toLocaleString()} vectors loaded in ${Date.now() - t0}ms`);
+    return index;
   }
 
   get collections(): CollectionInfo[] {
@@ -656,53 +667,37 @@ export class IconclassDb {
       parentNotation?: string;
     } = {},
   ): IconclassSemanticResult | null {
-    if (!this.db || !this._hasEmbeddings || !this.stmtQuantize) return null;
+    if (!this.db || !this._hasEmbeddings) return null;
 
     const { lang = "en", onlyWithArtworks = false, collectionId, parentNotation } = opts;
-    const quantized = this.stmtQuantize.get(queryEmbedding) as { v: Buffer };
+    const index = this.vectorIndex();
 
-    let rows: { notation: string; distance: number }[];
-
-    // Three execution paths chosen by which filters are set; collectionId is
-    // always post-filtered since it requires a JOIN against the counts DB.
-    // When parentNotation has already narrowed via SQL, the collection-presence
-    // overfetch is much smaller (k * 5 vs k * 20).
-    const needsCollectionPostFilter = collectionId || onlyWithArtworks;
-    const overfetchMultiplier = parentNotation ? 5 : 20;
-    const fetchK = needsCollectionPostFilter
-      ? Math.min(k * overfetchMultiplier, 4096)
-      : Math.min(k, 4096);
-
-    if (parentNotation && this.stmtPrefixFilteredKnn) {
-      rows = this.stmtPrefixFilteredKnn.all(quantized.v, escapeLikePrefix(parentNotation), fetchK) as { notation: string; distance: number }[];
-    } else if (onlyWithArtworks && this.stmtFilteredKnn) {
-      rows = this.stmtFilteredKnn.all(quantized.v, fetchK) as { notation: string; distance: number }[];
-    } else if (this.stmtKnn) {
-      rows = this.stmtKnn.all(quantized.v, fetchK) as { notation: string; distance: number }[];
-    } else {
-      return null;
-    }
-
-    // Batch-filter by collectionId/onlyWithArtworks using temp table + JOIN.
-    // When parentNotation already restricted via SQL, this still applies any
-    // additional collection constraints on the smaller candidate set.
-    const presenceCache = new Map<string, Set<string>>();
-    let candidates = rows;
+    // Filters narrow the candidate rows before ranking, so every filter
+    // combination returns the true top-k rather than a post-filtered remainder.
+    let candidates: Int32Array | undefined;
     if (collectionId || onlyWithArtworks) {
-      const kept = new Set(
-        this.fetchPresenceForSort(rows.map(r => r.notation), presenceCache, collectionId, onlyWithArtworks)
-          .map(c => c.notation)
-      );
-      candidates = rows.filter(r => kept.has(r.notation));
+      candidates = this.collectionRows.get(collectionId ?? "") ?? new Int32Array(0);
     }
-    candidates = candidates.slice(0, k);
+    if (parentNotation) {
+      // Case-insensitive, like the LIKE prefix filter on the FTS path.
+      const scope = parentNotation.toLowerCase();
+      const inScope = (r: number) => index.notations[r].toLowerCase().startsWith(scope);
+      candidates = candidates
+        ? candidates.filter(inScope)
+        : Int32Array.from(index.notations.keys()).filter(inScope);
+    }
+    const hits = index.search(this.quantize(queryEmbedding), Math.min(k, 4096), candidates);
+
+    // Batch-load collection presence for the hits so resolveEntry needn't query per row.
+    const presenceCache = new Map<string, Set<string>>();
+    this.fetchPresenceForSort(hits.map(h => h.notation), presenceCache);
 
     const textCache = new Map<string, string | null>();
-    const results = candidates
-      .map((row) => {
-        const entry = this.resolveEntry(row.notation, lang, textCache, presenceCache);
+    const results = hits
+      .map((hit) => {
+        const entry = this.resolveEntry(hit.notation, lang, textCache, presenceCache);
         if (!entry) return null;
-        return { ...entry, similarity: Math.round((1 - row.distance) * 1000) / 1000 };
+        return { ...entry, similarity: Math.round(hit.similarity * 1000) / 1000 };
       })
       .filter((e): e is IconclassEntry & { similarity: number } => e !== null);
 

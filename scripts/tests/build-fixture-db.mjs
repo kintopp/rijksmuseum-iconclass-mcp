@@ -27,8 +27,8 @@ const GENERATED_DIR = path.join(FIXTURE_DIR, ".generated");
 const MAIN_SCHEMA = path.join(FIXTURE_DIR, "iconclass-schema.sql");
 const COUNTS_SCHEMA = path.join(FIXTURE_DIR, "counts-schema.sql");
 
-// FTS5 shadow tables are recreated by their virtual table. The vec0 table and
-// iconclass_embeddings stay out, so the server never enables semantic search and
+// FTS5 shadow tables are recreated by their virtual table. iconclass_embeddings
+// (and the vec0 table of pre-v4 builds) stay out, so the server never enables semantic search and
 // never loads the embedding model.
 const EXCLUDED = /^(sqlite_|vec_iconclass|iconclass_embeddings$)|(_data|_idx|_docsize|_config|_content)$/;
 
@@ -312,7 +312,7 @@ export function buildFixture(name = "default") {
   main.exec("INSERT INTO texts_fts(texts_fts) VALUES('rebuild')");
   main.exec("INSERT INTO keywords_fts(keywords_fts) VALUES('rebuild')");
   insertAll(main, "INSERT INTO version_info (key, value) VALUES (?, ?)", [
-    ["schema_version", "3"], ["release_tag", "fixture"],
+    ["schema_version", "4"], ["release_tag", "fixture"],
   ]);
   main.close();
 

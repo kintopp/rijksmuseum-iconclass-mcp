@@ -10,12 +10,10 @@
  */
 
 import Database from "better-sqlite3";
-import { createRequire } from "node:module";
 import { performance } from "node:perf_hooks";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const require = createRequire(import.meta.url);
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 
 // ─── Open DB (mirrors IconclassDb constructor) ─────────────────────
@@ -26,8 +24,6 @@ db.pragma("mmap_size = 4294967296");
 const countsPath = path.join(ROOT, "data/iconclass-counts.db");
 db.exec(`ATTACH DATABASE '${countsPath}' AS counts`);
 
-const sqliteVec = require("sqlite-vec");
-sqliteVec.load(db);
 
 // ─── Prepared statements (same as IconclassDb) ────────────────────
 

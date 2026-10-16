@@ -89,16 +89,16 @@ Embeddings enable the `semanticQuery` parameter. Generation uses [Modal](https:/
 uv pip install modal sqlite-vec numpy
 modal setup  # one-time auth
 
-modal run scripts/generate-embeddings-modal.py
+modal run scripts/generate-embeddings-modal.py   # → data/iconclass-gemma.npz
+python scripts/import-gemma-embeddings.py --npz data/iconclass-gemma.npz --db data/iconclass.db
 ```
 
-This embeds ~40K base notations using `intfloat/multilingual-e5-base` (768d, int8). Takes ~4 minutes on an A10G GPU. Key-expanded notations are not embedded — they are searchable via FTS.
+This embeds ~40K base notations with `google/embeddinggemma-2` (768d) on an A10G GPU; the import step quantises them to int8 and records the document and query model revisions in `version_info`. Key-expanded notations are not embedded — they are searchable via FTS.
 
-The default model is public, so no Hugging Face token is required. To use a private or gated model, create a Modal secret containing `HF_TOKEN` and point the script at it:
+The script reads `HF_TOKEN` from a Modal secret (default name `huggingface-secret`, override with `HF_SECRET_NAME`):
 
 ```bash
 modal secret create huggingface-secret HF_TOKEN=hf_...
-HF_SECRET_NAME=huggingface-secret modal run scripts/generate-embeddings-modal.py
 ```
 
 ### Releasing the database
@@ -132,7 +132,8 @@ The server's download logic auto-detects chunked assets (`.part-aa`, `.part-ab`,
 | `ICONCLASS_DB_URL` | — | URL to download main DB if missing (supports `.gz`) |
 | `COUNTS_DB_PATH` | `data/iconclass-counts.db` | Sidecar database (artwork counts) |
 | `COUNTS_DB_URL` | — | URL to download sidecar DB if missing (supports `.gz`) |
-| `EMBEDDING_MODEL_ID` | `kintopp/multilingual-e5-base-iconclass` | HuggingFace model for query embedding |
+| `EMBEDDING_MODEL_DTYPE` | `q8` | Query encoder ONNX precision: `q8` ≈ +480 MB RSS / ~120 ms per query on Railway, `fp32` ≈ +1 GB / ~28 ms |
+| `EMBEDDING_THREADS` | `2` | onnxruntime intra-op threads for the query encoder (it otherwise sizes to visible cores, not the container's CPU quota) |
 | `HF_HOME` | — | HuggingFace cache directory |
 | `ALLOWED_ORIGINS` | `*` | CORS origins for HTTP mode |
 | `STRUCTURED_CONTENT` | `true` | Set `false` to disable `outputSchema` |
@@ -158,7 +159,7 @@ In HTTP mode (`PORT` set or `--http`):
 | FTS search (844 hits) | ~7ms | ~60ms | "crucifixion" |
 | FTS search (8.5K hits) | ~26ms | ~85ms | "horse" |
 | FTS search (28.7K hits) | ~137ms | ~203ms | "portrait" |
-| Semantic search | ~51ms | ~115ms | vec0 KNN over 40K embeddings + query encoding |
+| Semantic search | ~200ms | — | Query encoding (q8, ~180 ms on M4) + in-memory two-pass KNN (~20 ms) |
 | Browse | ~1ms | ~54ms | B-tree lookup + child resolution |
 | Browse with key variants | ~1ms | ~58ms | Default page of 25 key variants |
 | Resolve (batch of 15) | ~1ms | ~54ms | 15 notations with full metadata |
@@ -172,9 +173,9 @@ In HTTP mode (`PORT` set or `--http`):
 
 ### Embedding model
 
-The server uses [`intfloat/multilingual-e5-base`](https://huggingface.co/intfloat/multilingual-e5-base) for semantic search — a 278M-parameter multilingual model that produces 768-dimensional embeddings. It was chosen because it supports 100+ languages and runs efficiently on CPU via 8-bit ONNX quantisation. The query encoder is [`kintopp/multilingual-e5-base-iconclass`](https://huggingface.co/kintopp/multilingual-e5-base-iconclass), a copy whose 250K-piece vocabulary is trimmed to the pieces Iconclass texts and common query languages use — about 0.55 GB less memory, identical vectors for those inputs. The base variant (768d) was preferred over the small variant (384d) for better discrimination between closely related concepts.
+The server uses [`google/embeddinggemma-2`](https://huggingface.co/google/embeddinggemma-2) for semantic search — the same model as the Rijksmuseum server, so query and notation vectors share one 768-dimensional space across both. Notations are embedded as documents (`title: none | text: …`) and queries with the `task: search result | query: ` prefix. At query time the server loads only the text tower of the pinned [`onnx-community/embeddinggemma-2-ONNX`](https://huggingface.co/onnx-community/embeddinggemma-2-ONNX) export; the vision and audio encoders would add ~325 MB for nothing. The DB records which query model its vectors were built for, and the server disables semantic search rather than rank against a mismatched model.
 
-E5-base has a 512-token context window. The composite texts fed to the model (label + Dutch label + keywords + category path) have a mean length of 122 and a 99th percentile of 298. A single entry in the taxonomy tops out at 478 tokens. The model's token limit is therefore not a constraint.
+The composite texts (label + Dutch label + keywords + category path) average 105 Gemma tokens, with a 99th percentile of 246 and a maximum of 381 — well inside the 1,024-token cap used when embedding them.
 
 ### Semantic search and Iconclass structure
 
@@ -216,9 +217,9 @@ At ~350 bytes per entry, a full 250-entry subtree is ~85 KB (~25K tokens) — su
 
 81% of base notations have 25 or fewer key variants, so the default page of 25 captures most notations in a single call. The maximum of 335 matches the largest notation in the database and eliminates pagination entirely — important because each pagination round-trip costs the user several seconds of LLM reasoning time, far more than the ~9 ms the database needs to resolve 335 variants.
 
-#### Semantic search with collection filters
+#### Semantic search ranking and filters
 
-When `collectionId` or `onlyWithArtworks` is set, the semantic path over-fetches from the KNN index (up to `k × 20`, capped at 4,096 candidates) and then batch-filters by collection presence before resolving entries. This ensures the requested page fills reliably even when the target collection covers a small fraction of the embedding space. Without a filter, the index returns exactly `k` neighbors with no over-fetch.
+The server holds all ~40K int8 vectors in memory (~40 MB, loaded during background warm-up) and ranks them in two passes: cosine over the first 256 dimensions (an MRL prefix) picks 500 candidates, which are rescored on the full 768. `collectionId`, `onlyWithArtworks` and `parentNotation` narrow the candidate rows *before* ranking, so a filtered page holds the true top-k within the filter rather than what survives a post-filter. Filtered sets of ≤2,000 rows skip the first pass and are ranked exactly.
 
 #### Resolve batch limit
 

@@ -1,39 +1,33 @@
 #!/usr/bin/env python3
 """
-Generate multilingual-e5-base embeddings for Iconclass base notations using a Modal cloud GPU.
+Generate EmbeddingGemma 2 embeddings for Iconclass base notations on a Modal GPU.
 
 Only base notations (~40K) are embedded — key-expanded notations (1.3M) are
 searchable via FTS but not embedded, since their meaning is compositional
 (base concept + key modifier) and FTS handles keyword matching.
 
-Splits work into four phases:
   Phase 1 (local):     Build composite texts from iconclass.db (base notations only)
-  Phase 2 (cloud GPU): Embed texts in parallel batches on Modal T4
-  Phase 3 (local):     Write int8 embeddings back into iconclass.db
-  Phase 4 (cloud GPU): Validate with test queries
+  Phase 2 (cloud GPU): Embed them as documents ("title: none | text: …") on an A10G
+  Phase 3 (local):     Write float16 vectors to an npz; sanity-check a few queries
+
+Then load the npz into the DB with scripts/import-gemma-embeddings.py, which
+quantises to int8 and records the model revisions in version_info.
 
 Usage:
-    modal run scripts/generate-embeddings-modal.py
-    modal run scripts/generate-embeddings-modal.py --resume
-    modal run scripts/generate-embeddings-modal.py --limit 1000
-    modal run scripts/generate-embeddings-modal.py --validate-only
+    ~/miniconda3/envs/embeddings/bin/modal run scripts/generate-embeddings-modal.py
+    ~/miniconda3/envs/embeddings/bin/modal run scripts/generate-embeddings-modal.py --limit 1000
 
 Prerequisites:
-    pip install modal sqlite-vec numpy    # in the same Python env
-    modal setup                           # one-time auth (free $30/mo tier)
+    pip install modal numpy    # in the same Python env
+    modal setup                # one-time auth
+    A Modal secret named by HF_SECRET_NAME (default huggingface-secret) holding HF_TOKEN.
 
-Optional:
-    export HF_SECRET_NAME=huggingface-secret
-        Use a Modal secret (containing HF_TOKEN) for Hugging Face access.
-        Only needed for private/gated models; the default model is public.
-
-Output: Adds iconclass_embeddings + vec_iconclass tables to existing data/iconclass.db
+Output: data/iconclass-gemma.npz (object_number = notation, vec = float16 768d, L2-normalised)
 """
 
 import os
 import sqlite3
 import time
-from datetime import datetime, timezone
 from pathlib import Path
 
 import modal
@@ -44,42 +38,41 @@ import numpy as np
 SCRIPT_DIR = Path(__file__).parent
 PROJECT_DIR = SCRIPT_DIR.parent
 DEFAULT_ICONCLASS_DB = PROJECT_DIR / "data" / "iconclass.db"
+DEFAULT_OUT = PROJECT_DIR / "data" / "iconclass-gemma.npz"
 
-MODEL_NAME = "intfloat/multilingual-e5-base"
-DIMENSIONS = 768  # e5-base native output
-DOCUMENT_PREFIX = "passage: "
-QUERY_PREFIX = "query: "
-COMMIT_BATCH = 5000
-MODAL_BATCH_SIZE = 512  # A10G has 24 GB VRAM, plenty for e5-base 768d
+# Must match MODEL / MODEL_REVISION in scripts/import-gemma-embeddings.py.
+MODEL_NAME = "google/embeddinggemma-2"
+REVISION = "914f7f89142e33e77833254d9c9b90c3cef7303b"
+TEXT_MAX_TOKENS = 1024
+MODAL_BATCH_SIZE = 512
 
 
 # ─── Modal app ──────────────────────────────────────────────────────────
 
-app = modal.App("iconclass-embeddings-base")
+app = modal.App("iconclass-embeddings-gemma2")
 
-# Hugging Face token is OPTIONAL — multilingual-e5-base is a public model.
-# Set HF_SECRET_NAME to a Modal secret name (containing HF_TOKEN) only if you
-# need authenticated access (e.g. private/gated models or higher rate limits).
-# Defaults to no secret so a fresh `modal setup` works out of the box.
-HF_SECRET_NAME = os.environ.get("HF_SECRET_NAME")
-hf_secrets = [modal.Secret.from_name(HF_SECRET_NAME)] if HF_SECRET_NAME else []
+HF_SECRET_NAME = os.environ.get("HF_SECRET_NAME", "huggingface-secret")
+hf_secrets = [modal.Secret.from_name(HF_SECRET_NAME)]
 
 
 def download_model():
     """Download model weights at image build time (cached in image layer)."""
     from sentence_transformers import SentenceTransformer
-    SentenceTransformer(MODEL_NAME)
+    SentenceTransformer(MODEL_NAME, revision=REVISION, config_kwargs={"audio_config": None})
 
 
 gpu_image = (
     modal.Image.debian_slim(python_version="3.11")
     .pip_install(
-        "sentence-transformers>=3.0",
-        "transformers>=4.46",
-        "torch",
+        "transformers==5.19.0",
+        "sentence-transformers==6.1.0",
+        "torch==2.10.0",
+        "torchvision==0.25.0",
+        "pillow",
         "numpy",
     )
     .run_function(download_model, secrets=hf_secrets)
+    .env({"HF_HUB_OFFLINE": "1"})
 )
 
 
@@ -87,45 +80,25 @@ gpu_image = (
 class Embedder:
     @modal.enter()
     def load(self):
-        """Load model onto GPU when container starts."""
+        import torch
         from sentence_transformers import SentenceTransformer
-        self.model = SentenceTransformer(MODEL_NAME, device="cuda")
-        self.model.encode(["warmup"], normalize_embeddings=True)
+        # bf16, never fp16: the model's activations overflow fp16 into NaNs
+        self.model = SentenceTransformer(MODEL_NAME, revision=REVISION, device="cuda",
+                                         config_kwargs={"audio_config": None},
+                                         model_kwargs={"torch_dtype": torch.bfloat16})
+        self.model.max_seq_length = TEXT_MAX_TOKENS
 
     @modal.method()
-    def embed(self, texts: list[str]) -> bytes:
-        """Embed document texts → int8 quantize → flat bytes."""
-        import numpy as np
-
-        prefixed = [f"{DOCUMENT_PREFIX}{t}" for t in texts]
-        embs = self.model.encode(prefixed, normalize_embeddings=True, show_progress_bar=False)
-
-        embs_int8 = np.clip(embs * 127, -127, 127).astype(np.int8)
-        return embs_int8.tobytes()
+    def embed_documents(self, texts: list[str]) -> np.ndarray:
+        vecs = self.model.encode_document(texts, batch_size=64, normalize_embeddings=True, convert_to_numpy=True)
+        return vecs.astype(np.float16)
 
     @modal.method()
-    def embed_queries(self, queries: list[str]) -> bytes:
-        """Embed query texts (with query prefix) → int8 → flat bytes."""
-        import numpy as np
-
-        prefixed = [f"{QUERY_PREFIX}{q}" for q in queries]
-        embs = self.model.encode(prefixed, normalize_embeddings=True, show_progress_bar=False)
-
-        embs_int8 = np.clip(embs * 127, -127, 127).astype(np.int8)
-        return embs_int8.tobytes()
+    def embed_queries(self, texts: list[str]) -> np.ndarray:
+        return self.model.encode_query(texts, normalize_embeddings=True, convert_to_numpy=True).astype(np.float32)
 
 
 # ─── Local helpers (run on your Mac) ────────────────────────────────────
-
-
-def open_vec_db(path: str) -> sqlite3.Connection:
-    """Open a SQLite connection with the sqlite-vec extension loaded."""
-    import sqlite_vec
-    conn = sqlite3.connect(path)
-    conn.enable_load_extension(True)
-    sqlite_vec.load(conn)
-    conn.enable_load_extension(False)
-    return conn
 
 
 def load_iconclass_texts(db_path: str) -> list[tuple[str, str]]:
@@ -231,103 +204,26 @@ def load_iconclass_texts(db_path: str) -> list[tuple[str, str]]:
     return results
 
 
-def ensure_tables(conn: sqlite3.Connection):
-    """Create embedding tables if they don't exist."""
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS iconclass_embeddings (
-            notation  TEXT PRIMARY KEY,
-            embedding BLOB NOT NULL
-        )
-    """)
-    conn.execute(f"""
-        CREATE VIRTUAL TABLE IF NOT EXISTS vec_iconclass USING vec0(
-            notation TEXT PRIMARY KEY,
-            embedding int8[{DIMENSIONS}] distance_metric=cosine
-        )
-    """)
-
-
-def _flush_batch(conn, regular_rows, vec_rows):
-    """Insert a batch into both tables."""
-    conn.executemany(
-        "INSERT OR REPLACE INTO iconclass_embeddings (notation, embedding) VALUES (?, ?)",
-        regular_rows,
-    )
-    # vec0: DELETE then INSERT (INSERT OR REPLACE is broken, sqlite-vec #259)
-    conn.executemany(
-        "DELETE FROM vec_iconclass WHERE notation = ?",
-        [(n,) for n, _ in vec_rows],
-    )
-    conn.executemany(
-        "INSERT INTO vec_iconclass (notation, embedding) VALUES (?, vec_int8(?))",
-        vec_rows,
-    )
-    conn.commit()
-
-
-def validate(db_path: str, embedder: Embedder):
-    """Run test queries: embed on Modal, KNN search locally."""
-    conn = open_vec_db(db_path)
-    try:
-        count = conn.execute("SELECT COUNT(*) FROM iconclass_embeddings").fetchone()[0]
-    except Exception:
-        print("  No iconclass_embeddings table found — run without --validate-only first.")
-        conn.close()
-        return
-
-    vec_count = conn.execute("SELECT COUNT(*) FROM vec_iconclass").fetchone()[0]
-    size_mb = os.path.getsize(db_path) / (1024 * 1024)
-    print(f"\n  Database: {size_mb:.1f} MB, {count:,} embeddings, {vec_count:,} vec0 rows")
-    if count != vec_count:
-        print(f"  WARNING: table mismatch! iconclass_embeddings={count:,}, vec_iconclass={vec_count:,}")
-
+def validate(db_path: str, notations: list[str], vecs: np.ndarray, embedder) -> None:
+    """Print the top 5 notations for a few test queries (exact cosine over the npz)."""
     queries = [
         "dogs and domestic animals",
         "crucifixion of Christ",
-        "flowers and plants",
+        "Kreuzigung Christi",
         "ships and naval vessels",
         "portrait of a woman",
-        "musical instruments",
-        "landscape with mountains",
         "mythological creatures",
     ]
-
-    # Embed all queries in one Modal call
-    query_bytes = embedder.embed_queries.remote(queries)
-    query_embs = np.frombuffer(query_bytes, dtype=np.int8).reshape(len(queries), DIMENSIONS)
-
-    for i, query in enumerate(queries):
-        qblob = query_embs[i].tobytes()
-
-        # vec0 KNN path
-        knn_rows = conn.execute("""
-            SELECT notation, distance FROM vec_iconclass
-            WHERE embedding MATCH vec_int8(?) AND k = 5
-            ORDER BY distance
-        """, (qblob,)).fetchall()
-
-        # Brute-force path (cross-check top-1)
-        bf_rows = conn.execute("""
-            SELECT ie.notation,
-                   vec_distance_cosine(vec_int8(ie.embedding), vec_int8(?)) as distance
-            FROM iconclass_embeddings ie ORDER BY distance LIMIT 1
-        """, (qblob,)).fetchall()
-
+    conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+    docs = vecs.astype(np.float32)
+    for query, q in zip(queries, embedder.embed_queries.remote(queries)):
+        sims = docs @ q
         print(f'\n  Query: "{query}"')
-        print(f"  KNN (vec0):")
-        for notation, dist in knn_rows:
+        for i in np.argsort(-sims)[:5]:
             label = conn.execute(
-                "SELECT text FROM texts WHERE notation = ? AND lang = 'en' LIMIT 1",
-                (notation,)
+                "SELECT text FROM texts WHERE notation = ? AND lang = 'en' LIMIT 1", (notations[i],)
             ).fetchone()
-            label_str = label[0] if label else notation
-            sim = 1 - dist
-            print(f"    [{sim:.3f}] {notation} — {label_str}")
-
-        if knn_rows and bf_rows:
-            match = "✓" if knn_rows[0][0] == bf_rows[0][0] else "✗ MISMATCH"
-            print(f"  {match} Top-1 KNN={knn_rows[0][0]} BF={bf_rows[0][0]}")
-
+            print(f"    [{sims[i]:.3f}] {notations[i]} — {label[0] if label else notations[i]}")
     conn.close()
 
 
@@ -335,127 +231,37 @@ def validate(db_path: str, embedder: Embedder):
 
 
 @app.local_entrypoint()
-def main(
-    resume: bool = False,
-    limit: int = 0,
-    batch_size: int = MODAL_BATCH_SIZE,
-    validate_only: bool = False,
-):
+def main(limit: int = 0, batch_size: int = MODAL_BATCH_SIZE, out: str = str(DEFAULT_OUT)):
     start = time.time()
     db_path = str(DEFAULT_ICONCLASS_DB)
-
-    print(f"Iconclass embeddings via Modal (T4 GPU)")
-    print(f"  Model: {MODEL_NAME} ({DIMENSIONS}d)")
-    print(f"  Database: {db_path}")
+    print(f"Iconclass embeddings via Modal: {MODEL_NAME}@{REVISION[:7]}")
 
     if not os.path.exists(db_path):
         print(f"ERROR: iconclass.db not found at {db_path}")
         print("Run scripts/build-iconclass-db.py first.")
         return
 
-    embedder = Embedder()
-
-    if validate_only:
-        validate(db_path, embedder)
-        return
-
-    # ── Phase 1: Build composite texts (local) ────────────────────────
     print("\nPhase 1: Building composite texts from iconclass.db...")
     all_texts = load_iconclass_texts(db_path)
     if limit > 0:
         all_texts = all_texts[:limit]
         print(f"  --limit {limit}: using first {len(all_texts):,} notations")
 
-    # ── Resume filtering (local) ──────────────────────────────────────
-    if resume:
-        try:
-            conn = open_vec_db(db_path)
-            existing_reg = {r[0] for r in conn.execute("SELECT notation FROM iconclass_embeddings")}
-            existing_vec = {r[0] for r in conn.execute("SELECT notation FROM vec_iconclass")}
-            existing = existing_reg & existing_vec
-            conn.close()
-            all_texts = [(n, t) for n, t in all_texts if n not in existing]
-            print(f"  Resume: {len(existing):,} already done, {len(all_texts):,} remaining")
-        except Exception:
-            print("  Resume: no existing embedding tables found, starting fresh")
-
-    if not all_texts:
-        print("Nothing to embed!")
-        validate(db_path, embedder)
-        return
-
-    # ── Phase 2: Embed on Modal GPU ───────────────────────────────────
     chunks = [all_texts[i:i + batch_size] for i in range(0, len(all_texts), batch_size)]
-    text_chunks = [[t for _, t in chunk] for chunk in chunks]
+    print(f"\nPhase 2: Embedding {len(all_texts):,} texts in {len(chunks)} batches...")
+    embedder = Embedder()
+    parts = list(embedder.embed_documents.map([[t for _, t in c] for c in chunks]))
+    vecs = np.concatenate(parts)
+    notations = [n for n, _ in all_texts]
+    if np.isnan(vecs).any():
+        raise SystemExit("NaN in embeddings — check the model dtype (must be bf16, not fp16)")
 
-    print(f"\nPhase 2: Embedding {len(all_texts):,} texts in {len(chunks)} batches on Modal T4...")
-
-    # ── Phase 3: Write to iconclass.db ────────────────────────────────
-    conn = open_vec_db(db_path)
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA synchronous=NORMAL")
-    ensure_tables(conn)
-
-    total_inserted = 0
-    batch_rows_regular = []
-    batch_rows_vec = []
-    t0 = time.time()
-
-    for batch_idx, emb_bytes in enumerate(embedder.embed.map(text_chunks)):
-        chunk = chunks[batch_idx]
-        n = len(chunk)
-        embs = np.frombuffer(emb_bytes, dtype=np.int8).reshape(n, DIMENSIONS)
-
-        for j, (notation, _text) in enumerate(chunk):
-            blob = embs[j].tobytes()
-            batch_rows_regular.append((notation, blob))
-            batch_rows_vec.append((notation, blob))
-            total_inserted += 1
-
-        if len(batch_rows_regular) >= COMMIT_BATCH:
-            _flush_batch(conn, batch_rows_regular, batch_rows_vec)
-            batch_rows_regular.clear()
-            batch_rows_vec.clear()
-
-        elapsed = time.time() - t0
-        done = min((batch_idx + 1) * batch_size, len(all_texts))
-        rate = done / elapsed if elapsed > 0 else 0
-        pct = done / len(all_texts) * 100
-        print(f"  {done:,}/{len(all_texts):,} ({pct:.1f}%) — {rate:.0f} texts/sec")
-
-    # Flush remaining
-    if batch_rows_regular:
-        _flush_batch(conn, batch_rows_regular, batch_rows_vec)
-
-    # ── Update version_info ───────────────────────────────────────────
-    total_count = conn.execute("SELECT COUNT(*) FROM iconclass_embeddings").fetchone()[0]
-    meta = [
-        ("embedding_model", MODEL_NAME),
-        ("embedding_dimensions", str(DIMENSIONS)),
-        ("embedding_count", str(total_count)),
-        ("embeddings_built_at", datetime.now(timezone.utc).isoformat()),
-    ]
-    conn.executemany("INSERT OR REPLACE INTO version_info (key, value) VALUES (?, ?)", meta)
-    conn.commit()
-
-    elapsed = time.time() - t0
-    print(f"\nPhase 2+3 done: {total_inserted:,} embeddings in {elapsed:.1f}s")
-
-    # VACUUM
-    print("Running VACUUM...")
-    conn.execute("VACUUM")
-    conn.close()
-
-    size_mb = os.path.getsize(db_path) / (1024 * 1024)
-    total_elapsed = time.time() - start
-    print(f"Database: {db_path} ({size_mb:.1f} MB)")
-    print(f"Total time: {total_elapsed:.1f}s")
-
-    # ── Phase 4: Validate ─────────────────────────────────────────────
-    print("\nPhase 4: Validation...")
-    validate(db_path, embedder)
+    np.savez(out, art_id=np.full(len(notations), -1), object_number=np.array(notations), vec=vecs)
+    print(f"\nPhase 3: wrote {out} ({len(notations):,} × {vecs.shape[1]}d) in {time.time() - start:.0f}s")
+    validate(db_path, notations, vecs, embedder)
+    print(f"\nNext: python scripts/import-gemma-embeddings.py --npz {out} --db {db_path}")
 
 
 if __name__ == "__main__":
-    print("Use: modal run scripts/generate-embeddings-modal.py [--resume] [--limit N]")
+    print("Use: modal run scripts/generate-embeddings-modal.py [--limit N]")
     print("Not: python scripts/generate-embeddings-modal.py")

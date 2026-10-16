@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Wake-timing probe — verifies HTTP mode answers /health + the MCP `initialize`
-// handshake BEFORE the e5-base embedding model finishes loading. That property
+// handshake BEFORE the embedding model finishes loading. That property
 // is what makes Railway scale-to-zero (App Sleeping) viable: a cold wake must
 // answer the client's connect handshake within its timeout, not be held while
 // the ~seconds-long ONNX model load + DB mmap warm complete.

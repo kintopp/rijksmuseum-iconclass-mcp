@@ -24,13 +24,12 @@
     "warm-cache": "node scripts/warm-cache-local.mjs --validate"
   },
   "dependencies": {
-    "@huggingface/transformers": "4.2.0",
+    "@huggingface/transformers": "4.3.1",
     "@modelcontextprotocol/server": "^2.0.0",
     "better-sqlite3": "^12.6.2",
     "compression": "^1.8.1",
     "cors": "^2.8.5",
     "express": "^5.1.0",
-    "sqlite-vec": "0.1.9",
     "zod": "^4.0.0"
   },
   "devDependencies": {
@@ -43,5 +42,8 @@
     "eslint": "^10.0.0",
     "typescript": "^6.0.0",
     "typescript-eslint": "^8.58.0"
+  },
+  "overrides": {
+    "onnxruntime-node": "1.24.3"
   }
 }

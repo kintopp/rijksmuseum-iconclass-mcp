@@ -1,7 +1,14 @@
 /**
  * Unit tests for critical paths that sit between the pure-function tests and
  * the DB-backed integration suite: UsageStats persistence, ensureDb
- * download/validate/swap (single-file and chunked), and MRL vector truncation.
+ * download/validate/swap (single-file and chunked), MRL vector truncation, and
+ * the in-memory two-pass KNN (VectorIndex).
+ *
+ * VectorIndex failure modes: results not in descending true-cosine order (on
+ * either the small exact path or the two-pass path); `candidates` ignored so
+ * filtered-out rows leak in; k > candidates padding or duplicating rows; empty
+ * candidates / k = 0 throwing; the full-vector rescore skipped, leaving the
+ * prefix order; similarity not equal to the true cosine.
  *
  * Run:  node scripts/tests/test-units.mjs
  * Requires: npm run build (imports from dist/)
@@ -20,6 +27,7 @@ import Database from "better-sqlite3";
 import { UsageStats } from "../../dist/utils/UsageStats.js";
 import { ensureDb } from "../../dist/utils/db.js";
 import { mrlTruncate } from "../../dist/api/EmbeddingModel.js";
+import { VectorIndex } from "../../dist/api/VectorIndex.js";
 import { embeddingsCountConsistent } from "../../dist/api/IconclassDb.js";
 import { assert, assertEq, section, atest, report } from "./_assert.mjs";
 
@@ -29,6 +37,35 @@ function l2(v) {
   let s = 0;
   for (const x of v) s += x * x;
   return Math.sqrt(s);
+}
+
+/** Deterministic int8 rows from a seeded LCG. */
+function int8Rows(n, dims, seed, fill) {
+  let x = seed;
+  const rnd = () => ((x = (x * 1103515245 + 12345) % 2147483648) / 2147483648) * 200 - 100;
+  return Array.from({ length: n }, (_, i) =>
+    Buffer.from(Int8Array.from({ length: dims }, (_, j) => fill ? fill(i, j, rnd) : Math.round(rnd())).buffer));
+}
+
+function cosine(a, b) {
+  let d = 0, x = 0, y = 0;
+  for (let j = 0; j < a.length; j++) { d += a[j] * b[j]; x += a[j] * a[j]; y += b[j] * b[j]; }
+  return d / Math.sqrt(x * y);
+}
+
+/** Exact cosine top-k over rows (optionally only `allowed` indices), as notation names. */
+function bruteTopK(rows, q, k, allowed) {
+  const idx = allowed ?? rows.map((_, i) => i);
+  return idx
+    .map((i) => ({ i, s: cosine(new Int8Array(rows[i].buffer, rows[i].byteOffset, q.length), q) }))
+    .sort((a, b) => b.s - a.s)
+    .slice(0, k)
+    .map(({ i }) => `n${i}`);
+}
+
+/** assertEq for arrays (assertEq compares with ===). */
+function assertList(actual, expected, msg) {
+  return assertEq(JSON.stringify(actual), JSON.stringify(expected), msg);
 }
 
 function sha256(buf) {
@@ -400,6 +437,53 @@ try {
     const out = mrlTruncate(v, 384);
     const ratioOut = out[10] / out[20];
     assert(Math.abs(ratioIn - ratioOut) < 1e-4, "case 5: component ratio preserved (uniform scaling)");
+  }
+
+  // ════════════════════════════════════════════════════════════════
+  section("VectorIndex — two-pass KNN");
+
+  {
+    // Small set (exact path): matches brute-force cosine, in order, with true similarities.
+    const rows = int8Rows(300, 16, 7);
+    const names = rows.map((_, i) => `n${i}`);
+    const index = new VectorIndex(names, rows, 16, 8);
+    const q = Int8Array.from(int8Rows(1, 16, 99)[0]);
+    const hits = index.search(q, 10);
+    assertList(hits.map((h) => h.notation), bruteTopK(rows, q, 10), "exact path: top-10 equals brute-force cosine order");
+    const i0 = Number(hits[0].notation.slice(1));
+    assert(Math.abs(hits[0].similarity - cosine(new Int8Array(rows[i0].buffer, rows[i0].byteOffset, 16), q)) < 1e-6,
+      "exact path: similarity is the true cosine");
+  }
+
+  {
+    // Two-pass path (n > 2000): prefix scores tie inside a 100-row group whose
+    // prefix equals the query's, so only the full-vector rescore can order it.
+    const dims = 8, coarse = 4, n = 3000;
+    const q = Int8Array.from([50, 40, 30, 20, 10, -10, 20, -30]);
+    const rows = int8Rows(n, dims, 11, (i, j, rnd) => {
+      if (i < 100) return j < coarse ? q[j] : Math.round(rnd());          // tied prefix, varied tail
+      return j < coarse ? (j % 2 ? 60 : -60) * (j < 2 ? 1 : -1) : Math.round(rnd()); // prefix far from q
+    });
+    const index = new VectorIndex(rows.map((_, i) => `n${i}`), rows, dims, coarse);
+    assertList(index.search(q, 10).map((h) => h.notation), bruteTopK(rows, q, 10),
+      "two-pass path: rescore orders by full cosine, not by the tied prefix");
+  }
+
+  {
+    // Candidates restrict the result set, on both paths.
+    const rows = int8Rows(2500, 16, 3);
+    const index = new VectorIndex(rows.map((_, i) => `n${i}`), rows, 16, 8);
+    const q = Int8Array.from(int8Rows(1, 16, 5)[0]);
+    const big = Int32Array.from({ length: 2100 }, (_, i) => i + 400); // rows 400..2499
+    const bigSet = new Set(Array.from(big, (i) => `n${i}`));
+    const bigHits = index.search(q, 20, big);
+    assert(bigHits.length === 20 && bigHits.every((h) => bigSet.has(h.notation)), "two-pass path: only candidate rows returned");
+    const small = Int32Array.from([5, 900, 1700, 2400]);
+    const smallHits = index.search(q, 10, small);
+    assertList(smallHits.map((h) => h.notation), bruteTopK(rows, q, 10, Array.from(small)),
+      "k > candidates: exactly the candidates, best first, no padding");
+    assertList(index.search(q, 10, new Int32Array(0)), [], "empty candidates → []");
+    assertList(index.search(q, 0), [], "k = 0 → []");
   }
 
   // ════════════════════════════════════════════════════════════════

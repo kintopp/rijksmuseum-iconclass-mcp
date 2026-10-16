@@ -12,7 +12,7 @@ import type { ReadableStream } from "node:stream/web";
 import { fileURLToPath } from "node:url";
 
 import { IconclassDb } from "./api/IconclassDb.js";
-import { EmbeddingModel, DEFAULT_MODEL_ID } from "./api/EmbeddingModel.js";
+import { EmbeddingModel } from "./api/EmbeddingModel.js";
 import { ensureDb, type DbSpec } from "./utils/db.js";
 import { logInfo, logWarn, logError } from "./utils/log.js";
 import {
@@ -66,7 +66,7 @@ const ICONCLASS_DB_SPEC: DbSpec = {
   pathEnvVar: "ICONCLASS_DB_PATH",
   urlEnvVar: "ICONCLASS_DB_URL",
   defaultFile: "iconclass.db",
-  validationQuery: "SELECT 1 FROM notations LIMIT 1",
+  validationQuery: "SELECT 1 FROM version_info WHERE key = 'schema_version' AND CAST(value AS INTEGER) >= 4",
 };
 
 const COUNTS_DB_SPEC: DbSpec = {
@@ -100,14 +100,12 @@ async function initDatabase(): Promise<void> {
 
   if (iconclassDb.embeddingsAvailable) {
     embeddingModel = new EmbeddingModel();
-    const modelId = process.env.EMBEDDING_MODEL_ID ?? DEFAULT_MODEL_ID;
-    const targetDim = iconclassDb.embeddingDimensions;
-    // KICK OFF the e5-base load without awaiting it — the ~seconds-long ONNX
+    // KICK OFF the model load without awaiting it — the ~seconds-long ONNX
     // init must not gate app.listen() / a scale-to-zero wake. embed() awaits
     // this same load lazily (so the first semantic query after a wake waits,
     // within the /mcp 30s net), and runStdio() awaits whenReady() to keep
     // stdio startup eager. warmCorePages() likewise moves off the boot path.
-    embeddingModel.init(modelId, targetDim);
+    embeddingModel.init(iconclassDb.embeddingDimensions);
   }
 
   // Per-tool usage telemetry (#326). Instantiated once here (both runStdio and

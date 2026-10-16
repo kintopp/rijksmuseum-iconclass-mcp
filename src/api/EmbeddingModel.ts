@@ -7,25 +7,12 @@ export const QUERY_MODEL_ID = "onnx-community/embeddinggemma-2-ONNX";
 export const QUERY_MODEL_REVISION = "daa72c51243991dfcaf9f9137d2c573d8f7790c0";
 const QUERY_PREFIX = "task: search result | query: ";
 
-/** MRL truncation: cut a vector to targetDim and re-normalize to unit length.
- *  No-op when targetDim is 0 or the vector is already <= targetDim. */
-export function mrlTruncate(vec: Float32Array, targetDim: number): Float32Array {
-  if (targetDim <= 0 || vec.length <= targetDim) return vec;
-  const out = vec.slice(0, targetDim);
-  let norm = 0;
-  for (const v of out) norm += v * v;
-  norm = Math.sqrt(norm);
-  if (norm > 1e-10) for (let i = 0; i < out.length; i++) out[i] /= norm;
-  return out;
-}
-
 export class EmbeddingModel {
   // transformers.js model/tokenizer types are too broad to express usefully.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private model: any = null;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private tokenizer: any = null;
-  private targetDim = 0;
   // Cached load promise. init() is called once at startup to KICK OFF the load
   // without awaiting it (so the ONNX load never gates app.listen() / a
   // scale-to-zero wake), and embed() awaits this same promise lazily.
@@ -34,13 +21,9 @@ export class EmbeddingModel {
   /**
    * Begin loading the model; returns a promise that settles when it is ready
    * (loaded or failed). Idempotent — repeated calls return the same promise.
-   *
-   * @param targetDim - MRL truncation target dimension (0 = no truncation).
    */
-  init(targetDim = 0): Promise<void> {
-    if (this.initPromise) return this.initPromise;
-    this.targetDim = targetDim;
-    this.initPromise = this.load();
+  init(): Promise<void> {
+    this.initPromise ??= this.load();
     return this.initPromise;
   }
 
@@ -78,16 +61,16 @@ export class EmbeddingModel {
       this.tokenizer = await AutoTokenizer.from_pretrained(QUERY_MODEL_ID, opts);
       // onnxruntime defers ~300 ms of setup to the first run; pay it here, off the query path.
       await this.model(await this.tokenizer([QUERY_PREFIX]));
-      logInfo(`Embedding model loaded: ${QUERY_MODEL_ID} (${dtype}, ${threads} threads${this.targetDim > 0 ? `, MRL ${this.targetDim}d` : ""})`);
+      logInfo(`Embedding model loaded: ${QUERY_MODEL_ID} (${dtype}, ${threads} threads)`);
     } catch (err) {
       // Same degraded state as an incomplete embeddings table: semantic search
       // is gone, FTS still serves. Kept at the same level as that path.
       logWarn("Failed to load embedding model", err);
-      this.model = this.tokenizer = null;
+      this.model = null;
     }
   }
 
-  get available(): boolean { return this.model !== null && this.tokenizer !== null; }
+  get available(): boolean { return this.model !== null; }
 
   /** Resolve once the load kicked off by init() settles (whether it loaded or
    *  failed). No-op if init() was never called. Lets a query lazily wait for a
@@ -96,12 +79,11 @@ export class EmbeddingModel {
     if (this.initPromise) await this.initPromise;
   }
 
-  /** Embed a search query: L2-normalised, MRL-truncated to targetDim when set. */
+  /** Embed a search query, L2-normalised. */
   async embed(text: string): Promise<Float32Array> {
     await this.whenReady();   // the model may still be loading in the background
     if (!this.available) throw new Error("Embedding model not initialized");
     const out = await this.model(await this.tokenizer([QUERY_PREFIX + text]));
-    const vec = new Float32Array(out.sentence_embedding.normalize(2, -1).data as ArrayLike<number>);
-    return mrlTruncate(vec, this.targetDim);
+    return new Float32Array(out.sentence_embedding.normalize(2, -1).data as ArrayLike<number>);
   }
 }

@@ -1,8 +1,8 @@
 /**
  * Unit tests for critical paths that sit between the pure-function tests and
  * the DB-backed integration suite: UsageStats persistence, ensureDb
- * download/validate/swap (single-file and chunked), MRL vector truncation, and
- * the in-memory two-pass KNN (VectorIndex).
+ * download/validate/swap (single-file and chunked), and the in-memory two-pass
+ * KNN (VectorIndex).
  *
  * VectorIndex failure modes: results not in descending true-cosine order (on
  * either the small exact path or the two-pass path); `candidates` ignored so
@@ -26,18 +26,11 @@ import Database from "better-sqlite3";
 
 import { UsageStats } from "../../dist/utils/UsageStats.js";
 import { ensureDb } from "../../dist/utils/db.js";
-import { mrlTruncate } from "../../dist/api/EmbeddingModel.js";
 import { VectorIndex } from "../../dist/api/VectorIndex.js";
 import { embeddingsCountConsistent } from "../../dist/api/IconclassDb.js";
 import { assert, assertEq, section, atest, report } from "./_assert.mjs";
 
 // ── Test helpers ─────────────────────────────────────────────────
-
-function l2(v) {
-  let s = 0;
-  for (const x of v) s += x * x;
-  return Math.sqrt(s);
-}
 
 /** Deterministic int8 rows from a seeded LCG. */
 function int8Rows(n, dims, seed, fill) {
@@ -392,52 +385,6 @@ try {
       server.close();
     }
   });
-
-  // ════════════════════════════════════════════════════════════════
-  section("mrlTruncate");
-
-  {
-    // 1. targetDim = 0 → no-op, same values, full length.
-    const v = Float32Array.from([1, 2, 3, 4]);
-    const out = mrlTruncate(v, 0);
-    assertEq(out.length, 4, "case 1: length unchanged when targetDim=0");
-    assert(out[0] === 1 && out[3] === 4, "case 1: values unchanged when targetDim=0");
-  }
-
-  {
-    // 2. vec.length === targetDim → no-op.
-    const v = Float32Array.from([1, 2, 3, 4]);
-    const out = mrlTruncate(v, 4);
-    assertEq(out.length, 4, "case 2: length unchanged when length===targetDim");
-    assert(out[0] === 1 && out[3] === 4, "case 2: values unchanged when length===targetDim");
-  }
-
-  {
-    // 3. 768 → 384: truncated length and unit L2 norm.
-    const v = new Float32Array(768);
-    for (let i = 0; i < 768; i++) v[i] = ((i * 31) % 97) + 1;
-    const out = mrlTruncate(v, 384);
-    assertEq(out.length, 384, "case 3: truncated to targetDim length");
-    assert(Math.abs(l2(out) - 1) < 1e-5, "case 3: re-normalized to unit length");
-  }
-
-  {
-    // 4. all-zeros vector → epsilon guard avoids NaN.
-    const v = new Float32Array(768); // all zeros
-    const out = mrlTruncate(v, 384);
-    assertEq(out.length, 384, "case 4: truncated length");
-    assert(!Array.from(out).some(Number.isNaN), "case 4: no NaNs from divide-by-zero guard");
-  }
-
-  {
-    // 5. direction preserved: component ratios survive normalization.
-    const v = new Float32Array(768);
-    for (let i = 0; i < 768; i++) v[i] = ((i * 31) % 97) + 1;
-    const ratioIn = v[10] / v[20];
-    const out = mrlTruncate(v, 384);
-    const ratioOut = out[10] / out[20];
-    assert(Math.abs(ratioIn - ratioOut) < 1e-4, "case 5: component ratio preserved (uniform scaling)");
-  }
 
   // ════════════════════════════════════════════════════════════════
   section("VectorIndex — two-pass KNN");

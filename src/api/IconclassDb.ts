@@ -1,7 +1,7 @@
 import Database, { type Database as DatabaseType, type Statement } from "better-sqlite3";
 import { escapeFts5, escapeFts5Terms, resolveDbPath, artResearchUrl } from "../utils/db.js";
 import { logInfo, logWarn, logError } from "../utils/log.js";
-import { QUERY_MODEL_ID } from "./EmbeddingModel.js";
+import { QUERY_MODEL_ID, QUERY_MODEL_REVISION } from "./EmbeddingModel.js";
 import { VectorIndex } from "./VectorIndex.js";
 
 // First-pass width for semantic KNN: an MRL prefix, so its cosine already ranks well.
@@ -151,8 +151,8 @@ export class IconclassDb {
   private stmtBatchInsert: Statement | null = null;
   private stmtDeleteBatch: Statement | null = null;
   private batchInsertAll: ((ns: string[]) => void) | null = null;
-  private _int8Scale = 127;
   private vectors: VectorIndex | null = null;
+  private lowerNotations: string[] = [];
   // Row indices into `vectors` per collection id ("" = any collection), built with it.
   private collectionRows = new Map<string, Int32Array>();
   private stmtPrefixCollCount: Statement | null = null;
@@ -269,28 +269,18 @@ export class IconclassDb {
       }
 
       try {
-        const dimRow = this.db.prepare(
-          "SELECT value FROM version_info WHERE key = 'embedding_dimensions'"
-        ).get() as { value: string } | undefined;
-        this._embeddingDimensions = dimRow ? parseInt(dimRow.value, 10) : 768;
-        const meta = Object.fromEntries((this.db.prepare(
-          "SELECT key, value FROM version_info WHERE key IN ('embedding_query_model', 'embedding_int8_scale')"
-        ).all() as { key: string; value: string }[]).map(r => [r.key, r.value]));
-        if (meta.embedding_query_model !== QUERY_MODEL_ID) {
-          const msg = `Iconclass embeddings were built for ${meta.embedding_query_model ?? "an unrecorded query model"}, ` +
-            `not ${QUERY_MODEL_ID} — disabling semantic search`;
-          logWarn(msg);
-          throw new Error(msg);
-        }
-        this._int8Scale = parseFloat(meta.embedding_int8_scale ?? "127");
-
         const embCount = (this.db.prepare("SELECT COUNT(*) as n FROM iconclass_embeddings").get() as { n: number }).n;
-        const expectedRow = this.db.prepare(
-          "SELECT value FROM version_info WHERE key = 'embedding_count'"
-        ).get() as { value: string } | undefined;
-        const expectedCount = expectedRow ? parseInt(expectedRow.value, 10) : null;
+        const meta = new Map((this.db.prepare(
+          "SELECT key, value FROM version_info WHERE key LIKE 'embedding%'"
+        ).all() as { key: string; value: string }[]).map(r => [r.key, r.value]));
+        this._embeddingDimensions = Number(meta.get("embedding_dimensions"));
+        const expectedCount = meta.has("embedding_count") ? Number(meta.get("embedding_count")) : null;
+        const builtFor = `${meta.get("embedding_query_model")}@${meta.get("embedding_query_model_revision")}`;
 
-        if (!embeddingsCountConsistent(expectedCount, embCount)) {
+        if (builtFor !== `${QUERY_MODEL_ID}@${QUERY_MODEL_REVISION}`) {
+          logWarn(`Iconclass embeddings were built for ${builtFor}, not ${QUERY_MODEL_ID}@${QUERY_MODEL_REVISION} — disabling semantic search`);
+          this._hasEmbeddings = false;
+        } else if (!embeddingsCountConsistent(expectedCount, embCount)) {
           logWarn(
             `Iconclass embeddings INCOMPLETE: expected ${expectedCount}, found ${embCount.toLocaleString()} — ` +
             `disabling semantic search (likely an interrupted embedding build)`
@@ -412,17 +402,6 @@ export class IconclassDb {
     return this._embeddingDimensions;
   }
 
-  /** Normalise, then quantise with the scale the stored vectors were built at
-   *  (cosine is scale-invariant, so matching it only buys query precision). */
-  private quantize(vec: Float32Array): Int8Array {
-    let norm = 0;
-    for (const v of vec) norm += v * v;
-    const k = norm > 1e-20 ? this._int8Scale / Math.sqrt(norm) : 0;
-    const q = new Int8Array(vec.length);
-    for (let i = 0; i < vec.length; i++) q[i] = Math.max(-127, Math.min(127, Math.round(vec[i] * k)));
-    return q;
-  }
-
   /** Load every stored vector into memory on first use (~40 MB, a few hundred ms). */
   private vectorIndex(): VectorIndex {
     if (this.vectors) return this.vectors;
@@ -432,6 +411,7 @@ export class IconclassDb {
     ).all() as { notation: string; embedding: Buffer }[];
     const index = new VectorIndex(rows.map(r => r.notation), rows.map(r => r.embedding),
       this._embeddingDimensions, Math.min(COARSE_DIMS, this._embeddingDimensions));
+    this.lowerNotations = index.notations.map(n => n.toLowerCase());
     if (this.stmtGetCollectionCounts) {
       const rowOf = new Map(index.notations.map((n, i) => [n, i]));
       const byCollection = new Map<string, number[]>();
@@ -451,7 +431,7 @@ export class IconclassDb {
       for (const [id, list] of byCollection) this.collectionRows.set(id, Int32Array.from(list).sort());
     }
     this.vectors = index;
-    logInfo(`Iconclass vector index: ${index.size.toLocaleString()} vectors loaded in ${Date.now() - t0}ms`);
+    logInfo(`Iconclass vector index: ${index.notations.length.toLocaleString()} vectors loaded in ${Date.now() - t0}ms`);
     return index;
   }
 
@@ -681,12 +661,15 @@ export class IconclassDb {
     if (parentNotation) {
       // Case-insensitive, like the LIKE prefix filter on the FTS path.
       const scope = parentNotation.toLowerCase();
-      const inScope = (r: number) => index.notations[r].toLowerCase().startsWith(scope);
-      candidates = candidates
-        ? candidates.filter(inScope)
-        : Int32Array.from(index.notations.keys()).filter(inScope);
+      const rows: number[] = [];
+      if (candidates) {
+        for (const r of candidates) if (this.lowerNotations[r].startsWith(scope)) rows.push(r);
+      } else {
+        this.lowerNotations.forEach((n, r) => { if (n.startsWith(scope)) rows.push(r); });
+      }
+      candidates = Int32Array.from(rows);
     }
-    const hits = index.search(this.quantize(queryEmbedding), Math.min(k, 4096), candidates);
+    const hits = index.search(queryEmbedding, Math.min(k, 4096), candidates);
 
     // Batch-load collection presence for the hits so resolveEntry needn't query per row.
     const presenceCache = new Map<string, Set<string>>();

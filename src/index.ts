@@ -105,7 +105,7 @@ async function initDatabase(): Promise<void> {
     // this same load lazily (so the first semantic query after a wake waits,
     // within the /mcp 30s net), and runStdio() awaits whenReady() to keep
     // stdio startup eager. warmCorePages() likewise moves off the boot path.
-    embeddingModel.init(iconclassDb.embeddingDimensions);
+    embeddingModel.init();
   }
 
   // Per-tool usage telemetry (#326). Instantiated once here (both runStdio and

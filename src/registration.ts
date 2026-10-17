@@ -195,7 +195,7 @@ const FindArtworksOutput = z.object({
 
 const TOOL_LIMITS = {
   search:         { max: 50, default: 25 },
-  resolve:        { max: 25, default: 15 },
+  resolve:        { max: 25 },
   search_prefix:  { max: 50, default: 25 },
   keyVariants:    { max: 100, default: 25 },
   find_artworks:  { max: 25 },
@@ -362,7 +362,7 @@ export function registerTools(
       title: "Browse Iconclass",
       description:
         "Browse an Iconclass notation's hierarchy: its entry, path, children, cross-references, and key variants. " +
-        `Children expand to depth 1-3 (use depth=2 for narrative exploration); wide branches are capped at 25 children per parent and ${IconclassDb.MAX_SUBTREE_ENTRIES} entries in total. ` +
+        `Children expand to depth 1-3 (use depth=2 for narrative exploration); wide branches are capped at ${IconclassDb.MAX_CHILDREN_PER_PARENT} children per parent and ${IconclassDb.MAX_SUBTREE_ENTRIES} entries in total. ` +
         "To list all key variants of a notation, use expand_keys instead of includeKeys.",
       inputSchema: z.object({
         notation: z.string().min(1).describe("Iconclass notation to browse (e.g. '31A33', '73D82')."),

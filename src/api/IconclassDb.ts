@@ -494,7 +494,7 @@ export class IconclassDb {
 
   // ─── Browse ───────────────────────────────────────────────────────
 
-  private static readonly MAX_CHILDREN_PER_PARENT = 25;
+  static readonly MAX_CHILDREN_PER_PARENT = 25;
   static readonly MAX_SUBTREE_ENTRIES = 120;
 
   browse(
@@ -552,10 +552,8 @@ export class IconclassDb {
         truncated: currentDepth < maxDepth && totalChildren > cap,
       });
 
-      if (currentDepth < maxDepth && totalChildren > 0) {
-        if (out.length >= IconclassDb.MAX_SUBTREE_ENTRIES) return true;
-        if (this.collectSubtree(resolved.children, lang, currentDepth + 1, maxDepth, textCache, out)) return true;
-      }
+      if (currentDepth < maxDepth && totalChildren > 0
+        && this.collectSubtree(resolved.children, lang, currentDepth + 1, maxDepth, textCache, out)) return true;
     }
     return false;
   }

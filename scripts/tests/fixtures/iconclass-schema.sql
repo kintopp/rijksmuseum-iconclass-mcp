@@ -1,15 +1,14 @@
 -- iconclass.db schema for the fixture DB. Regenerate after a rebuild and review the diff:
 --   node scripts/tests/build-fixture-db.mjs --capture
 -- version_info at capture:
---   built_at = 2026-04-03T05:58:54.903535+00:00
+--   built_at = 2026-10-17T06:07:36.749635+00:00
 --   iconclass_data_commit = f6aae630d8ae43ae2f145dfc1bb0c92eb2274411
 --   notation_count = 1346371
 --   base_notation_count = 39802
 --   key_expanded_count = 1306569
 --   text_languages = cz,de,en,es,fi,fr,hu,it,jp,nl,pl,pt,zh
 --   keyword_languages = cz,de,en,es,fi,fr,it,jp,nl,pt,zh
---   schema_version = 3
---   release_tag = 0.3.0
+--   schema_version = 5
 
 CREATE TABLE keywords (
             notation TEXT NOT NULL,

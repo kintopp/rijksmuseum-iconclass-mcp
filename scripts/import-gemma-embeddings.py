@@ -25,7 +25,7 @@ MODEL_REVISION = "914f7f89142e33e77833254d9c9b90c3cef7303b"
 # Must match QUERY_MODEL_ID / QUERY_MODEL_REVISION in src/api/EmbeddingModel.ts.
 QUERY_MODEL = "onnx-community/embeddinggemma-2-ONNX"
 QUERY_MODEL_REVISION = "daa72c51243991dfcaf9f9137d2c573d8f7790c0"
-SCHEMA_VERSION = "4"  # v4 = EmbeddingGemma 2 vectors with a stored int8 scale, no vec0
+SCHEMA_VERSION = "5"  # v5 = v4 (EmbeddingGemma 2, int8, no vec0) + (...) name templates in children
 
 
 def main() -> None:

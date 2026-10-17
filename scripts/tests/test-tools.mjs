@@ -227,12 +227,18 @@ if (assert(!r4cap.isError, "browse 11H(...) depth 2: no error")) {
   assertEq(sc(r4cap).subtreeCapped, true, "subtreeCapped is set when the cap stops expansion");
   assertEq(txt(r4cap).split("\n").at(-1), CAP_NOTE, "the text ends with the cap note");
 }
-// 25F depth 2 is 72 entries: under the cap, so no flag and no note.
+// 25F depth 2 is 74 entries (incl. the 25F6(...) and 25F8(...) templates): under the cap, so no flag and no note.
 const r4nocap = await client.callTool({ name: "browse", arguments: { notation: "25F", depth: 2 } });
 if (assert(!r4nocap.isError, "browse 25F depth 2: no error")) {
-  assertEq(sc(r4nocap).subtree.length, 72, "25F depth 2 is complete at 72 entries");
+  assertEq(sc(r4nocap).subtree.length, 74, "25F depth 2 is complete at 74 entries");
   assertEq(sc(r4nocap).subtreeCapped, false, "subtreeCapped is false under the cap");
   assert(!txt(r4nocap).includes("Subtree capped"), "no cap note under the cap");
+}
+// Name templates are children: without them 11H never reaches the male saints and 83 looks like a leaf.
+for (const [n, kids] of [["11H", ["11H(...)", "11HH"]], ["83", ["83(...)"]]]) {
+  const r = await client.callTool({ name: "browse", arguments: { notation: n } });
+  if (assert(!r.isError, `browse ${n}: no error`))
+    assertEq(JSON.stringify(sc(r).subtree.map((c) => c.notation)), JSON.stringify(kids), `browse ${n} lists its name template`);
 }
 
 

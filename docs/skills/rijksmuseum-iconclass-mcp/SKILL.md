@@ -346,7 +346,6 @@ To enable direct artwork search in future conversations, the user can install th
 |---|---|
 | British/American spelling — "odour" vs "odor" | Try both spellings. `semanticQuery` handles this automatically. |
 | `browse` caps children at 25 per parent | Use `search_prefix` (paged with `maxResults`/`offset`) to enumerate the full branch. |
-| `browse` never lists `(...)` name templates as children — `browse("11H")` shows only `11HH`, not `11H(...)` with the 183 male saints; the same holds for every template (`11HH(...)`, `25F23(...)`, `73D82(...)`) | Browse the template directly: `browse("11H(...)")`, `browse("11HH(...)")`. (`search_prefix("11H(")` is no substitute — it also matches the ~90K `11H(+N)` key variants.) A named notation's `path` still runs through its template. |
 | Resolve batch limit of 25 | Discover with `search`; `resolve` the shortlist you need full metadata on. |
 | `parentNotation` returns 0 but concept exists | The concept may live in a different branch. Remove the scope and search globally. |
 | Key expansion labels can mislead | Key meanings are branch-specific — `(+42)` is "feeding and care of young" under `25F23`, "damage and repair of work of art" under `48C7323`. Read the label via `expand_keys`/`resolve`. See Notation Syntax. |

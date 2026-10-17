@@ -72,7 +72,7 @@ const NOTATIONS = [
   ["12", ["1"], ["12A"], [], null, null, 0],
   ["12A", ["1","12"], ["12A2"], [], null, null, 0],
   ["12A2", ["1","12","12A"], ["12A27"], [], null, null, 0],
-  ["12A27", ["1","12","12A","12A2"], [], [], null, null, 0],
+  ["12A27", ["1","12","12A","12A2"], ["12A27(...)"], [], null, null, 0],
   ["12A27(...)", ["1","12","12A","12A2","12A27"], ["12A27(Deut. 21:22-23)","12A27(Deut. 25:2-3)"], [], null, null, 0],
   ["12A27(Deut. 21:22-23)", ["1","12","12A","12A2","12A27","12A27(...)"], [], [], null, null, 0],
   ["12A27(Deut. 21:22-23)(+0)", ["1","12","12A","12A2","12A27","12A27(...)","12A27(Deut. 21:22-23)"], [], [], "12A27(Deut. 21:22-23)", "+0", 1],
@@ -103,7 +103,7 @@ const NOTATIONS = [
   ["73D7", ["7","73","73D"], [], [], null, null, 0],
   ["73D8", ["7","73","73D"], ["73D81","73D82","73D83"], [], null, null, 0],
   ["73D81", ["7","73","73D","73D8"], [], [], null, null, 0],
-  ["73D82", ["7","73","73D","73D8"], [], ["11D312"], null, null, 0],
+  ["73D82", ["7","73","73D","73D8"], ["73D82(...)"], ["11D312"], null, null, 0],
   ["73D82(...)", ["7","73","73D","73D8","73D82"], ["73D82(CROSS)","73D82(NAILS)"], [], null, null, 0],
   ["73D82(CROSS)", ["7","73","73D","73D8","73D82","73D82(...)"], [], [], null, null, 0],
   ["73D82(NAILS)", ["7","73","73D","73D8","73D82","73D82(...)"], [], [], null, null, 0],
@@ -312,7 +312,7 @@ export function buildFixture(name = "default") {
   main.exec("INSERT INTO texts_fts(texts_fts) VALUES('rebuild')");
   main.exec("INSERT INTO keywords_fts(keywords_fts) VALUES('rebuild')");
   insertAll(main, "INSERT INTO version_info (key, value) VALUES (?, ?)", [
-    ["schema_version", "4"], ["release_tag", "fixture"],
+    ["schema_version", "5"], ["release_tag", "fixture"],
   ]);
   main.close();
 

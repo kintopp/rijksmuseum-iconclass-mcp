@@ -19,6 +19,8 @@
  *    the filter, or parentNotation treats LIKE wildcards as wildcards.
  *  - the phrase → AND-terms fallback doesn't run, or depends on word order.
  *  - semanticQuery without embeddings errors with anything but the fixed hint.
+ *  - a `(...)` name template is missing from its parent's children, so browse
+ *    and resolve show the parent (73D82, 12A27) as a leaf.
  *  - browse loses path labels, depth levels, resolved/unresolved cross-refs,
  *    or key-variant paging; lang falls back in the wrong order.
  *  - resolve drops a miss instead of naming it in notFound.
@@ -211,9 +213,26 @@ if (ok(r4d2, "browse 73D depth 2")) {
 }
 const r4d3 = await call("browse", { notation: "73D", depth: 3 });
 if (ok(r4d3, "browse 73D depth 3")) {
-  assert(notations(sc(r4d3).subtree).includes("73D671") && sc(r4d3).subtree.length === 16, "depth 3 adds 73D671 (16 entries)");
+  eqList(notations(sc(r4d3).subtree), ["73D1", "73D2", "73D24", "73D3", "73D4", "73D5", "73D6", "73D64", "73D67", "73D671", "73D7", "73D8", "73D81", "73D82", "73D82(...)", "73D83", "73D9"],
+    "depth 3 adds 73D671 and the 73D82(...) template");
   assertEq(sc(r4d3).subtreeCapped, false, "a complete subtree is not flagged as capped");
 }
+
+const r4t = await call("browse", { notation: "73D82" });
+if (ok(r4t, "browse 73D82")) {
+  eqList(notations(sc(r4t).subtree), ["73D82(...)"], "the name template is the parent's child");
+  const L = lines(r4t);
+  const i = L.indexOf("Children (1):");
+  assert(i !== -1, "children header counts the template");
+  assertEq(L[i + 1], '  73D82(...) "single instruments of the Passion (with NAME)"', "template child line");
+}
+const r4t2 = await call("browse", { notation: "73D8", depth: 2 });
+if (ok(r4t2, "browse 73D8 depth 2")) {
+  const e = sc(r4t2).subtree.find((c) => c.notation === "73D82");
+  assertEq(e?.totalChildren, 1, "the template counts towards totalChildren");
+}
+const r4t3 = await call("browse", { notation: "73D82(...)" });
+if (ok(r4t3, "browse 73D82(...)")) eqList(notations(sc(r4t3).subtree), ["73D82(CROSS)", "73D82(NAILS)"], "a template has no template child of its own");
 
 const r4ref = await call("browse", { notation: "73D6" });
 if (ok(r4ref, "browse 73D6")) {
@@ -279,6 +298,8 @@ if (ok(r5, "resolve batch")) {
   assertEq(lines(r5)[0], '25F23(+46) (testmuseum) "beasts of prey, predatory animals (+ sleeping animal(s))" [2 > 25 > 25F > 25F2 > 25F23 > 25F23(+4)]', "entry line");
   assertEq(lines(r5).at(-1), "not found (1): NONEXISTENT", "the miss is in the text too");
 }
+const r5t = await call("resolve", { notation: ["12A27"] });
+if (ok(r5t, "resolve 12A27")) eqList(sc(r5t).notations[0].children, ["12A27(...)"], "resolve lists the name template as a child");
 const r5none = await call("resolve", { notation: ["ZZZZZ", "YYYYY"] });
 assert(r5none.isError === true, "all misses is an error");
 assertEq(txt(r5none), "None of the requested notations were found: ZZZZZ, YYYYY", "all-miss wording names every code");

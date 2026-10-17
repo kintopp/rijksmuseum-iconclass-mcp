@@ -204,7 +204,8 @@ def build(data_dir: str, output_path: str):
 
         # Children differ by notation type:
         # - Key-expanded: 'l' gives available sub-keys → child key-expanded notations
-        # - Base: 'c' gives direct hierarchy children (filter out (...) placeholders)
+        # - Base: 'c' gives direct hierarchy children. Keep the name template
+        #   (code + '(...)'), but drop its generic slots such as 11H(...)1.
         children = []
         sub_keys = obj.get("l", [])
         if is_key_expanded and sub_keys and base:
@@ -214,7 +215,7 @@ def build(data_dir: str, output_path: str):
                     sub_id = sk[sk_idx + 1:]
                     children.append(f"{base}(+{sub_id})")
         else:
-            children = [c for c in children_raw if "..." not in c]
+            children = [c for c in children_raw if "..." not in c or c == f"{code}(...)"]
 
         notation_data.append((
             code,

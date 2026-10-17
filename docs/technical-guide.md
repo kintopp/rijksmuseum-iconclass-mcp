@@ -64,7 +64,7 @@ To add a new collection, create a CSV (`notation,count`), add an entry to `COLLE
 
 ## Building the database
 
-The database is built from the [Iconclass CC0 data dump](https://github.com/iconclass/data) and the [`iconclass`](https://pypi.org/project/iconclass/) Python library, then completed by importing the semantic embeddings. **Both steps are required:** the build alone writes `schema_version` 3, and the server only accepts a DB at version 4 or later, which the embeddings import sets.
+The database is built from the [Iconclass CC0 data dump](https://github.com/iconclass/data) and the [`iconclass`](https://pypi.org/project/iconclass/) Python library, then completed by importing the semantic embeddings. **Both steps are required:** the build alone writes `schema_version` 3, and the server only accepts a DB at version 5 or later, which the embeddings import sets.
 
 ```bash
 # Clone the CC0 data

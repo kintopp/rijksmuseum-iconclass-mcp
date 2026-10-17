@@ -66,7 +66,7 @@ const ICONCLASS_DB_SPEC: DbSpec = {
   pathEnvVar: "ICONCLASS_DB_PATH",
   urlEnvVar: "ICONCLASS_DB_URL",
   defaultFile: "iconclass.db",
-  validationQuery: "SELECT 1 FROM version_info WHERE key = 'schema_version' AND CAST(value AS INTEGER) >= 4",
+  validationQuery: "SELECT 1 FROM version_info WHERE key = 'schema_version' AND CAST(value AS INTEGER) >= 5",
 };
 
 const COUNTS_DB_SPEC: DbSpec = {

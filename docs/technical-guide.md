@@ -162,14 +162,15 @@ In HTTP mode (`PORT` set or `--http`):
 
 ### Limits
 
-Limits are sized to keep responses well inside an LLM's context window (an entry averages ~350 bytes of JSON) while avoiding pagination round-trips.
+Maxima are sized to the hosts' per-result ceilings, not the model's context window: claude.ai / Claude Desktop accept ~150,000 characters per tool result, and Claude Code saves results over ~25,000 tokens to a file. The binding cost is the `structuredContent` JSON (~700–850 bytes per entry, 4–9× the text rendering, because each entry carries its full labelled path), so every maximum keeps the whole result under ~120,000 characters.
 
 | Tool / field | Default | Max |
 |--------------|---------|-----|
 | `search` results | 25 | 50 |
-| `search_prefix` results | 25 | 100 |
-| `resolve` notations per call | 15 | 25 |
+| `search_prefix` results | 25 | 50 |
+| `resolve` notations per call | — | 25 |
+| `find_artworks` notations per call | — | 25 |
 | `browse` depth | 1 | 3 |
-| `browse` children | 25 per parent, 250 per subtree | — |
-| Key variants (`browse`, `expand_keys`) | 25 | 335 — the largest notation in the DB |
+| `browse` children | 25 per parent, 120 per subtree (`subtreeCapped` says when the cap cut it short) | — |
+| Key variants (`browse`, `expand_keys`) | 25 (covers 81% of base notations) | 100 (covers 90%) |
 | Keywords per notation | — | 40 — the largest in the DB, so none are truncated |

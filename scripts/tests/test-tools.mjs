@@ -219,6 +219,22 @@ const s4b2 = sc(r4b2);
 assertEq(s4b2.keyVariants.length, 5, "key variants page size respected");
 assert(s4b2.keyVariants[0].notation !== s4b.keyVariants[0].notation, "keyOffset produces different first variant");
 
+// Subtree cap: 11H(...) has 183 named saints, each with children, so depth 2 overflows 120 entries.
+const CAP_NOTE = "Subtree capped at 120 entries — browse a child notation or lower depth to see the rest.";
+const r4cap = await client.callTool({ name: "browse", arguments: { notation: "11H(...)", depth: 2 } });
+if (assert(!r4cap.isError, "browse 11H(...) depth 2: no error")) {
+  assertEq(sc(r4cap).subtree.length, 120, "subtree stops at 120 entries");
+  assertEq(sc(r4cap).subtreeCapped, true, "subtreeCapped is set when the cap stops expansion");
+  assertEq(txt(r4cap).split("\n").at(-1), CAP_NOTE, "the text ends with the cap note");
+}
+// 25F depth 2 is 72 entries: under the cap, so no flag and no note.
+const r4nocap = await client.callTool({ name: "browse", arguments: { notation: "25F", depth: 2 } });
+if (assert(!r4nocap.isError, "browse 25F depth 2: no error")) {
+  assertEq(sc(r4nocap).subtree.length, 72, "25F depth 2 is complete at 72 entries");
+  assertEq(sc(r4nocap).subtreeCapped, false, "subtreeCapped is false under the cap");
+  assert(!txt(r4nocap).includes("Subtree capped"), "no cap note under the cap");
+}
+
 
 // ══════════════════════════════════════════════════════════════════
 //  5. resolve

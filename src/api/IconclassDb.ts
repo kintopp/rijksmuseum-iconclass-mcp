@@ -66,6 +66,8 @@ export interface IconclassBrowseResult {
   subtree: SubtreeEntry[];
   keyVariants: IconclassEntry[];
   totalKeyVariants: number;
+  /** True when MAX_SUBTREE_ENTRIES stopped the expansion before depth was reached. */
+  subtreeCapped: boolean;
   collections: CollectionInfo[];
 }
 
@@ -493,7 +495,7 @@ export class IconclassDb {
   // ─── Browse ───────────────────────────────────────────────────────
 
   private static readonly MAX_CHILDREN_PER_PARENT = 25;
-  private static readonly MAX_SUBTREE_ENTRIES = 250;
+  static readonly MAX_SUBTREE_ENTRIES = 120;
 
   browse(
     notation: string,
@@ -510,7 +512,7 @@ export class IconclassDb {
     if (!entry) return null;
 
     const subtree: SubtreeEntry[] = [];
-    this.collectSubtree(entry.children, lang, 1, depth, textCache, subtree);
+    const subtreeCapped = this.collectSubtree(entry.children, lang, 1, depth, textCache, subtree);
 
     let keyVariants: IconclassEntry[] = [];
     let totalKeyVariants = 0;
@@ -519,9 +521,10 @@ export class IconclassDb {
       keyVariants = this.resolveKeyVariantsPage(notation, lang, maxKeyVariants, keyOffset, textCache);
     }
 
-    return { notation, entry, subtree, keyVariants, totalKeyVariants, collections: this._collections };
+    return { notation, entry, subtree, keyVariants, totalKeyVariants, subtreeCapped, collections: this._collections };
   }
 
+  /** Returns true if MAX_SUBTREE_ENTRIES cut the expansion short. */
   private collectSubtree(
     childNotations: string[],
     lang: string,
@@ -529,13 +532,13 @@ export class IconclassDb {
     maxDepth: number,
     textCache: Map<string, string | null>,
     out: SubtreeEntry[],
-  ): void {
+  ): boolean {
     const cap = IconclassDb.MAX_CHILDREN_PER_PARENT;
     const truncated = childNotations.length > cap;
     const visibleChildren = truncated ? childNotations.slice(0, cap) : childNotations;
 
     for (const n of visibleChildren) {
-      if (out.length >= IconclassDb.MAX_SUBTREE_ENTRIES) return;
+      if (out.length >= IconclassDb.MAX_SUBTREE_ENTRIES) return true;
 
       const resolved = this.resolveEntry(n, lang, textCache);
       if (!resolved) continue;
@@ -549,10 +552,12 @@ export class IconclassDb {
         truncated: currentDepth < maxDepth && totalChildren > cap,
       });
 
-      if (currentDepth < maxDepth && totalChildren > 0 && out.length < IconclassDb.MAX_SUBTREE_ENTRIES) {
-        this.collectSubtree(resolved.children, lang, currentDepth + 1, maxDepth, textCache, out);
+      if (currentDepth < maxDepth && totalChildren > 0) {
+        if (out.length >= IconclassDb.MAX_SUBTREE_ENTRIES) return true;
+        if (this.collectSubtree(resolved.children, lang, currentDepth + 1, maxDepth, textCache, out)) return true;
       }
     }
+    return false;
   }
 
   // ─── Resolve (batch) ──────────────────────────────────────────────

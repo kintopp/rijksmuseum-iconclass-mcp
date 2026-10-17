@@ -143,6 +143,7 @@ const BrowseOutput = z.object({
   subtree: z.array(SubtreeEntryShape()),
   keyVariants: z.array(IconclassEntryShape()),
   totalKeyVariants: z.number().int().optional(),
+  subtreeCapped: z.boolean(),
   collections: z.array(CollectionInfoShape()),
   error: z.string().optional(),
 });
@@ -195,7 +196,8 @@ const FindArtworksOutput = z.object({
 const TOOL_LIMITS = {
   search:         { max: 50, default: 25 },
   resolve:        { max: 25, default: 15 },
-  search_prefix:  { max: 100, default: 25 },
+  search_prefix:  { max: 50, default: 25 },
+  keyVariants:    { max: 100, default: 25 },
   find_artworks:  { max: 25 },
 } as const;
 
@@ -360,7 +362,7 @@ export function registerTools(
       title: "Browse Iconclass",
       description:
         "Browse an Iconclass notation's hierarchy: its entry, path, children, cross-references, and key variants. " +
-        "Children expand to depth 1-3 (use depth=2 for narrative exploration); wide branches are capped at 25 children per parent. " +
+        `Children expand to depth 1-3 (use depth=2 for narrative exploration); wide branches are capped at 25 children per parent and ${IconclassDb.MAX_SUBTREE_ENTRIES} entries in total. ` +
         "To list all key variants of a notation, use expand_keys instead of includeKeys.",
       inputSchema: z.object({
         notation: z.string().min(1).describe("Iconclass notation to browse (e.g. '31A33', '73D82')."),
@@ -369,8 +371,8 @@ export function registerTools(
           .describe("How many levels deep to expand children (1-3, default 1). Use 2 for narrative exploration; 3 only for narrow branches."),
         includeKeys: z.boolean().default(false).optional()
           .describe("Include key-expanded variants (e.g. 25F23(+46)). Only applies to base notations."),
-        maxKeyVariants: z.number().int().min(1).max(335).default(25).optional()
-          .describe("Maximum key variants to return when includeKeys is true (1-335, default 25)."),
+        maxKeyVariants: z.number().int().min(1).max(TOOL_LIMITS.keyVariants.max).default(TOOL_LIMITS.keyVariants.default).optional()
+          .describe(`Maximum key variants to return when includeKeys is true (1-${TOOL_LIMITS.keyVariants.max}, default ${TOOL_LIMITS.keyVariants.default}).`),
         keyOffset: z.number().int().min(0).default(0).optional()
           .describe("Skip this many key variants (for pagination)."),
       }).strict(),
@@ -419,6 +421,9 @@ export function registerTools(
           ? `Children (${shownAtDepth1} of ${totalChildren} shown, ${subtree.length} total entries):`
           : `Children (${subtree.length}):`;
         sections.push(childHeader, ...childLines);
+        if (result.subtreeCapped) {
+          sections.push(`Subtree capped at ${IconclassDb.MAX_SUBTREE_ENTRIES} entries — browse a child notation or lower depth to see the rest.`);
+        }
       }
       if (keyVariants.length > 0) {
         const keyLines = keyVariants.map(k => {
@@ -505,8 +510,8 @@ export function registerTools(
       inputSchema: z.object({
         notation: z.string().min(1).describe("Base notation to expand (e.g. '25F23'). Must not be a key-expanded notation like '25F23(+46)'."),
         lang: LangField(),
-        maxResults: z.number().int().min(1).max(335).default(25)
-          .describe("Maximum key variants to return (1-335, default 25)."),
+        maxResults: z.number().int().min(1).max(TOOL_LIMITS.keyVariants.max).default(TOOL_LIMITS.keyVariants.default)
+          .describe(`Maximum key variants to return (1-${TOOL_LIMITS.keyVariants.max}, default ${TOOL_LIMITS.keyVariants.default}).`),
         offset: z.number().int().min(0).default(0).optional()
           .describe("Skip this many key variants (for pagination)."),
       }).strict(),

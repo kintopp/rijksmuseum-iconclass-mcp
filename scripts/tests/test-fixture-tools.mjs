@@ -11,6 +11,9 @@
  *  - a tool description's first sentence runs past 120 code points, so
  *    claude.ai's roster truncates it mid-thought.
  *  - an unknown argument is stripped instead of rejected.
+ *  - a page-size maximum drifts up past what fits a host's per-result ceiling.
+ *  - browse flags a complete subtree as capped (the cap itself needs more rows
+ *    than the fixture has; test-tools.mjs §4 covers it on the real DB).
  *  - search ranks by notation instead of collection coverage, then BM25.
  *  - collectionId / onlyWithArtworks / parentNotation leak results from outside
  *    the filter, or parentNotation treats LIKE wildcards as wildcards.
@@ -89,6 +92,20 @@ const VALID_ARGS = {
 for (const [name, args] of Object.entries(VALID_ARGS)) {
   const r = await call(name, { ...args, bogus: 1 });
   assertEq(txt(r), `Input validation error: Invalid arguments for tool ${name}: Unrecognized key: "bogus"`, `${name} rejects an unknown key`);
+}
+
+// Page-size maxima keep the structuredContent copy under host per-result ceilings
+// (claude.ai ~150K chars). Accept the max, reject max + 1 with the field named.
+const MAXIMA = [
+  ["search_prefix", { notation: "73D" }, "maxResults", 50],
+  ["browse", { notation: "25F23", includeKeys: true }, "maxKeyVariants", 100],
+  ["expand_keys", { notation: "25F23" }, "maxResults", 100],
+];
+for (const [name, args, field, max] of MAXIMA) {
+  ok(await call(name, { ...args, [field]: max }), `${name} ${field}=${max}`);
+  assertEq(txt(await call(name, { ...args, [field]: max + 1 })),
+    `Input validation error: Invalid arguments for tool ${name}: ${field}: Too big: expected number to be <=${max}`,
+    `${name} rejects ${field}=${max + 1}`);
 }
 
 // ══════════════════════════════════════════════════════════════════
@@ -193,7 +210,10 @@ if (ok(r4d2, "browse 73D depth 2")) {
     "a depth-2 line is indented two levels");
 }
 const r4d3 = await call("browse", { notation: "73D", depth: 3 });
-if (ok(r4d3, "browse 73D depth 3")) assert(notations(sc(r4d3).subtree).includes("73D671") && sc(r4d3).subtree.length === 16, "depth 3 adds 73D671 (16 entries)");
+if (ok(r4d3, "browse 73D depth 3")) {
+  assert(notations(sc(r4d3).subtree).includes("73D671") && sc(r4d3).subtree.length === 16, "depth 3 adds 73D671 (16 entries)");
+  assertEq(sc(r4d3).subtreeCapped, false, "a complete subtree is not flagged as capped");
+}
 
 const r4ref = await call("browse", { notation: "73D6" });
 if (ok(r4ref, "browse 73D6")) {

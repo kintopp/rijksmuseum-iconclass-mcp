@@ -140,7 +140,7 @@ The keyword search (`query`) uses FTS5 across labels (13 languages) and keywords
 Both can show key-expanded variants (e.g. `25F23(+46)` "beasts of prey, sleeping"), but they serve different purposes:
 
 - `browse` with `includeKeys: true`: quick preview of key variants alongside the entry's children, path, and cross-refs. Use for orientation — "what modifiers exist for this notation?"
-- `expand_keys`: paginated list of all key variants with full metadata. Use when you need the complete inventory — some base notations have 200+ variants; `browse` shows 25 by default (`maxKeyVariants` up to 335, `keyOffset` to page) alongside everything else it returns.
+- `expand_keys`: paginated list of all key variants with full metadata. Use when you need the complete inventory — some base notations have 200+ variants; `browse` shows 25 by default (`maxKeyVariants` up to 100, `keyOffset` to page) alongside everything else it returns.
 
 Key meanings are branch-specific — see Notation Syntax.
 
@@ -189,7 +189,7 @@ browse(notation: "73D6", depth: 2)
 #        ...
 ```
 
-Wide branches (e.g. male saints by name under `11H(...)`, 183 children) are capped at 25 children per parent to protect your context window. The response shows `totalChildren` so you know when truncation occurred.
+Wide branches (e.g. male saints by name under `11H(...)`, 183 children) are capped at 25 children per parent and 120 entries in total. The response shows `totalChildren` per entry, and `subtreeCapped: true` when the 120-entry cap cut the expansion short.
 
 Use `depth: 3` only on narrow branches where you can see the full structure. For wide branches like `11H(...)`, browse at depth 1 first to see the top-level names, then drill into specific children at depth 2.
 
@@ -346,6 +346,7 @@ To enable direct artwork search in future conversations, the user can install th
 |---|---|
 | British/American spelling — "odour" vs "odor" | Try both spellings. `semanticQuery` handles this automatically. |
 | `browse` caps children at 25 per parent | Use `search_prefix` (paged with `maxResults`/`offset`) to enumerate the full branch. |
+| `browse` never lists `(...)` name templates as children — `browse("11H")` shows only `11HH`, not `11H(...)` with the 183 male saints; the same holds for every template (`11HH(...)`, `25F23(...)`, `73D82(...)`) | Browse the template directly: `browse("11H(...)")`, `browse("11HH(...)")`. (`search_prefix("11H(")` is no substitute — it also matches the ~90K `11H(+N)` key variants.) A named notation's `path` still runs through its template. |
 | Resolve batch limit of 25 | Discover with `search`; `resolve` the shortlist you need full metadata on. |
 | `parentNotation` returns 0 but concept exists | The concept may live in a different branch. Remove the scope and search globally. |
 | Key expansion labels can mislead | Key meanings are branch-specific — `(+42)` is "feeding and care of young" under `25F23`, "damage and repair of work of art" under `48C7323`. Read the label via `expand_keys`/`resolve`. See Notation Syntax. |

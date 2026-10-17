@@ -1,7 +1,7 @@
 ---
 name: iconclass-mcp
 metadata:
-  version: "0.4.3"
+  version: "0.7.0"
 description: >
   Companion vocabulary layer to rijksmuseum-mcp+: maps art-subject concepts
   to Iconclass notation codes (~1.3M codes across 13 languages) and checks
@@ -125,7 +125,7 @@ The keyword search (`query`) uses FTS5 across labels (13 languages) and keywords
 
 **Single words are usually best.** FTS matches whole words against the Iconclass vocabulary, so a single specific word ("salamander", "crucifixion", "lute") has the highest recall. Multi-word queries are useful when a single word is too broad — "broken string" to distinguish from intact string instruments, or "Last Supper" to avoid matching other uses of "supper."
 
-**When FTS fails, switch to semantic search.** Use `semanticQuery` when the vocabulary term is unknown or the query is conceptual. Its strength is reaching across branches: "grief and mourning" returns `73D72` (dead Christ), `42E131` (burial rites) and `94G44` (funeral of Hector) together, including labels containing neither query word. It honours `maxResults` and `offset` like keyword search, but only base notations are embedded — key-expanded variants never appear in semantic results — so use it to locate the right branch, then `browse`, `expand_keys` or `search_prefix` to enumerate it.
+**When FTS fails, switch to semantic search.** Use `semanticQuery` when the vocabulary term is unknown or the query is conceptual. Its strength is reaching across branches: "grief and mourning" returns `73D72` (dead Christ), `42E131` (burial rites) and `94N333` (Althaea grieving) together, plus `33A33` (condolence), whose label contains neither query word. It honours `maxResults` and `offset` like keyword search, but only base notations are embedded — key-expanded variants never appear in semantic results — so use it to locate the right branch, then `browse`, `expand_keys` or `search_prefix` to enumerate it.
 
 **Keyword search counts rows, not concepts.** Key variants are indexed alongside base notations, so a narrow term can fill the result window with `(+N)` variants of one notation — `search(query: "salamander")` reports 426 matches, all variants of `25FF412`. Add `onlyWithArtworks: true` to collapse to base notations with coverage (426 → 1). Read `totalResults` as a row count.
 
@@ -172,7 +172,7 @@ search(query: "crucifixion")
 search(semanticQuery: "grief and mourning")
 # -> 73D72 "the mourning over the dead Christ" [7 > 73 > 73D]
 # -> 42E131 "mourning the dead" [4 > 42 > 42E]
-# -> 94G44 "funeral and mourning of Hector" [9 > 94 > 94G]
+# -> 94N333 "Althaea grieving at the death of her brothers" [9 > 94 > 94N]
 ```
 
 ### 2. Explore a Hierarchy Branch

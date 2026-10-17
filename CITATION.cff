@@ -14,8 +14,8 @@ authors:
     affiliation: "Research and Infrastructure Support (RISE), University of Basel"
 repository-code: "https://github.com/kintopp/rijksmuseum-iconclass-mcp"
 license: MIT
-version: "0.6.0"
-date-released: "2026-09-02"
+version: "0.7.0"
+date-released: "2026-10-17"
 keywords:
   - digital humanities
   - iconclass

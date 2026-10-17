@@ -12,7 +12,7 @@ npm start          # stdio mode
 npm run serve      # HTTP mode on port 3000
 ```
 
-On first run, the server downloads `iconclass.db` (~1 GB compressed) to `data/` if `ICONCLASS_DB_URL` is set. Subsequent starts are fast.
+On first run, the server downloads `iconclass.db` (~0.7 GB compressed) to `data/` if `ICONCLASS_DB_URL` is set. Subsequent starts are fast.
 
 To use the local server with Claude Desktop (stdio), add to your `claude_desktop_config.json`:
 
@@ -30,16 +30,17 @@ To use the local server with Claude Desktop (stdio), add to your `claude_desktop
 ### Testing
 
 There is no test framework — the suites are standalone Node scripts under
-`scripts/tests/`, run via npm:
+`scripts/tests/`, run via npm. All of them need a built `dist/`.
 
 | Command | Layer | Requires |
 |---------|-------|----------|
-| `npm test` | Pure-function + unit tests | nothing (runs in CI) |
-| `npm run test:tools` | Integration tests via the MCP client | the main `data/iconclass.db` |
-| `npm run test:http` | HTTP concurrency smoke test | a built `dist/` |
+| `npm test` | Pure-function, unit, tool-level, HTTP concurrency and 2026-07-28 wire tests | nothing — tool-level suites run on a small fixture DB built from `fixtures/` |
+| `npm run test:fixture` | Just the fixture-backed tool suite | nothing |
+| `npm run test:modern` / `test:http` | Just the 2026-07-28 wire / HTTP concurrency suite | nothing |
+| `npm run test:tools` | Real-DB suite: semantic search, ranking at full volume | `data/iconclass.db` + the embedding model |
+| `npm run test:all` | `npm test` + `test:tools` | as `test:tools` |
 
-Only `npm test` runs in CI; the integration layer needs the large database, so
-run it locally.
+CI runs `npm test`; only `test:tools` needs to be run by hand.
 
 ## Artwork counts
 
@@ -55,47 +56,42 @@ python scripts/export-collection-counts.py --vocab-db path/to/vocab.db --output 
 
 # Build the sidecar
 python scripts/build-counts-db.py \
-  --counts-csv data/rijksmuseum-counts.csv
+  --counts-csv data/rijksmuseum-counts.csv \
+  --release-tag counts-latest
 ```
 
 To add a new collection, create a CSV (`notation,count`), add an entry to `COLLECTION_META` in `build-counts-db.py`, and pass the CSV as an additional `--counts-csv` argument.
 
 ## Building the database
 
-The database is built from the [Iconclass CC0 data dump](https://github.com/iconclass/data) and the [`iconclass`](https://pypi.org/project/iconclass/) Python library.
+The database is built from the [Iconclass CC0 data dump](https://github.com/iconclass/data) and the [`iconclass`](https://pypi.org/project/iconclass/) Python library, then completed by importing the semantic embeddings. **Both steps are required:** the build alone writes `schema_version` 3, and the server only accepts a DB at version 4 or later, which the embeddings import sets.
 
 ```bash
 # Clone the CC0 data
 git clone https://github.com/iconclass/data /tmp/iconclass-data
 
 # Install Python dependencies
-uv pip install iconclass
+uv pip install iconclass modal sqlite-vec numpy
 
-# Build the main DB (takes ~6 minutes)
+# 1. Build the main DB (takes ~6 minutes)
 python scripts/build-iconclass-db.py \
   --data-dir /tmp/iconclass-data \
   --output data/iconclass.db
 
-# Build the counts sidecar (~instant)
-python scripts/build-counts-db.py \
-  --counts-csv data/rijksmuseum-counts.csv
-```
-
-### Adding semantic embeddings
-
-Embeddings enable the `semanticQuery` parameter. Generation uses [Modal](https://modal.com) for cloud GPU access (free tier works).
-
-```bash
-uv pip install modal sqlite-vec numpy
+# 2. Generate and import embeddings (enables semanticQuery)
 modal setup  # one-time auth
-
 modal run scripts/generate-embeddings-modal.py   # → data/iconclass-gemma.npz
 python scripts/import-gemma-embeddings.py --npz data/iconclass-gemma.npz --db data/iconclass.db
+
+# Build the counts sidecar (~instant)
+python scripts/build-counts-db.py \
+  --counts-csv data/rijksmuseum-counts.csv \
+  --release-tag counts-latest
 ```
 
-This embeds ~40K base notations with `google/embeddinggemma-2` (768d) on an A10G GPU; the import step quantises them to int8 and records the document and query model revisions in `version_info`. Key-expanded notations are not embedded — they are searchable via FTS.
+Embedding generation uses [Modal](https://modal.com) for cloud GPU access (free tier works). It embeds ~40K base notations with `google/embeddinggemma-2` (768d) on an A10G GPU; the import step quantises them to int8 and records the document and query model revisions in `version_info`. Key-expanded notations are not embedded — they are searchable via FTS.
 
-The script reads `HF_TOKEN` from a Modal secret (default name `huggingface-secret`, override with `HF_SECRET_NAME`):
+The Modal script reads `HF_TOKEN` from a Modal secret (default name `huggingface-secret`, override with `HF_SECRET_NAME`):
 
 ```bash
 modal secret create huggingface-secret HF_TOKEN=hf_...
@@ -103,14 +99,18 @@ modal secret create huggingface-secret HF_TOKEN=hf_...
 
 ### Releasing the database
 
-The main database is ~1 GB compressed — too large for a single reliable upload on slow connections. The release script splits it into 200 MB chunks and uploads each as a separate GitHub release asset, with automatic retry on failure:
+The main database lives on the rolling `iconclass-db-latest` release tag, not on versioned releases. At ~0.7 GB compressed it is too large for a single reliable upload, so the release script splits it into 200 MB chunks and uploads each as a separate asset, with automatic retry on failure.
+
+Delete the old assets first. `--clobber` overwrites same-named chunks but leaves orphans, and a leftover `part-*` from a larger previous build corrupts reassembly.
 
 ```bash
-# Compress the database
 gzip -k data/iconclass.db
 
-# Split and upload to a release
-scripts/split-for-release.sh v0.1.0
+for a in $(gh release view iconclass-db-latest --json assets --jq '.assets[].name'); do
+  gh release delete-asset iconclass-db-latest "$a" --yes
+done
+
+scripts/split-for-release.sh iconclass-db-latest
 ```
 
 The server's download logic auto-detects chunked assets (`.part-aa`, `.part-ab`, …), downloads them in sequence, reassembles, and decompresses. Single-file uploads are still supported as a fallback.
@@ -121,7 +121,7 @@ The server's download logic auto-detects chunked assets (`.part-aa`, `.part-ab`,
 |--------|---------|---------|
 | [iconclass/data](https://github.com/iconclass/data) | 1.3M notations, texts in 13 languages, keywords, hierarchy | CC0 |
 | [iconclass](https://pypi.org/project/iconclass/) Python library | Text composition for key-expanded notations | CC0 |
-| [Rijksmuseum vocabulary.db](https://github.com/kintopp/rijksmuseum-mcp-plus) | Artwork counts per notation (24K notations) | MIT |
+| [Rijksmuseum vocabulary.db](https://github.com/kintopp/rijksmuseum-mcp-plus) | Artwork counts per notation (22.8K rows, ~20.2K matching valid notations) | MIT |
 
 ## Environment variables
 
@@ -152,87 +152,24 @@ In HTTP mode (`PORT` set or `--http`):
 
 `/debug/memory` and `/debug/stats` are unauthenticated by convention — operational signals only (no inputs, no PII), matching `/health`.
 
-## Performance
-
-| Operation | Local | Production | Notes |
-|-----------|-------|------------|-------|
-| FTS search (844 hits) | ~7ms | ~60ms | "crucifixion" |
-| FTS search (8.5K hits) | ~26ms | ~85ms | "horse" |
-| FTS search (28.7K hits) | ~137ms | ~203ms | "portrait" |
-| Semantic search | ~200ms | — | Query encoding (q8, ~180 ms on M4) + in-memory two-pass KNN (~20 ms) |
-| Browse | ~1ms | ~54ms | B-tree lookup + child resolution |
-| Browse with key variants | ~1ms | ~58ms | Default page of 25 key variants |
-| Resolve (batch of 15) | ~1ms | ~54ms | 15 notations with full metadata |
-| Find artworks | ~1ms | — | Per-notation artwork count lookup (Rijksmuseum) |
-| Prefix search | ~113ms | ~196ms | Depends on subtree size; accurate COUNT query |
-| Server cold start | ~8s | ~77s | Local: embedding model only. Production: chunked DB download + decompression |
-
-**Local:** Apple M4, 24 GB unified memory, warm mmap caches. **Production:** Railway, warm caches (2026-04-03). Production times are median of 5 runs, including network round-trip.
-
 ## Notes
 
-### Embedding model
+### Search ranking
 
-The server uses [`google/embeddinggemma-2`](https://huggingface.co/google/embeddinggemma-2) for semantic search — the same model as the Rijksmuseum server, so query and notation vectors share one 768-dimensional space across both. Notations are embedded as documents (`title: none | text: …`) and queries with the `task: search result | query: ` prefix. At query time the server loads only the text tower of the pinned [`onnx-community/embeddinggemma-2-ONNX`](https://huggingface.co/onnx-community/embeddinggemma-2-ONNX) export; the vision and audio encoders would add ~325 MB for nothing. The DB records which query model its vectors were built for, and the server disables semantic search rather than rank against a mismatched model.
+**Keyword search** tries the multi-word query as a phrase first, then falls back to AND-ed individual terms if the phrase matches nothing. Results are ranked by collection coverage (number of collections with artworks), then by FTS relevance.
 
-The composite texts (label + Dutch label + keywords + category path) average 105 Gemma tokens, with a 99th percentile of 246 and a maximum of 381 — well inside the 1,024-token cap used when embedding them.
+**Semantic search** uses [`google/embeddinggemma-2`](https://huggingface.co/google/embeddinggemma-2), the same model as the Rijksmuseum server, so both share one 768-dimensional vector space. Only base notations are embedded. The server holds all ~40K int8 vectors in memory (~40 MB) and ranks them in two passes: the first 256 dimensions pick 500 candidates, which are rescored on all 768. Filters (`collectionId`, `onlyWithArtworks`, `parentNotation`) are applied *before* ranking, so a filtered page holds the true top-k within the filter; filtered sets of ≤2,000 rows are ranked exactly. Results are ranked by similarity only. The DB records which query model its vectors were built for, and the server disables semantic search rather than rank against a mismatched model.
 
-### Semantic search and Iconclass structure
+### Limits
 
-Semantic search embeddings are built from a composite text that includes each notation's label, keywords, and full category path (e.g., "Religion and Magic > non-Christian religions > Mithraism and other Hellenistic..."). Because Iconclass labels are often inherited verbatim from parent to child, notations deep in verbose branches end up with the same qualifying phrase repeated at every level of the path. The embedding model sees this repetition as emphasis, which means **deep notations in long-named branches are over-represented in embedding space** relative to equally relevant notations in shallower or more concisely named parts of the hierarchy. A broad semantic query like "ancient religion" will favour the Mithraism subtree (9 levels, verbose labels) over a structurally simpler branch that may be just as relevant.
+Limits are sized to keep responses well inside an LLM's context window (an entry averages ~350 bytes of JSON) while avoiding pagination round-trips.
 
-In practice, this may rarely matter — semantic search is a fallback for when the exact vocabulary term is unknown, and FTS keyword search is unaffected by these structural biases.
-
-Other, more minor biases to be aware of: named notations like `11H(JOHN)` embed the name itself, so saints or figures with common English names may rank slightly higher than those with non-English names; the composite text mixes English and Dutch keywords, which can give a small boost to notations that happen to have Dutch keywords matching a query; and structural placeholder notations like `25F23(...)` ("beasts of prey, with NAME") sit in a generic part of embedding space and can surface as top results for broad queries even though they are not real subject entries.
-
-### Limits, defaults, and response sizing
-
-The constants below were chosen by profiling the Iconclass database, balancing response size (protecting the LLM's context window) against round-trip overhead (each tool call costs several seconds of LLM reasoning time).
-
-#### Result pages
-
-A resolved Iconclass entry averages ~350 bytes of JSON (median). At the default page size of 25, a typical `search` response is ~8 KB (~2,300 tokens) — roughly 1% of a 200K-token context window. At the maximum of 50 results, responses reach ~16 KB (~4,600 tokens). Both leave ample room for LLM reasoning.
-
-FTS queries return anywhere from ~800 unique notations ("crucifixion") to ~30,000 ("portrait"). Results are sorted by collection coverage (number of collections with artworks) so widely-represented notations appear first regardless of page size. The fixed cost of the FTS scan dominates — returning 10 or 50 results takes roughly the same time.
-
-`search_prefix` allows up to 100 results per page (default 25). Broad prefixes can match very large subtrees — e.g. `7%` spans ~89K notations, of which ~3K have Rijksmuseum artworks. To discourage LLMs from exhaustively paginating these, the tool description and response text nudge the caller to narrow the prefix rather than page through thousands of results. The `totalResults` count is always accurate (computed via SQL `COUNT` for unfiltered queries, or batch-filtered for collection-scoped queries).
-
-#### Browse depth and subtree caps
-
-The `browse` tool supports `depth` 1–3 for recursive child expansion. The Iconclass tree has a skewed fanout: the median node has 0 children (leaf), P95 is 6, but the widest node has 183 (`11H(...)`, saints by name). Subtree sizes at each depth level vary dramatically:
-
-| Notation | d+1 | d+2 | d+3 |
-|----------|-----|-----|-----|
-| `73D82` (road to Calvary) | 1 | 10 | 11 |
-| `25F` (animals) | 9 | 46 | 85 |
-| `11H` (saints) | 1 | 192 | 1,837 |
-
-To prevent wide branches from flooding the context window, two caps apply:
-- **Per-parent cap** of 25 children — wide branches self-document via `totalChildren` count vs entries shown
-- **Total subtree cap** of 250 entries — a hard safety net across all depth levels
-
-At ~350 bytes per entry, a full 250-entry subtree is ~85 KB (~25K tokens) — substantial but bounded. Narrow branches (the common case) are returned complete with no truncation.
-
-#### Key variant distribution
-
-81% of base notations have 25 or fewer key variants, so the default page of 25 captures most notations in a single call. The maximum of 335 matches the largest notation in the database and eliminates pagination entirely — important because each pagination round-trip costs the user several seconds of LLM reasoning time, far more than the ~9 ms the database needs to resolve 335 variants.
-
-#### Semantic search ranking and filters
-
-The server holds all ~40K int8 vectors in memory (~40 MB, loaded during background warm-up) and ranks them in two passes: cosine over the first 256 dimensions (an MRL prefix) picks 500 candidates, which are rescored on the full 768. `collectionId`, `onlyWithArtworks` and `parentNotation` narrow the candidate rows *before* ranking, so a filtered page holds the true top-k within the filter rather than what survives a post-filter. Filtered sets of ≤2,000 rows skip the first pass and are ranked exactly.
-
-#### Resolve batch limit
-
-The resolve tool accepts up to 25 notations per call (default 15). This is intentionally conservative — a 25-entry resolve response is ~8 KB, and the SKILL.md coaches LLMs to "use search for discovery, resolve only for the 3–5 you need full metadata on."
-
-#### Keywords
-
-The per-notation keyword limit of 40 matches the observed maximum in the database, so no keywords are truncated. The 99th percentile is 9 keywords; only 705 notations (0.04%) exceed 20. These are concentrated in a few keyword-heavy base notations — notably `46C1313` ("equestrian statue", 28 keywords listing famous statues by name), `23K` ("labours of the months", 30 keywords), and saint notations like `11H(THOMAS AQUINAS)`. Key-expanded variants of these inherit the base keywords and add modifier keywords on top, reaching up to 40.
-
-#### Artwork count sparsity
-
-With the Rijksmuseum collection overlay, ~1.5% of notations have artwork counts (20K of 1.3M). The `collections` field is empty for the vast majority of entries, adding negligible overhead. The `onlyWithArtworks` and `collectionId` filters are aggressive narrowers — useful when the caller only needs notations that appear in the Rijksmuseum. The collection's `totalNotations` reflects the number of distinct notations with artworks (computed at runtime by joining against the main notations table to exclude malformed entries).
-
-#### FTS multi-word fallback
-
-Multi-word queries try phrase match first (adjacent words, high precision), then fall back to AND-ed individual terms if the phrase returns zero results. This adds at most two extra FTS queries on the zero-result path — negligible given sub-millisecond FTS query times on the mmap'd database.
+| Tool / field | Default | Max |
+|--------------|---------|-----|
+| `search` results | 25 | 50 |
+| `search_prefix` results | 25 | 100 |
+| `resolve` notations per call | 15 | 25 |
+| `browse` depth | 1 | 3 |
+| `browse` children | 25 per parent, 250 per subtree | — |
+| Key variants (`browse`, `expand_keys`) | 25 | 335 — the largest notation in the DB |
+| Keywords per notation | — | 40 — the largest in the DB, so none are truncated |

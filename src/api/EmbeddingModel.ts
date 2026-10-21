@@ -72,11 +72,11 @@ export class EmbeddingModel {
 
   get available(): boolean { return this.model !== null; }
 
-  /** Resolve once the load kicked off by init() settles (whether it loaded or
-   *  failed). No-op if init() was never called. Lets a query lazily wait for a
-   *  model that is still loading in the background after a wake. */
+  /** Resolve once the load settles (whether it loaded or failed), starting it
+   *  if init() was never called. Lets a query lazily wait for a model that is
+   *  still loading in the background after a wake, or was never kicked off. */
   async whenReady(): Promise<void> {
-    if (this.initPromise) await this.initPromise;
+    await this.init();
   }
 
   /** Embed a search query, L2-normalised. */

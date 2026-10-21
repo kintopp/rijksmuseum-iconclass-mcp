@@ -1,6 +1,7 @@
 /**
- * Shared server boot for the no-framework test scripts in this dir
- * (test-http-concurrency.mjs, test-modern-wire.mjs, test-tools.mjs).
+ * Shared server boot and CLI runner for the no-framework test scripts in this
+ * dir (test-http-concurrency.mjs, test-modern-wire.mjs, test-tools.mjs,
+ * test-cli.mjs).
  *
  * Owns the readiness sentinels in one place: they are the startup lines from
  * src/index.ts, so a change there breaks boot detection for every suite at
@@ -24,6 +25,10 @@ export async function bootHttpServer({ port, timeoutMs = 20_000, env = {} } = {}
     env: { ...process.env, PORT: String(port), STRUCTURED_CONTENT: "true", ...env },
     stdio: ["ignore", "inherit", "pipe"],
   });
+  // A suite that throws before stop() would otherwise leave the server holding
+  // the DB mmap and the port.
+  const reap = () => child.kill("SIGKILL");
+  process.once("exit", reap);
 
   let stderr = "";
   child.stderr.on("data", (chunk) => {
@@ -58,11 +63,32 @@ export async function bootHttpServer({ port, timeoutMs = 20_000, env = {} } = {}
     url: `http://127.0.0.1:${port}/mcp`,
     stderr: () => stderr,
     async stop() {
+      process.off("exit", reap);
       child.kill("SIGTERM");
       await new Promise((resolve) => child.once("exit", resolve));
     },
   };
 }
+
+/**
+ * Run the icmcp CLI (scripts/cli.mjs) as a child and resolve when it exits, with
+ * `{ code, stdout, stderr, args }`. stdin always ends, so a --stdin run can't hang.
+ */
+export function runCli(args, { input, env = process.env } = {}) {
+  return new Promise((resolve) => {
+    const child = spawn(process.execPath, [path.join(PROJECT_DIR, "scripts", "cli.mjs"), ...args],
+      { cwd: PROJECT_DIR, env, stdio: ["pipe", "pipe", "pipe"] });
+    let stdout = "";
+    let stderr = "";
+    child.stdout.on("data", (c) => { stdout += c; });
+    child.stderr.on("data", (c) => { stderr += c; });
+    child.on("close", (code) => resolve({ code, stdout, stderr, args }));
+    child.stdin.end(input ?? "");
+  });
+}
+
+/** A CLI run's stdout as JSONL rows. */
+export const jsonlRows = (r) => r.stdout.split("\n").filter(Boolean).map((l) => JSON.parse(l));
 
 /**
  * Spawn `dist/index.js` in stdio mode and resolve once it is serving.

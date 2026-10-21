@@ -11,7 +11,7 @@ import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { assert, assertEq, section, report } from "./_assert.mjs";
-import { bootHttpServer } from "./_server.mjs";
+import { bootHttpServer, runCli, jsonlRows } from "./_server.mjs";
 
 const PROJECT_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 
@@ -758,6 +758,21 @@ try {
   await httpClient.close();
 } finally {
   await http.stop();
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  19. Semantic search through the CLI
+// ══════════════════════════════════════════════════════════════════
+
+section("19. semantic search through the icmcp CLI");
+
+// The CLI starts the server with MCP_SKIP_STARTUP_WARM=1, which never kicks off
+// the model load: the first semantic query has to start it.
+const cli = await runCli(["semantic", "ships on a stormy sea", "-n", "3", "--fields", "notation,similarity"]);
+if (assertEq(cli.code, 0, `CLI semantic: exit 0 (${cli.stderr.trim().slice(0, 120)})`)) {
+  const cliRows = jsonlRows(cli);
+  assertEq(cliRows.length, 3, "CLI semantic fills the page");
+  assert(cliRows.length > 0 && cliRows.every((r) => typeof r.similarity === "number"), "CLI semantic rows carry similarity");
 }
 
 report();

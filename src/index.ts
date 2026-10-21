@@ -59,6 +59,10 @@ function getHttpPort(): number {
   return parseInt(process.env.PORT ?? "3000", 10);
 }
 
+// Set by the CLI (scripts/cli.mjs): a one-shot keyword lookup shouldn't wait
+// for the embedding model or the page warm-up. A semantic query loads the model.
+const SKIP_STARTUP_WARM = process.env.MCP_SKIP_STARTUP_WARM === "1";
+
 // ─── Database spec ──────────────────────────────────────────────────
 
 const ICONCLASS_DB_SPEC: DbSpec = {
@@ -105,7 +109,8 @@ async function initDatabase(): Promise<void> {
     // this same load lazily (so the first semantic query after a wake waits,
     // within the /mcp 30s net), and runStdio() awaits whenReady() to keep
     // stdio startup eager. warmCorePages() likewise moves off the boot path.
-    embeddingModel.init();
+    // Under SKIP_STARTUP_WARM the first semantic query starts the load instead.
+    if (!SKIP_STARTUP_WARM) embeddingModel.init();
   }
 
   // Per-tool usage telemetry (#326). Instantiated once here (both runStdio and
@@ -173,13 +178,18 @@ async function runStdio(): Promise<void> {
   }
   // stdio has no wake/connect-race concern, so keep startup eager: finish the
   // model load (kicked off non-blocking in initDatabase) and warm before serving.
-  await embeddingModel?.whenReady();
-  iconclassDb.warmCorePages();
+  if (!SKIP_STARTUP_WARM) {
+    await embeddingModel?.whenReady();
+    iconclassDb.warmCorePages();
+  }
   // The factory is invoked once per connection; the opening exchange pins the
   // era (2025-era clients are served exactly as the hand-wired transport did).
   serveStdio(() => createServer(), {
     onerror: (err) => logError("transport error", err),
   });
+  // The transport closes on stdin EOF but leaves the exit to the event loop, which
+  // a model load in flight keeps alive; exit as soon as the client hangs up.
+  process.stdin.once("end", shutdown);
   logInfo(`${SERVER_NAME} v${SERVER_VERSION} running on stdio`);
 }
 

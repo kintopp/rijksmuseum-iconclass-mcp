@@ -27,6 +27,27 @@ To use the local server with Claude Desktop (stdio), add to your `claude_desktop
 }
 ```
 
+### CLI
+
+`icmcp` (`scripts/cli.mjs`) is a headless command-line client for the six tools. It is an MCP *client* that drives the real server, so a CLI query returns exactly what an LLM gets. Run it as `npm run cli -- <command> …`, or run `npm link` once to put `icmcp` on your `PATH`.
+
+```bash
+icmcp search "crucifixion" --max 5 --fields notation,text     # JSONL, one row per line
+icmcp semantic "grief and mourning" --max 5                   # semanticQuery mode of `search`
+icmcp browse 73D8 --depth 2 --json                            # one object; --json pretty-prints all of it
+icmcp resolve 25F23 "25F23(+46)" 73D82                        # several codes in one call
+icmcp keys 25F23 --max 5 --table                              # expand_keys
+icmcp prefix 73D8 --offset 25                                 # search_prefix
+icmcp artworks 73D6 "73D82(CROSS)"                            # find_artworks
+cat codes.txt | icmcp resolve --stdin                         # batches of up to 25 codes per call
+icmcp tools --compact                                         # capability manifest for agents
+```
+
+- **Output.** List commands print JSONL on stdout and `browse` prints one JSON object. Counts, paging hints (`pass --offset N for more`) and `note:` lines go to stderr. The notes restate caveats that only the tools' text output carries, such as codes in `notFound`, codes with no label, key variants beyond the page, and capped subtrees. `--fields a,b,c` keeps only those keys in each row, `--table` prints a terse table, and `--quiet` silences stderr.
+- **Flags.** Each tool's flags come from its live input schema (`icmcp <command> --help`). `--max`/`-n` maps to each command's own cap (`maxResults`, or `maxKeyVariants` for `browse`). Unknown flags, missing arguments and too many codes fail with exit code 2 before anything is sent. `--show-call` prints the resolved call without running it.
+- **Transports.** By default the CLI spawns `node dist/index.js` over stdio, which needs `npm run build` and the DBs in `data/`. Each command starts its own server and exits when it is done. The server runs with `MCP_SKIP_STARTUP_WARM=1`, so a keyword lookup doesn't wait for the embedding model, but every `semantic` command loads the model afresh (about 3 s, against about 0.6 s for a keyword lookup). `--http <url>` (or `ICMCP_HTTP`) uses a running server instead, such as `npm run serve` or the Railway URL. For a series of queries, especially semantic ones, start `npm run serve` once and `export ICMCP_HTTP=http://localhost:3000/mcp`: the model then loads once, and each command takes well under a second. `--protocol legacy|auto|2026-07-28` picks the protocol era; the default is `legacy`.
+- **Exit codes.** 0 ok, 1 tool or connection error, 2 usage error.
+
 ### Testing
 
 There is no test framework — the suites are standalone Node scripts under
@@ -34,8 +55,9 @@ There is no test framework — the suites are standalone Node scripts under
 
 | Command | Layer | Requires |
 |---------|-------|----------|
-| `npm test` | Pure-function, unit, tool-level, HTTP concurrency and 2026-07-28 wire tests | nothing — tool-level suites run on a small fixture DB built from `fixtures/` |
+| `npm test` | Pure-function, unit, tool-level, HTTP concurrency, 2026-07-28 wire and CLI tests | nothing — tool-level suites run on a small fixture DB built from `fixtures/` |
 | `npm run test:fixture` | Just the fixture-backed tool suite | nothing |
+| `npm run test:cli` | Just the `icmcp` CLI suite | nothing |
 | `npm run test:modern` / `test:http` | Just the 2026-07-28 wire / HTTP concurrency suite | nothing |
 | `npm run test:tools` | Real-DB suite: semantic search, ranking at full volume | `data/iconclass.db` + the embedding model |
 | `npm run test:all` | `npm test` + `test:tools` | as `test:tools` |
@@ -137,6 +159,8 @@ The server's download logic auto-detects chunked assets (`.part-aa`, `.part-ab`,
 | `HF_HOME` | — | HuggingFace cache directory |
 | `ALLOWED_ORIGINS` | `*` | CORS origins for HTTP mode |
 | `STRUCTURED_CONTENT` | `true` | Set `false` to disable `outputSchema` |
+| `MCP_SKIP_STARTUP_WARM` | — | `1` skips the stdio startup warm-up and the eager embedding-model load (the model then loads on the first semantic query). Set by the CLI |
+| `ICMCP_HTTP` | — | CLI only: server URL, as `--http` |
 | `USAGE_STATS_PATH` | `data/usage-stats.json` | Per-tool call/error/latency counters (flushed hourly + on shutdown). The default lives inside the image and is clobbered on every redeploy — set this to a path on the Railway volume to persist across restarts. |
 
 ## HTTP endpoints

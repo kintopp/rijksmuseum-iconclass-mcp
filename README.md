@@ -24,7 +24,7 @@ https://rijksmuseum-iconclass-mcp-production.up.railway.app/mcp
 
 Go to _Settings_ → _Connectors_ → _Add custom connector_ → name it as you like and paste the URL into the _Remote MCP Server URL_ field. You can ignore the Authentication section. Once configured, optionally set the permissions for its tools (e.g. 'Always allow'). See Anthropic's [instructions](https://support.claude.com/en/articles/11175166-get-started-with-custom-connectors-using-remote-mcp) for  details. Many other desktop and web-based clients such as OpenAI's ChatGPT or Mistral's LeChat and open-source applications support custom MCP servers. Please consult their documentation for more information.
 
-Alternatively, you can install the Iconclass MCP server _locally_ on your own computer; please consult the [technical guide](docs/technical-guide.md).
+Alternatively, you can install the Iconclass MCP server _locally_ on your own computer; please consult the [technical guide](docs/technical-guide.md). A local install also gives you `icmcp`, a [command-line interface](docs/technical-guide.md#cli) that runs the same tools from the terminal, with JSONL output for piping into tools such as `jq`.
 
 **Recommended:** Next, follow the same procedure to install its sibling resource, [rijksmuseum-mcp+](https://github.com/kintopp/rijksmuseum-mcp-plus). This allows you to explore over 830,000 artworks and metadata records from the Rijksmuseum with semantic search, provenance analysis, similarity comparisons, and spatial reasoning. 
 

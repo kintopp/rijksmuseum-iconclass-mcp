@@ -214,7 +214,9 @@ async function runHttp(): Promise<void> {
     })
   );
   app.use(compression({ threshold: 1024 })); // gzip responses >= 1 KB
-  app.use(express.json());
+  // inflate: false rejects Content-Encoding'd bodies (415): MCP clients never
+  // compress requests, and it keeps zlib/Brotli decoding off attacker input.
+  app.use(express.json({ inflate: false }));
 
   // ── MCP endpoint (stateless — no sessions, no SSE streams) ─────
   //

@@ -135,6 +135,13 @@ if (assert(!r2sal.isError, "salamander: no error")) {
   assertEq(s.results.slice(0, 8).filter(r => !r.isKeyExpanded).length, 8, "salamander: all 8 base notations come before any variant");
   assertEq(s.results[1]?.notation, "11I62(ANANIAS)", "salamander: Ananias (salamander attribute) ranks 2nd");
 }
+// A variant that matched on its key, not via its base, keeps its BM25 place:
+// 25F(+46) "animals (+ sleeping animal(s))" ranked 57th when every variant was demoted.
+const r2slp = await client.callTool({ name: "search", arguments: { query: "sleeping", maxResults: 10 } });
+if (assert(!r2slp.isError, "sleeping: no error")) {
+  const top = sc(r2slp).results.map(r => r.notation);
+  assert(top.includes("25F(+46)"), `sleeping: 25F(+46) in the top 10 (got ${top.join(" ")})`);
+}
 
 // A control character must never reach FTS5 as syntax; NUL acts as a word break.
 const r2nul = await client.callTool({ name: "search", arguments: { query: "angel\u0000trumpet", maxResults: 50 } });

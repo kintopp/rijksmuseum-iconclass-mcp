@@ -16,7 +16,9 @@
  *    than the fixture has; test-tools.mjs §4 covers it on the real DB).
  *  - search ranks by notation instead of collection coverage, then BM25.
  *  - a key variant outranks a base notation in its coverage tier because its
- *    label is shorter, so one concept's variants fill the page.
+ *    label is shorter, so one concept's variants fill the page; or, the other
+ *    way, a variant that matched only on its key (its base didn't match) is
+ *    pushed behind weaker base matches.
  *  - totalBaseNotations counts base rows instead of distinct bases (a variant
  *    whose base didn't match must still count it), or ignores the filters.
  *  - collectionId / onlyWithArtworks / parentNotation leak results from outside
@@ -69,7 +71,7 @@ if (!ok(r0, "search_prefix 73D") || !assert(sc(r0).collections.some((c) => c.col
 }
 // totalNotations: seeded rows that JOIN to a notation; the "99X" row in each collection must not count.
 eqList(sc(r0).collections, [
-  { collectionId: "rijksmuseum", label: "Rijksmuseum, Amsterdam", countsAsOf: "2026-06-13", totalNotations: 38, searchUrlTemplate: null },
+  { collectionId: "rijksmuseum", label: "Rijksmuseum, Amsterdam", countsAsOf: "2026-06-13", totalNotations: 39, searchUrlTemplate: null },
   { collectionId: "testmuseum", label: "Test Museum", countsAsOf: "2026-01-01", totalNotations: 4, searchUrlTemplate: "https://collection.example.org/search?iconclass={notation}" },
 ], "collections are the fixture's two, with totalNotations excluding unknown notations");
 
@@ -166,7 +168,15 @@ const r2kv = await call("search", { query: "predatory" });
 if (ok(r2kv, "predatory")) {
   assertEq(sc(r2kv).totalResults, 31, "31 rows: 25F23 and its 30 variants");
   assertEq(sc(r2kv).totalBaseNotations, 1, "one base notation");
+  assertEq(lines(r2kv)[0], '25 of 31 matches (1 base notation) for "predatory"', "header: singular for one base notation");
 }
+
+// "sleeping" matches 25F23(+46) (8 tokens, testmuseum) on its key, not via its base
+// 25F23, and 71F1544 (13 tokens, rijksmuseum): same coverage tier, BM25 decides.
+const r2sl = await call("search", { query: "sleeping" });
+if (ok(r2sl, "sleeping"))
+  eqList(notations(sc(r2sl).results), ["25F23(+46)", "71F1544"],
+    "a variant whose base didn't match keeps its BM25 place ahead of a longer base");
 
 const r2r = await call("search", { query: "crucifixion", collectionId: "rijksmuseum" });
 if (ok(r2r, "collectionId rijksmuseum"))

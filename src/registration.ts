@@ -254,7 +254,7 @@ export function registerTools(
         "• semanticQuery — find notations by meaning, across branches (e.g. 'grief and mourning' finds scenes in the Bible, burial-rite and mythology branches). " +
         "Covers base notations only; key-expanded variants are reachable via query" +
         (semanticAvailable ? "" : " [currently unavailable — embeddings not loaded]") + "\n\n" +
-        "Keyword results are ranked by collection coverage, then base notations before key variants, then FTS relevance; semantic results by similarity. " +
+        "Keyword results are ranked by collection coverage, then base notations before key variants of matching bases, then FTS relevance; semantic results by similarity. " +
         "totalResults counts rows (each key variant is one); totalBaseNotations counts distinct base notations, a variant counting as its base.\n\n" +
         "For enumerating all notations under a prefix, use search_prefix instead.",
       inputSchema: z.object({
@@ -348,7 +348,8 @@ export function registerTools(
       // FTS search mode
       const result = db.search(args.query!, args.maxResults, args.lang, args.offset ?? 0, args.collectionId, args.onlyWithArtworks, args.parentNotation);
 
-      const header = `${result.results.length} of ${result.totalResults} matches (${result.totalBaseNotations} base notations) for "${args.query}"`;
+      const bases = result.totalBaseNotations;
+      const header = `${result.results.length} of ${result.totalResults} matches (${bases} base notation${bases === 1 ? "" : "s"}) for "${args.query}"`;
       const lines = result.results.map((e, i) =>
         formatEntryLine(e, `${i + 1}. `)
       );

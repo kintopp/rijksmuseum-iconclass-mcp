@@ -487,12 +487,13 @@ export class IconclassDb {
       if (b.coverage !== a.coverage) return b.coverage - a.coverage;
       const hitA = hits.get(a.notation)!;
       const hitB = hits.get(b.notation)!;
-      // Base notations before key variants within a coverage tier. Variants share
-      // their base's keywords, so on BM25 alone one narrow concept's (+N) rows
-      // outrank every other base and fill the page.
-      const variantA = hitA.base !== null ? 1 : 0;
-      const variantB = hitB.base !== null ? 1 : 0;
-      if (variantA !== variantB) return variantA - variantB;
+      // Within a coverage tier, a variant whose base also matched goes after the
+      // bases: it shares its base's label, so on BM25 alone one narrow concept's
+      // (+N) rows outrank every other base and fill the page. A variant whose base
+      // didn't match ("sleeping" → 25F(+46)) matched on its key, so BM25 places it.
+      const echoA = hitA.base !== null && hits.has(hitA.base) ? 1 : 0;
+      const echoB = hitB.base !== null && hits.has(hitB.base) ? 1 : 0;
+      if (echoA !== echoB) return echoA - echoB;
       if (hitA.rank !== hitB.rank) return hitA.rank - hitB.rank;
       return a.notation.localeCompare(b.notation);
     });
@@ -707,7 +708,8 @@ export class IconclassDb {
     return {
       query,
       totalResults: results.length,
-      totalBaseNotations: new Set(results.map(r => r.baseNotation ?? r.notation)).size,
+      // Only base notations are embedded.
+      totalBaseNotations: results.length,
       results,
       collections: this._collections,
     };

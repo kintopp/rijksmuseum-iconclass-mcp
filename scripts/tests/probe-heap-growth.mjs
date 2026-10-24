@@ -15,12 +15,12 @@
  *         [--modern] [--unique] [--abort 0.3]
  * Requires: npm run build, data/iconclass.db, embedding model in HF cache
  */
-import { spawn } from "node:child_process";
 import { mkdirSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import { bootHttpServer } from "./_server.mjs";
 
 const PROJECT_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const arg = (name, def) => {
@@ -55,21 +55,17 @@ const callFor = (i) => {
   }
 };
 
-const child = spawn("node", ["--heapsnapshot-signal=SIGUSR2", `--diagnostic-dir=${OUT}`, "dist/index.js"], {
-  cwd: PROJECT_DIR,
-  env: { ...process.env, PORT: String(PORT), STRUCTURED_CONTENT: "true" },
-  stdio: ["ignore", "ignore", "pipe"],
+// Every tool call logs a line; echoing them would bury the probe's own output.
+const server = await bootHttpServer({
+  port: PORT, timeoutMs: 120_000, echoStderr: false,
+  nodeArgs: ["--heapsnapshot-signal=SIGUSR2", `--diagnostic-dir=${OUT}`],
 });
-let stderr = "";
-child.stderr.on("data", (c) => { stderr += c.toString(); });
-const stop = () => { try { child.kill("SIGKILL"); } catch { /* gone */ } };
-process.on("exit", stop);
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 async function waitFor(pred, ms, what) {
   const t0 = Date.now();
   while (!(await pred())) {
-    if (Date.now() - t0 > ms) throw new Error(`timeout waiting for ${what}\n${stderr.slice(-2000)}`);
+    if (Date.now() - t0 > ms) throw new Error(`timeout waiting for ${what}\n${server.stderr().slice(-2000)}`);
     await sleep(250);
   }
 }
@@ -114,8 +110,9 @@ async function call(i) {
   const client = new Client({ name: `probe-${i}`, version: "0.1" });
   await client.connect(new StreamableHTTPClientTransport(new URL(`${BASE}/mcp`)));
   try {
-    const r = await client.callTool(callFor(i));
-    if (r.isError) throw new Error(`${callFor(i).name}: ${JSON.stringify(r.content).slice(0, 200)}`);
+    const c = callFor(i);
+    const r = await client.callTool(c);
+    if (r.isError) throw new Error(`${c.name}: ${JSON.stringify(r.content).slice(0, 200)}`);
   } finally {
     await client.close();
   }
@@ -129,7 +126,7 @@ async function mem() {
 
 async function snapshot(label) {
   const before = new Set(readdirSync(OUT));
-  child.kill("SIGUSR2");
+  server.signal("SIGUSR2");
   let file;
   await waitFor(async () => {
     file = readdirSync(OUT).find((f) => f.endsWith(".heapsnapshot") && !before.has(f));
@@ -141,7 +138,6 @@ async function snapshot(label) {
 }
 
 try {
-  await waitFor(async () => stderr.includes("listening on http://"), 120_000, "listen");
   // Semantic search needs the model; the first semantic call waits for its load.
   for (let i = 0; i < 12; i++) await call(i);
   console.log(`warm        ${await mem()}`);
@@ -157,5 +153,5 @@ try {
   await snapshot("B");
   console.log(`after snapB ${await mem()}`);
 } finally {
-  stop();
+  await server.stop();
 }

@@ -17,10 +17,12 @@ const STDIO_READY_SENTINEL = "running on stdio";
 
 /**
  * Spawn `dist/index.js` in HTTP mode and resolve once it is serving.
- * Returns a handle: `url`, `stderr()` for assertions on server logs, `stop()`.
+ * Returns a handle: `url`, `stderr()` for assertions on server logs, `signal()`, `stop()`.
+ * `nodeArgs` go before the script; `echoStderr: false` keeps server logs out of
+ * the caller's output (a boot timeout then carries their tail instead).
  */
-export async function bootHttpServer({ port, timeoutMs = 20_000, env = {} } = {}) {
-  const child = spawn("node", ["dist/index.js"], {
+export async function bootHttpServer({ port, timeoutMs = 20_000, env = {}, nodeArgs = [], echoStderr = true } = {}) {
+  const child = spawn("node", [...nodeArgs, "dist/index.js"], {
     cwd: PROJECT_DIR,
     env: { ...process.env, PORT: String(port), STRUCTURED_CONTENT: "true", ...env },
     stdio: ["ignore", "inherit", "pipe"],
@@ -36,12 +38,12 @@ export async function bootHttpServer({ port, timeoutMs = 20_000, env = {} } = {}
     stderr += s;
     // Mirror through, so a boot failure (e.g. missing DB → FATAL) is visible
     // instead of being swallowed behind "server didn't start".
-    process.stderr.write(s);
+    if (echoStderr) process.stderr.write(s);
   });
 
   await new Promise((resolve, reject) => {
     const timer = setTimeout(
-      () => reject(new Error(`server didn't start within ${timeoutMs}ms`)),
+      () => reject(new Error(`server didn't start within ${timeoutMs}ms${echoStderr ? "" : `\n${stderr.slice(-2000)}`}`)),
       timeoutMs
     );
     const check = () => {
@@ -62,6 +64,7 @@ export async function bootHttpServer({ port, timeoutMs = 20_000, env = {} } = {}
   return {
     url: `http://127.0.0.1:${port}/mcp`,
     stderr: () => stderr,
+    signal: (sig) => child.kill(sig),
     async stop() {
       process.off("exit", reap);
       child.kill("SIGTERM");

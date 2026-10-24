@@ -22,3 +22,6 @@ docs/superpowers/
 
 # Fixture DBs, rebuilt at test time from scripts/tests/fixtures/*.sql
 scripts/tests/fixtures/.generated/
+
+# Heap snapshots from scripts/tests/probe-heap-growth.mjs (hundreds of MB)
+heap-probe/

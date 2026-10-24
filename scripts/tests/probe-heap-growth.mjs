@@ -134,7 +134,7 @@ async function snapshot(label) {
   await waitFor(async () => {
     file = readdirSync(OUT).find((f) => f.endsWith(".heapsnapshot") && !before.has(f));
     if (!file) return false;
-    // Snapshot is complete once /debug/memory answers again (writing blocks the loop).
+    // Snapshot is complete once /health answers again (writing blocks the loop).
     try { await fetch(`${BASE}/health`); return true; } catch { return false; }
   }, 300_000, `snapshot ${label}`);
   console.log(`snapshot ${label}: ${path.join(OUT, file)}`);

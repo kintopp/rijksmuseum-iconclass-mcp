@@ -470,38 +470,38 @@ export class IconclassDb {
     if (!ftsPhrase) return empty;
 
     const presenceCache = new Map<string, Set<string>>();
-    let hits = this.runFtsQueries(ftsPhrase, parentNotation);
-    let countedNotations = this.fetchPresenceForSort([...hits.keys()], presenceCache, collectionId, onlyWithArtworks);
+    let hits = new Map<string, FtsHit>();
+    const match = (ftsExpr: string) => {
+      hits = this.runFtsQueries(ftsExpr, parentNotation);
+      return this.fetchPresenceForSort([...hits.keys()], presenceCache, collectionId, onlyWithArtworks);
+    };
 
     // Auto-fallback: if no phrase match survives the collection filters, retry
     // with individual AND-ed terms.
-    if (countedNotations.length === 0) {
+    let counted = match(ftsPhrase);
+    if (counted.length === 0) {
       const ftsTerms = escapeFts5Terms(query);
       if (!ftsTerms) return empty;
-      hits = this.runFtsQueries(ftsTerms, parentNotation);
-      countedNotations = this.fetchPresenceForSort([...hits.keys()], presenceCache, collectionId, onlyWithArtworks);
+      counted = match(ftsTerms);
     }
+    if (counted.length === 0) return empty;
 
-    if (countedNotations.length === 0) return empty;
-
-    countedNotations.sort((a, b) => {
-      if (b.coverage !== a.coverage) return b.coverage - a.coverage;
-      const hitA = hits.get(a.notation)!;
-      const hitB = hits.get(b.notation)!;
-      // Within a coverage tier, a variant whose base also matched goes after the
-      // bases: it shares its base's label, so on BM25 alone one narrow concept's
-      // (+N) rows outrank every other base and fill the page. A variant whose base
-      // didn't match ("sleeping" → 25F(+46)) matched on its key, so BM25 places it.
-      const echoA = hitA.base !== null && hits.has(hitA.base) ? 1 : 0;
-      const echoB = hitB.base !== null && hits.has(hitB.base) ? 1 : 0;
-      if (echoA !== echoB) return echoA - echoB;
-      if (hitA.rank !== hitB.rank) return hitA.rank - hitB.rank;
-      return a.notation.localeCompare(b.notation);
+    // Within a coverage tier, a variant whose base also matched (echo) goes after
+    // the bases: it shares its base's label, so on BM25 alone one narrow concept's
+    // (+N) rows outrank every other base and fill the page. A variant whose base
+    // didn't match ("sleeping" → 25F(+46)) matched on its key, so BM25 places it.
+    const bases = new Set<string>();
+    const rows = counted.map(({ notation, coverage }) => {
+      const { rank, base } = hits.get(notation)!;
+      bases.add(base ?? notation);
+      return { notation, coverage, rank, echo: base !== null && hits.has(base) ? 1 : 0 };
     });
+    rows.sort((a, b) =>
+      (b.coverage - a.coverage) || (a.echo - b.echo) || (a.rank - b.rank) || a.notation.localeCompare(b.notation));
 
-    const totalResults = countedNotations.length;
-    const totalBaseNotations = new Set(countedNotations.map(c => hits.get(c.notation)!.base ?? c.notation)).size;
-    const page = countedNotations.slice(offset, offset + maxResults);
+    const totalResults = rows.length;
+    const totalBaseNotations = bases.size;
+    const page = rows.slice(offset, offset + maxResults);
 
     const textCache = new Map<string, string | null>();
     const results = page

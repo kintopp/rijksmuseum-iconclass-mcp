@@ -469,19 +469,20 @@ export class IconclassDb {
     const ftsPhrase = escapeFts5(query);
     if (!ftsPhrase) return empty;
 
+    const presenceCache = new Map<string, Set<string>>();
     let hits = this.runFtsQueries(ftsPhrase, parentNotation);
+    let countedNotations = this.fetchPresenceForSort([...hits.keys()], presenceCache, collectionId, onlyWithArtworks);
 
-    // Auto-fallback: if phrase match returns 0, retry with individual AND-ed terms
-    if (hits.size === 0) {
+    // Auto-fallback: if no phrase match survives the collection filters, retry
+    // with individual AND-ed terms.
+    if (countedNotations.length === 0) {
       const ftsTerms = escapeFts5Terms(query);
       if (!ftsTerms) return empty;
       hits = this.runFtsQueries(ftsTerms, parentNotation);
+      countedNotations = this.fetchPresenceForSort([...hits.keys()], presenceCache, collectionId, onlyWithArtworks);
     }
 
-    if (hits.size === 0) return empty;
-
-    const presenceCache = new Map<string, Set<string>>();
-    const countedNotations = this.fetchPresenceForSort([...hits.keys()], presenceCache, collectionId, onlyWithArtworks);
+    if (countedNotations.length === 0) return empty;
 
     countedNotations.sort((a, b) => {
       if (b.coverage !== a.coverage) return b.coverage - a.coverage;

@@ -23,7 +23,8 @@
  *    whose base didn't match must still count it), or ignores the filters.
  *  - collectionId / onlyWithArtworks / parentNotation leak results from outside
  *    the filter, or parentNotation treats LIKE wildcards as wildcards.
- *  - the phrase → AND-terms fallback doesn't run, or depends on word order.
+ *  - the phrase → AND-terms fallback doesn't run, or depends on word order, or
+ *    is skipped because phrase hits existed that the collection filter removed.
  *  - semanticQuery without embeddings errors with anything but the fixed hint.
  *  - a `(...)` name template is missing from its parent's children, so browse
  *    and resolve show the parent (73D82, 12A27) as a leaf.
@@ -216,6 +217,13 @@ if (ok(r3a, "angel trumpet") && ok(r3b, "trumpet angel")) {
   assertEq(sc(r3a).totalBaseNotations, 1, "a variant whose base didn't match still counts one base notation");
   eqList(notations(sc(r3b).results), ["11H(VINCENT FERRER)(+3)"], "fallback is independent of word order");
 }
+// The phrase "27 58" is only in 73D7 ("Matthew 27:58-66", rijksmuseum only); 73D6
+// ("Matthew 27:45-58", testmuseum) has both words apart. A phrase hit that the
+// collection filter removes must not block the AND-terms fallback.
+const r3f = await call("search", { query: "27 58", collectionId: "testmuseum" });
+if (ok(r3f, "27 58 in testmuseum")) eqList(notations(sc(r3f).results), ["73D6"], "fallback runs when the filter empties the phrase hits");
+const r3fu = await call("search", { query: "27 58" });
+if (ok(r3fu, "27 58 unfiltered")) eqList(notations(sc(r3fu).results), ["73D7"], "an unfiltered phrase hit still wins over the fallback");
 const r3nul = await call("search", { query: "angel\u0000trumpet" });
 if (ok(r3nul, "NUL in query")) eqList(notations(sc(r3nul).results), ["11H(VINCENT FERRER)(+3)"], "NUL acts as a word break");
 const r3one = await call("search", { query: "trumpetangel" });

@@ -15,6 +15,10 @@
  *  - browse flags a complete subtree as capped (the cap itself needs more rows
  *    than the fixture has; test-tools.mjs §4 covers it on the real DB).
  *  - search ranks by notation instead of collection coverage, then BM25.
+ *  - a key variant outranks a base notation in its coverage tier because its
+ *    label is shorter, so one concept's variants fill the page.
+ *  - totalBaseNotations counts base rows instead of distinct bases (a variant
+ *    whose base didn't match must still count it), or ignores the filters.
  *  - collectionId / onlyWithArtworks / parentNotation leak results from outside
  *    the filter, or parentNotation treats LIKE wildcards as wildcards.
  *  - the phrase → AND-terms fallback doesn't run, or depends on word order.
@@ -120,9 +124,10 @@ section("2. search — ranking and filters");
 const r2 = await call("search", { query: "crucifixion" });
 if (ok(r2, "crucifixion")) {
   assertEq(sc(r2).totalResults, 6, "six matches");
+  assertEq(sc(r2).totalBaseNotations, 6, "six base notations: no variants among them");
   eqList(notations(sc(r2).results), ["73D6", "31E2356", "73D67", "73D5", "73D6712", "73D671"],
     "ordered by coverage tier, then BM25");
-  assertEq(lines(r2)[0], '6 of 6 matches for "crucifixion"', "header line");
+  assertEq(lines(r2)[0], '6 of 6 matches (6 base notations) for "crucifixion"', "header line");
   assertEq(lines(r2)[2], '2. 31E2356 (rijksmuseum) "violent death by crucifixion" [3 > 31 > 31E > 31E2 > 31E23 > 31E235]',
     "result line: rank, notation, collections, label, path");
   assertEq(lines(r2)[5], '5. 73D6712 "loin-cloth ~ particularities of crucifixion scenes" [7 > 73 > 73D > 73D6 > 73D67 > 73D671]',
@@ -138,6 +143,29 @@ const r2p = await call("search", { query: "crucifixion", maxResults: 2, offset: 
 if (ok(r2p, "paged")) {
   eqList(notations(sc(r2p).results), ["73D67", "73D5"], "offset 2, page of 2");
   assertEq(sc(r2p).totalResults, 6, "totalResults is the full count, not the page");
+  assertEq(sc(r2p).totalBaseNotations, 6, "totalBaseNotations is the full count, not the page");
+}
+
+// "Jewish law" (no stemming, so "laws" in 12A27 doesn't match) hits three rows.
+// 12A27(Deut. 21:22-23) is in testmuseum; the other two have no coverage. In that
+// tier the variant 12A27(Deut. 21:22-23)(+0) has 9 tokens to 12A27(Deut. 25:2-3)'s
+// 10, so BM25 alone would put the variant first.
+const r2k = await call("search", { query: "Jewish law" });
+if (ok(r2k, "Jewish law")) {
+  eqList(notations(sc(r2k).results), ["12A27(Deut. 21:22-23)", "12A27(Deut. 25:2-3)", "12A27(Deut. 21:22-23)(+0)"],
+    "a base notation outranks a shorter key variant in the same coverage tier");
+  assertEq(sc(r2k).totalResults, 3, "totalResults counts the variant row");
+  assertEq(sc(r2k).totalBaseNotations, 2, "totalBaseNotations counts the variant as its base");
+  assertEq(lines(r2k)[0], '3 of 3 matches (2 base notations) for "Jewish law"', "header gives both counts");
+}
+const r2kw = await call("search", { query: "Jewish law", onlyWithArtworks: true });
+if (ok(r2kw, "Jewish law, onlyWithArtworks"))
+  assertEq(sc(r2kw).totalBaseNotations, 1, "totalBaseNotations counts only rows that pass the filter");
+// Every 25F23 label starts "beasts of prey, predatory animals": the base and its 30 variants.
+const r2kv = await call("search", { query: "predatory" });
+if (ok(r2kv, "predatory")) {
+  assertEq(sc(r2kv).totalResults, 31, "31 rows: 25F23 and its 30 variants");
+  assertEq(sc(r2kv).totalBaseNotations, 1, "one base notation");
 }
 
 const r2r = await call("search", { query: "crucifixion", collectionId: "rijksmuseum" });
@@ -163,7 +191,7 @@ if (ok(r2lang, "lang de")) assertEq(sc(r2lang).results[0]?.text,
   "die Kreuzigung Christi: der Kreuzestod; Golgatha (Matthäus 27:45-58; Markus 15:33-45; Lukas 23:44-52; Johannes 19:25-38)", "lang picks the label language");
 
 const r2none = await call("search", { query: "xyznonexistent12345" });
-if (ok(r2none, "no match")) assertEq(txt(r2none), '0 of 0 matches for "xyznonexistent12345"', "a miss is an empty result, not an error");
+if (ok(r2none, "no match")) assertEq(txt(r2none), '0 of 0 matches (0 base notations) for "xyznonexistent12345"', "a miss is an empty result, not an error");
 
 // ══════════════════════════════════════════════════════════════════
 section("3. search — phrase fallback, control characters, mode errors");
@@ -174,6 +202,8 @@ const r3a = await call("search", { query: "angel trumpet" });
 const r3b = await call("search", { query: "trumpet angel" });
 if (ok(r3a, "angel trumpet") && ok(r3b, "trumpet angel")) {
   eqList(notations(sc(r3a).results), ["11H(VINCENT FERRER)(+3)"], "phrase miss falls back to AND-terms");
+  // The base 11H(VINCENT FERRER) is not a result (nor seeded), but the variant still counts as it.
+  assertEq(sc(r3a).totalBaseNotations, 1, "a variant whose base didn't match still counts one base notation");
   eqList(notations(sc(r3b).results), ["11H(VINCENT FERRER)(+3)"], "fallback is independent of word order");
 }
 const r3nul = await call("search", { query: "angel\u0000trumpet" });

@@ -50,8 +50,16 @@ export interface IconclassEntry {
 export interface IconclassSearchResult {
   query: string;
   totalResults: number;
+  /** Distinct base notations across all totalResults rows; a key variant counts as its base. */
+  totalBaseNotations: number;
   results: IconclassEntry[];
   collections: CollectionInfo[];
+}
+
+interface FtsHit {
+  rank: number;
+  /** base_notation of a key-expanded row; null for a base notation. */
+  base: string | null;
 }
 
 export interface SubtreeEntry extends IconclassEntry {
@@ -74,6 +82,7 @@ export interface IconclassBrowseResult {
 export interface IconclassSemanticResult {
   query: string;
   totalResults: number;
+  totalBaseNotations: number;
   results: (IconclassEntry & { similarity: number })[];
   collections: CollectionInfo[];
 }
@@ -298,11 +307,13 @@ export class IconclassDb {
       // append a notation-prefix filter. Build all four from one template so the
       // SELECT/JOIN/GROUP BY can never drift between the scoped and unscoped copies.
       const ftsSql = (ftsTable: string, srcTable: string, alias: string, scoped: boolean) =>
-        `SELECT ${alias}.notation, MIN(f.rank) as rank
-         FROM ${ftsTable} f
-         JOIN ${srcTable} ${alias} ON ${alias}.rowid = f.rowid
-         WHERE ${ftsTable} MATCH ?${scoped ? `\n           AND ${alias}.notation LIKE ? ESCAPE '\\'` : ""}
-         GROUP BY ${alias}.notation`;
+        `SELECT g.notation, g.rank, n.base_notation
+         FROM (SELECT ${alias}.notation, MIN(f.rank) as rank
+               FROM ${ftsTable} f
+               JOIN ${srcTable} ${alias} ON ${alias}.rowid = f.rowid
+               WHERE ${ftsTable} MATCH ?${scoped ? `\n                 AND ${alias}.notation LIKE ? ESCAPE '\\'` : ""}
+               GROUP BY ${alias}.notation) g
+         JOIN notations n ON n.notation = g.notation`;
       this.stmtTextFts = this.db.prepare(ftsSql("texts_fts", "texts", "t", false));
       this.stmtTextFtsScoped = this.db.prepare(ftsSql("texts_fts", "texts", "t", true));
       this.stmtKwFts = this.db.prepare(ftsSql("keywords_fts", "keywords", "k", false));
@@ -452,36 +463,42 @@ export class IconclassDb {
   // ─── Search (FTS) ─────────────────────────────────────────────────
 
   search(query: string, maxResults: number = 25, lang: string = "en", offset: number = 0, collectionId?: string, onlyWithArtworks: boolean = false, parentNotation?: string): IconclassSearchResult {
-    const empty: IconclassSearchResult = { query, totalResults: 0, results: [], collections: this._collections };
+    const empty: IconclassSearchResult = { query, totalResults: 0, totalBaseNotations: 0, results: [], collections: this._collections };
     if (!this.db) return empty;
 
     const ftsPhrase = escapeFts5(query);
     if (!ftsPhrase) return empty;
 
-    let rankMap = this.runFtsQueries(ftsPhrase, parentNotation);
+    let hits = this.runFtsQueries(ftsPhrase, parentNotation);
 
     // Auto-fallback: if phrase match returns 0, retry with individual AND-ed terms
-    if (rankMap.size === 0) {
+    if (hits.size === 0) {
       const ftsTerms = escapeFts5Terms(query);
       if (!ftsTerms) return empty;
-      rankMap = this.runFtsQueries(ftsTerms, parentNotation);
+      hits = this.runFtsQueries(ftsTerms, parentNotation);
     }
 
-    if (rankMap.size === 0) return empty;
+    if (hits.size === 0) return empty;
 
     const presenceCache = new Map<string, Set<string>>();
-    const countedNotations = this.fetchPresenceForSort([...rankMap.keys()], presenceCache, collectionId, onlyWithArtworks);
+    const countedNotations = this.fetchPresenceForSort([...hits.keys()], presenceCache, collectionId, onlyWithArtworks);
 
     countedNotations.sort((a, b) => {
       if (b.coverage !== a.coverage) return b.coverage - a.coverage;
-      // Within same coverage tier, sort by FTS rank (lower = more relevant)
-      const rankA = rankMap.get(a.notation) ?? 0;
-      const rankB = rankMap.get(b.notation) ?? 0;
-      if (rankA !== rankB) return rankA - rankB;
+      const hitA = hits.get(a.notation)!;
+      const hitB = hits.get(b.notation)!;
+      // Base notations before key variants within a coverage tier. Variants share
+      // their base's keywords, so on BM25 alone one narrow concept's (+N) rows
+      // outrank every other base and fill the page.
+      const variantA = hitA.base !== null ? 1 : 0;
+      const variantB = hitB.base !== null ? 1 : 0;
+      if (variantA !== variantB) return variantA - variantB;
+      if (hitA.rank !== hitB.rank) return hitA.rank - hitB.rank;
       return a.notation.localeCompare(b.notation);
     });
 
     const totalResults = countedNotations.length;
+    const totalBaseNotations = new Set(countedNotations.map(c => hits.get(c.notation)!.base ?? c.notation)).size;
     const page = countedNotations.slice(offset, offset + maxResults);
 
     const textCache = new Map<string, string | null>();
@@ -489,7 +506,7 @@ export class IconclassDb {
       .map(({ notation }) => this.resolveEntry(notation, lang, textCache, presenceCache))
       .filter((e): e is IconclassEntry => e !== null);
 
-    return { query, totalResults, results, collections: this._collections };
+    return { query, totalResults, totalBaseNotations, results, collections: this._collections };
   }
 
   // ─── Browse ───────────────────────────────────────────────────────
@@ -690,6 +707,7 @@ export class IconclassDb {
     return {
       query,
       totalResults: results.length,
+      totalBaseNotations: new Set(results.map(r => r.baseNotation ?? r.notation)).size,
       results,
       collections: this._collections,
     };
@@ -730,8 +748,9 @@ export class IconclassDb {
 
   // ─── Internal ─────────────────────────────────────────────────────
 
-  private runFtsQueries(ftsExpr: string, parentNotation?: string): Map<string, number> {
-    const map = new Map<string, number>();
+  /** Best FTS rank per matched notation, plus its base notation (null for a base row). */
+  private runFtsQueries(ftsExpr: string, parentNotation?: string): Map<string, FtsHit> {
+    const map = new Map<string, FtsHit>();
     const likePattern = parentNotation ? escapeLikePrefix(parentNotation) : null;
     const textRows = likePattern
       ? this.stmtTextFtsScoped.all(ftsExpr, likePattern)
@@ -741,10 +760,10 @@ export class IconclassDb {
       : this.stmtKwFts.all(ftsExpr);
 
     // FTS5 rank is negative BM25 (lower = more relevant). Keep the best (lowest) rank per notation.
-    for (const rows of [textRows, keywordRows] as { notation: string; rank: number }[][]) {
+    for (const rows of [textRows, keywordRows] as { notation: string; rank: number; base_notation: string | null }[][]) {
       for (const r of rows) {
         const prev = map.get(r.notation);
-        if (prev === undefined || r.rank < prev) map.set(r.notation, r.rank);
+        if (prev === undefined || r.rank < prev.rank) map.set(r.notation, { rank: r.rank, base: r.base_notation });
       }
     }
     return map;

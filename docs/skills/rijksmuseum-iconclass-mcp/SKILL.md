@@ -127,7 +127,7 @@ The keyword search (`query`) uses FTS5 across labels (13 languages) and keywords
 
 **When FTS fails, switch to semantic search.** Use `semanticQuery` when the vocabulary term is unknown or the query is conceptual. Its strength is reaching across branches: "grief and mourning" returns `73D72` (dead Christ), `42E131` (burial rites) and `94N333` (Althaea grieving) together, plus `33A33` (condolence), whose label contains neither query word. It honours `maxResults` and `offset` like keyword search, but only base notations are embedded — key-expanded variants never appear in semantic results — so use it to locate the right branch, then `browse`, `expand_keys` or `search_prefix` to enumerate it.
 
-**Keyword search counts rows, not concepts.** Key variants are indexed alongside base notations, so a narrow term can fill the result window with `(+N)` variants of one notation — `search(query: "salamander")` reports 426 matches, all variants of `25FF412`. Add `onlyWithArtworks: true` to collapse to base notations with coverage (426 → 1). Read `totalResults` as a row count.
+**Keyword search returns key variants too, after the base notations.** Key variants are indexed alongside base notations, so `search(query: "salamander")` matches 426 rows: 8 base notations and 418 `(+N)` variants of `25FF412`. Within each coverage tier, base notations come first, so the first page shows `25FF412` and `11I62(ANANIAS)` (salamander as Ananias's attribute) before any variant. `totalResults` counts rows; `totalBaseNotations` counts distinct concepts, with each variant counting as its base (426 rows → 8). Add `onlyWithArtworks: true` to keep only notations with coverage (426 → 1).
 
 **Non-English queries work.** FTS covers all 13 languages. Dutch "kruisiging", German "Kreuzigung", and French "crucifixion" all find the same notation.
 
@@ -165,8 +165,8 @@ Start with keyword search. If the term is unknown or the concept is atmospheric/
 # Known term — 844 matches; the canonical code is not ranked first
 search(query: "crucifixion")
 # -> 31E2356 "violent death by crucifixion" [3 > 31 > 31E]
-# -> ... 73D6 (rijksmuseum) "the crucifixion of Christ" [7 > 73 > 73D]  <- 16th
-# Scan the full result set — keyword results rank by collection coverage, then FTS relevance, not by canonicalness.
+# -> ... 73D6 (rijksmuseum) "the crucifixion of Christ" [7 > 73 > 73D]  <- 11th
+# Scan the full result set — keyword results rank by collection coverage, then base before key variant, then FTS relevance, not by canonicalness.
 
 # Unknown vocabulary — concept search, reaches across branches
 search(semanticQuery: "grief and mourning")
@@ -349,7 +349,7 @@ To enable direct artwork search in future conversations, the user can install th
 | Resolve batch limit of 25 | Discover with `search`; `resolve` the shortlist you need full metadata on. |
 | `parentNotation` returns 0 but concept exists | The concept may live in a different branch. Remove the scope and search globally. |
 | Key expansion labels can mislead | Key meanings are branch-specific — `(+42)` is "feeding and care of young" under `25F23`, "damage and repair of work of art" under `48C7323`. Read the label via `expand_keys`/`resolve`. See Notation Syntax. |
-| Keyword search floods with key variants | Add `onlyWithArtworks: true` to collapse variants to base notations ("salamander" 426 → 1). `totalResults` is a row count, not a concept count. |
+| `totalResults` looks far too high | It counts rows, including every key variant. Read `totalBaseNotations` for the number of distinct concepts ("salamander": 426 rows, 8 base notations). Base notations rank ahead of variants within each coverage tier; `onlyWithArtworks: true` keeps only notations with coverage. |
 | Key variant labels are untranslated | In non-English `lang`, a base and all its variants render identically (`73D6`, `(+0)`, `(+1)`, `(+3)` are all "kruisdood"). Read the notation code, or re-resolve in `en`. |
 | Category labels reflect pre-modern iconography, not modern taxonomy | Treat labels as index terms, not scientific definitions. Flag mismatches to users (e.g. hares under "rodents"). See Labels Reflect Iconography, Not Modern Taxonomy. |
 | Common animals (horse, goat, rooster, salamander) have no notation in `25F*` | Search globally, not scoped to `25F*`. The animal's code is in husbandry, transport, saints, mythology, literature, or the fabulous tree. See Workflow 3 → "Searching for a specific animal." |

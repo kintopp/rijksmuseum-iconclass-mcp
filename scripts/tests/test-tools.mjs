@@ -125,6 +125,17 @@ const r2d = await client.callTool({
 const s2d = sc(r2d);
 assertEq(s2d.totalResults, 0, "nonexistent query returns 0");
 
+// Real-volume variant flooding: all 418 variants of 25FF412 share its label, so on
+// BM25 alone they outrank 11I62(ANANIAS), whose label lists salamander as an attribute.
+const r2sal = await client.callTool({ name: "search", arguments: { query: "salamander", maxResults: 10 } });
+if (assert(!r2sal.isError, "salamander: no error")) {
+  const s = sc(r2sal);
+  assertEq(s.totalResults, 426, "salamander: 426 rows");
+  assertEq(s.totalBaseNotations, 8, "salamander: 8 base notations (25FF412 and 7 under 11I62(ANANIAS))");
+  assertEq(s.results.slice(0, 8).filter(r => !r.isKeyExpanded).length, 8, "salamander: all 8 base notations come before any variant");
+  assertEq(s.results[1]?.notation, "11I62(ANANIAS)", "salamander: Ananias (salamander attribute) ranks 2nd");
+}
+
 // A control character must never reach FTS5 as syntax; NUL acts as a word break.
 const r2nul = await client.callTool({ name: "search", arguments: { query: "angel\u0000trumpet", maxResults: 50 } });
 const r2sp = await client.callTool({ name: "search", arguments: { query: "angel trumpet", maxResults: 50 } });
@@ -148,6 +159,8 @@ if (assert(!r3.isError, `semantic search available (got: ${txt(r3).slice(0, 80)}
   assertEq(s3.results.length, 5, "5 results returned");
   assert(s3.results[0].similarity > 0.7, `top similarity > 0.7 (got ${s3.results[0].similarity})`);
   assert(s3.results.every(r => typeof r.similarity === "number"), "all results have similarity");
+  // Only base notations are embedded, so every row is its own base notation.
+  assertEq(s3.totalBaseNotations, s3.totalResults, "semantic: totalBaseNotations equals totalResults");
 
   // onlyWithArtworks filter
   const r3b = await client.callTool({

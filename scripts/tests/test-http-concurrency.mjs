@@ -1,11 +1,15 @@
 /**
  * Smoke test: HTTP mode handles concurrent /mcp POSTs without
  * "Already connected to a transport" or cross-request interference — each
- * request must get its own server instance.
+ * request must get its own server instance. Also covers /debug/memory's
+ * leak-tracking fields (#427): `heapAfterMajorGc` stays null if the GC
+ * observer never fires or filters the wrong GC kind; `cgroup` is null on Linux
+ * if memory.stat parsing breaks, or garbage off Linux.
  *
  * Run:  node scripts/tests/test-http-concurrency.mjs
  * Requires: npm run build (runs on the fixture DB)
  */
+import fs from "node:fs";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 
@@ -25,7 +29,11 @@ console.log(`\nServer up on ${MCP_URL}\n`);
 // ── Run concurrent client sessions ──────────────────────────────
 
 async function runSession(i) {
-  const transport = new StreamableHTTPClientTransport(new URL(MCP_URL));
+  return runSessionAt(MCP_URL, i);
+}
+
+async function runSessionAt(url, i) {
+  const transport = new StreamableHTTPClientTransport(new URL(url));
   const client = new Client({ name: `concurrent-${i}`, version: "0.1" });
   await client.connect(transport);
   const r = await client.callTool({
@@ -62,6 +70,37 @@ try {
   );
 } finally {
   await server.stop();
+}
+
+// ── /debug/memory leak-tracking fields ─────────────────────────
+// --gc-global makes every GC a major one, so a few requests guarantee one.
+
+const memServer = await bootHttpServer({
+  port: String(Number(PORT) + 1),
+  env: fixtureEnv("http-memory"),
+  nodeArgs: ["--gc-global"],
+});
+try {
+  for (let i = 0; i < 3; i++) await runSessionAt(memServer.url, i);
+  const m = await (await fetch(memServer.url.replace(/\/mcp$/, "/debug/memory"))).json();
+
+  const gc = m.heapAfterMajorGc;
+  if (assert(gc !== null && typeof gc === "object", "heapAfterMajorGc is recorded after a major GC")) {
+    assert(gc.usedBytes > 0, `heapAfterMajorGc.usedBytes > 0 (got ${gc.usedBytes})`);
+    assert(!Number.isNaN(Date.parse(gc.at)), `heapAfterMajorGc.at is a timestamp (got ${gc.at})`);
+  }
+
+  if (process.platform === "linux" && fs.existsSync("/sys/fs/cgroup/memory.stat")) {
+    const c = m.cgroup;
+    if (assert(c !== null, "cgroup stats present on a cgroup-v2 Linux host")) {
+      assert(c.anonBytes > 0, `cgroup.anonBytes > 0 (got ${c.anonBytes})`);
+      assert(c.currentBytes >= c.anonBytes, `cgroup.currentBytes >= anonBytes (${c.currentBytes} vs ${c.anonBytes})`);
+    }
+  } else {
+    assert(m.cgroup === null, `cgroup is null without cgroup v2 (got ${JSON.stringify(m.cgroup)})`);
+  }
+} finally {
+  await memServer.stop();
 }
 
 report();

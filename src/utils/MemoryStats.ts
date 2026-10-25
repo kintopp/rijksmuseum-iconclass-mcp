@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import { PerformanceObserver, constants as perfConstants } from "node:perf_hooks";
 
 // Memory observability for issue #272 — captures process RSS breakdown,
 // per-DB SQLite pragma state, and (on Linux) per-DB mmap'd resident bytes
@@ -32,6 +33,18 @@ export interface MemorySnapshot {
     vmDataBytes: number;
     vmSizeBytes: number;
   } | null;
+  // cgroup v2 memory.stat: `anon` is the process's own memory; `file` is page
+  // cache the kernel reclaims under pressure but Railway's metric still counts.
+  cgroup: {
+    currentBytes: number;
+    anonBytes: number;
+    fileBytes: number;
+    fileMappedBytes: number;
+    inactiveFileBytes: number;
+  } | null;
+  // Unforced heapUsed swings by hundreds of MB with GC timing; the reading
+  // just after a mark-compact is the one a leak shows up in.
+  heapAfterMajorGc: { usedBytes: number; at: string } | null;
   databases: DbPragmaInfo[];
 }
 
@@ -71,6 +84,43 @@ function readVmStats(): MemorySnapshot["vm"] {
   } catch {
     return null;
   }
+}
+
+function readCgroupStats(): MemorySnapshot["cgroup"] {
+  if (process.platform !== "linux") return null;
+  try {
+    const stat = fs.readFileSync("/sys/fs/cgroup/memory.stat", "utf-8");
+    const get = (key: string): number => {
+      const m = stat.match(new RegExp(`^${key} (\\d+)$`, "m"));
+      return m ? parseInt(m[1], 10) : 0;
+    };
+    return {
+      currentBytes: parseInt(fs.readFileSync("/sys/fs/cgroup/memory.current", "utf-8"), 10),
+      anonBytes: get("anon"),
+      fileBytes: get("file"),
+      fileMappedBytes: get("file_mapped"),
+      inactiveFileBytes: get("inactive_file"),
+    };
+  } catch {
+    return null; // cgroup v1 or no cgroup fs mounted
+  }
+}
+
+let heapAfterMajorGc: MemorySnapshot["heapAfterMajorGc"] = null;
+let gcObserver: PerformanceObserver | null = null;
+
+/** Record heapUsed after each major GC, for /debug/memory. Idempotent. */
+export function startGcObserver(): void {
+  if (gcObserver) return;
+  gcObserver = new PerformanceObserver((list) => {
+    for (const e of list.getEntries()) {
+      const kind = (e as { detail?: { kind?: number } }).detail?.kind;
+      if (kind === perfConstants.NODE_PERFORMANCE_GC_MAJOR) {
+        heapAfterMajorGc = { usedBytes: process.memoryUsage().heapUsed, at: new Date().toISOString() };
+      }
+    }
+  });
+  gcObserver.observe({ entryTypes: ["gc"] });
 }
 
 // Parse /proc/self/smaps once and sum Rss values for each requested file path.
@@ -165,6 +215,8 @@ export function captureMemorySnapshot(handles: DbHandle[]): MemorySnapshot {
       arrayBuffersBytes: mu.arrayBuffers,
     },
     vm: readVmStats(),
+    cgroup: readCgroupStats(),
+    heapAfterMajorGc,
     databases,
   };
 }
@@ -180,6 +232,10 @@ export function formatMemorySnapshotDetailed(snap: MemorySnapshot): string {
   lines.push(`  process: rss=${mb(p.rssBytes)}MB heapTotal=${mb(p.heapTotalBytes)}MB heapUsed=${mb(p.heapUsedBytes)}MB external=${mb(p.externalBytes)}MB arrayBuffers=${mb(p.arrayBuffersBytes)}MB`);
   if (snap.vm) {
     lines.push(`  /proc/self/status: VmRSS=${mb(snap.vm.vmRssBytes)}MB VmData=${mb(snap.vm.vmDataBytes)}MB VmSize=${mb(snap.vm.vmSizeBytes)}MB`);
+  }
+  if (snap.cgroup) {
+    const c = snap.cgroup;
+    lines.push(`  cgroup: current=${mb(c.currentBytes)}MB anon=${mb(c.anonBytes)}MB file=${mb(c.fileBytes)}MB fileMapped=${mb(c.fileMappedBytes)}MB inactiveFile=${mb(c.inactiveFileBytes)}MB`);
   }
   for (const d of snap.databases) {
     const smaps = d.smapsResidentBytes !== null ? ` mmapResident=${mb(d.smapsResidentBytes)}MB` : "";

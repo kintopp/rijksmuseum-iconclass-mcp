@@ -18,6 +18,7 @@ import { logInfo, logWarn, logError } from "./utils/log.js";
 import {
   captureMemorySnapshot,
   formatMemorySnapshotDetailed,
+  startGcObserver,
   type DbHandle,
 } from "./utils/MemoryStats.js";
 import { registerTools } from "./registration.js";
@@ -306,6 +307,7 @@ async function runHttp(): Promise<void> {
   // on demand. Unauthenticated to match /health — operational signal, not
   // sensitive.
 
+  startGcObserver();
   app.get("/debug/memory", (_req: express.Request, res: express.Response) => {
     res.json(captureMemorySnapshot(buildMemoryDbHandles()));
   });

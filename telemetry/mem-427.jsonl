@@ -1,1 +1,2 @@
 {"sampledAt":"2026-10-25T07:20:00Z","error":"curl CONNECT tunnel failed, proxy returned 403 for rijksmuseum-iconclass-mcp-production.up.railway.app (/health and /debug/memory unreachable after retry; host likely blocked by environment network policy)"}
+{"sampledAt":"2026-10-25T07:34:24Z","error":"curl CONNECT tunnel failed, proxy returned 403 for rijksmuseum-iconclass-mcp-production.up.railway.app (/health and /debug/memory unreachable after retry; host blocked by environment network policy)"}

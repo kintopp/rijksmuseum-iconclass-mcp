@@ -36,7 +36,7 @@ export interface MemorySnapshot {
   // cgroup v2 memory.stat: `anon` is the process's own memory; `file` is page
   // cache the kernel reclaims under pressure but Railway's metric still counts.
   cgroup: {
-    currentBytes: number;
+    currentBytes: number | null; // the root cgroup has no memory.current
     anonBytes: number;
     fileBytes: number;
     fileMappedBytes: number;
@@ -86,6 +86,14 @@ function readVmStats(): MemorySnapshot["vm"] {
   }
 }
 
+function readCgroupCurrent(): number | null {
+  try {
+    return parseInt(fs.readFileSync("/sys/fs/cgroup/memory.current", "utf-8"), 10);
+  } catch {
+    return null;
+  }
+}
+
 function readCgroupStats(): MemorySnapshot["cgroup"] {
   if (process.platform !== "linux") return null;
   try {
@@ -95,7 +103,7 @@ function readCgroupStats(): MemorySnapshot["cgroup"] {
       return m ? parseInt(m[1], 10) : 0;
     };
     return {
-      currentBytes: parseInt(fs.readFileSync("/sys/fs/cgroup/memory.current", "utf-8"), 10),
+      currentBytes: readCgroupCurrent(),
       anonBytes: get("anon"),
       fileBytes: get("file"),
       fileMappedBytes: get("file_mapped"),
@@ -235,7 +243,7 @@ export function formatMemorySnapshotDetailed(snap: MemorySnapshot): string {
   }
   if (snap.cgroup) {
     const c = snap.cgroup;
-    lines.push(`  cgroup: current=${mb(c.currentBytes)}MB anon=${mb(c.anonBytes)}MB file=${mb(c.fileBytes)}MB fileMapped=${mb(c.fileMappedBytes)}MB inactiveFile=${mb(c.inactiveFileBytes)}MB`);
+    lines.push(`  cgroup: current=${c.currentBytes === null ? "n/a" : `${mb(c.currentBytes)}MB`} anon=${mb(c.anonBytes)}MB file=${mb(c.fileBytes)}MB fileMapped=${mb(c.fileMappedBytes)}MB inactiveFile=${mb(c.inactiveFileBytes)}MB`);
   }
   for (const d of snap.databases) {
     const smaps = d.smapsResidentBytes !== null ? ` mmapResident=${mb(d.smapsResidentBytes)}MB` : "";

@@ -94,7 +94,7 @@ try {
     const c = m.cgroup;
     if (assert(c !== null, "cgroup stats present on a cgroup-v2 Linux host")) {
       assert(c.anonBytes > 0, `cgroup.anonBytes > 0 (got ${c.anonBytes})`);
-      assert(c.currentBytes >= c.anonBytes, `cgroup.currentBytes >= anonBytes (${c.currentBytes} vs ${c.anonBytes})`);
+      assert(c.currentBytes === null || c.currentBytes >= c.anonBytes, `cgroup.currentBytes is null or >= anonBytes (${c.currentBytes} vs ${c.anonBytes})`);
     }
   } else {
     assert(m.cgroup === null, `cgroup is null without cgroup v2 (got ${JSON.stringify(m.cgroup)})`);

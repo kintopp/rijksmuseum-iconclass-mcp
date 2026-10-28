@@ -14,7 +14,7 @@
  * Header and body must agree; the server rejects any disagreement.
  *
  * stdio has no header layer, so there the opening message alone picks the
- * era for the whole connection (section 7). A legacy `initialize` pins
+ * era for the whole connection (section 8). A legacy `initialize` pins
  * 2025-11-25; a modern-enveloped request pins 2026-07-28.
  *
  * Run:  node scripts/tests/test-modern-wire.mjs
@@ -251,7 +251,45 @@ try {
     );
   });
 
-  section("6. Legacy wire regression (the claude.ai path today)");
+  section("6. Modern wire — subscriptions/listen after a client disconnect");
+
+  // A listen stream the client abandons must be torn down. If the disconnect
+  // never reaches the SDK, the stream stays registered and its keep-alive
+  // queues chunks forever (#427's heap leak); the observable symptom is the
+  // SDK's per-handler cap (1024 open streams) refusing new subscriptions.
+  const LISTEN_CAP = 1024;
+  const listenAndDrop = async (id) => {
+    const ac = new AbortController();
+    const res = await fetch(MCP_URL, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        accept: "application/json, text/event-stream",
+        "mcp-protocol-version": MODERN,
+        "mcp-method": "subscriptions/listen",
+      },
+      body: JSON.stringify({
+        jsonrpc: "2.0", id, method: "subscriptions/listen",
+        params: { notifications: { toolsListChanged: true }, _meta: envelope() },
+      }),
+      signal: ac.signal,
+    });
+    const { value } = await res.body.getReader().read();
+    ac.abort();
+    return new TextDecoder().decode(value);
+  };
+
+  await atest(`a listen stream is still accepted after ${LISTEN_CAP} dropped ones`, async () => {
+    const first = await listenAndDrop(1);
+    if (!assert(first.includes("notifications/subscriptions/acknowledged"), "a listen stream is acknowledged")) return;
+    for (let i = 2; i <= LISTEN_CAP; i++) await listenAndDrop(i);
+    await new Promise((r) => setTimeout(r, 200));
+    const next = await listenAndDrop(LISTEN_CAP + 1);
+    assert(!next.includes("Subscription limit reached"), "dropped streams were released, so the cap is not hit");
+    assert(next.includes("notifications/subscriptions/acknowledged"), "the next listen stream is acknowledged");
+  });
+
+  section("7. Legacy wire regression (the claude.ai path today)");
 
   await atest("the legacy handshake still negotiates 2025-11-25", async () => {
     const r = await initialize(LEGACY);
@@ -281,7 +319,7 @@ try {
 
 // ── stdio ───────────────────────────────────────────────────────
 
-section("7. Modern wire over stdio (body-only era selection)");
+section("8. Modern wire over stdio (body-only era selection)");
 
 const modern = await bootStdioServer({ env: fixtureEnv("modern-stdio") });
 try {

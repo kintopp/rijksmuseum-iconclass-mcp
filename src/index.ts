@@ -7,7 +7,7 @@ import compression from "compression";
 import { execSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { Readable } from "node:stream";
+import { Readable, pipeline } from "node:stream";
 import type { ReadableStream } from "node:stream/web";
 import { fileURLToPath } from "node:url";
 
@@ -245,6 +245,11 @@ async function runHttp(): Promise<void> {
   const mcpHandler = createMcpHandler(() => createServer());
 
   app.post("/mcp", async (req: express.Request, res: express.Response) => {
+    // A client disconnect must reach the SDK: without the signal and the
+    // pipeline's cancel, an SSE response (subscriptions/listen) outlives its
+    // socket and its keep-alive timer queues chunks forever (#427).
+    const disconnect = new AbortController();
+    res.on("close", () => disconnect.abort());
     try {
       const headers = new Headers();
       for (const [key, value] of Object.entries(req.headers)) {
@@ -259,6 +264,7 @@ async function runHttp(): Promise<void> {
           method: "POST",
           headers,
           body: JSON.stringify(req.body),
+          signal: disconnect.signal,
         }),
         { parsedBody: req.body }
       );
@@ -269,7 +275,9 @@ async function runHttp(): Promise<void> {
         res.setHeader(key, value);
       });
       if (response.body) {
-        Readable.fromWeb(response.body as ReadableStream).pipe(res);
+        // pipeline (unlike pipe) destroys the source when res closes, which
+        // cancels the web stream. A premature close is the client leaving.
+        pipeline(Readable.fromWeb(response.body as ReadableStream), res, () => {});
       } else {
         res.end();
       }

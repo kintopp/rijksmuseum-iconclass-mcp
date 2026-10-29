@@ -250,12 +250,14 @@ export class IconclassDb {
             FROM notations n
             INNER JOIN counts.collection_counts cc ON cc.notation = n.notation
             WHERE n.notation LIKE ? ESCAPE '\\' AND cc.collection_id = ?
+              AND (? = 0 OR n.is_key_expanded = 0)
           `);
           this.stmtPrefixCollPage = this.db!.prepare(`
             SELECT n.notation
             FROM notations n
             INNER JOIN counts.collection_counts cc ON cc.notation = n.notation
             WHERE n.notation LIKE ? ESCAPE '\\' AND cc.collection_id = ?
+              AND (? = 0 OR n.is_key_expanded = 0)
             ORDER BY n.notation
             LIMIT ? OFFSET ?
           `);
@@ -334,10 +336,10 @@ export class IconclassDb {
         "SELECT keyword FROM keywords WHERE notation = ? LIMIT 40"
       );
       this.stmtPrefixSearch = this.db.prepare(
-        "SELECT notation FROM notations WHERE notation LIKE ? ESCAPE '\\' ORDER BY notation LIMIT ? OFFSET ?"
+        "SELECT notation FROM notations WHERE notation LIKE ? ESCAPE '\\' AND (? = 0 OR is_key_expanded = 0) ORDER BY notation LIMIT ? OFFSET ?"
       );
       this.stmtPrefixCount = this.db.prepare(
-        "SELECT COUNT(*) as n FROM notations WHERE notation LIKE ? ESCAPE '\\'"
+        "SELECT COUNT(*) as n FROM notations WHERE notation LIKE ? ESCAPE '\\' AND (? = 0 OR is_key_expanded = 0)"
       );
       this.stmtKeyVariantsPage = this.db.prepare(
         "SELECT notation FROM notations WHERE base_notation = ? ORDER BY notation LIMIT ? OFFSET ?"
@@ -523,6 +525,7 @@ export class IconclassDb {
     maxKeyVariants: number = 25,
     keyOffset: number = 0,
     depth: number = 1,
+    childOffset: number = 0,
   ): IconclassBrowseResult | null {
     if (!this.db) return null;
 
@@ -531,7 +534,7 @@ export class IconclassDb {
     if (!entry) return null;
 
     const subtree: SubtreeEntry[] = [];
-    const subtreeCapped = this.collectSubtree(entry.children, lang, 1, depth, textCache, subtree);
+    const subtreeCapped = this.collectSubtree(entry.children.slice(childOffset), lang, 1, depth, textCache, subtree);
 
     let keyVariants: IconclassEntry[] = [];
     let totalKeyVariants = 0;
@@ -595,7 +598,9 @@ export class IconclassDb {
     lang: string = "en",
     offset: number = 0,
     collectionId?: string,
+    baseOnly: boolean = false,
   ): IconclassPrefixResult {
+    const base = baseOnly ? 1 : 0;
     const empty: IconclassPrefixResult = { prefix, totalResults: 0, results: [], collections: this._collections };
     if (!this.db) return empty;
 
@@ -613,8 +618,8 @@ export class IconclassDb {
         return empty; // counts DB not attached → no collection data to filter on
       }
 
-      const totalResults = (this.stmtPrefixCollCount.get(likePattern, collectionId) as { n: number }).n;
-      const rows = this.stmtPrefixCollPage.all(likePattern, collectionId, maxResults, offset) as { notation: string }[];
+      const totalResults = (this.stmtPrefixCollCount.get(likePattern, collectionId, base) as { n: number }).n;
+      const rows = this.stmtPrefixCollPage.all(likePattern, collectionId, base, maxResults, offset) as { notation: string }[];
 
       const textCache = new Map<string, string | null>();
       const results = rows
@@ -625,8 +630,8 @@ export class IconclassDb {
     }
 
     // No collection filter: use SQL COUNT + LIMIT/OFFSET directly
-    const totalResults = (this.stmtPrefixCount.get(likePattern) as { n: number }).n;
-    const rows = this.stmtPrefixSearch.all(likePattern, maxResults, offset) as { notation: string }[];
+    const totalResults = (this.stmtPrefixCount.get(likePattern, base) as { n: number }).n;
+    const rows = this.stmtPrefixSearch.all(likePattern, base, maxResults, offset) as { notation: string }[];
 
     const textCache = new Map<string, string | null>();
     const results = rows

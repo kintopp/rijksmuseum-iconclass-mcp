@@ -35,7 +35,11 @@
  *    or key-variant paging; lang falls back in the wrong order.
  *  - resolve drops a miss instead of naming it in notFound.
  *  - expand_keys accepts a key-expanded input or miscounts variants.
- *  - search_prefix loses notation punctuation, mis-orders, or mis-pages.
+ *  - search_prefix loses notation punctuation, mis-orders, or mis-pages; baseOnly
+ *    leaks variants, or is dropped on the collection path or before paging.
+ *  - browse childOffset doesn't shift the children, stops grandchildren from
+ *    expanding, or is silent past the end (the "More children" hint needs a
+ *    branch wider than 25: test-tools.mjs §4).
  *  - find_artworks mis-sorts collections, mis-encodes the link-out URL, or drops
  *    unknown notations.
  *  - totalNotations counts rows for notations missing from the main DB.
@@ -265,6 +269,23 @@ if (ok(r4, "browse 73D")) {
   assertEq(lines(r4)[3], '  73D1 "prelude to Christ\'s Passion"', "child line without collections");
 }
 
+const r4co = await call("browse", { notation: "73D", childOffset: 5 });
+if (ok(r4co, "browse 73D childOffset 5")) {
+  eqList(notations(sc(r4co).subtree), ["73D6", "73D7", "73D8", "73D9"], "childOffset skips the first five children");
+  assertEq(sc(r4co).entry.children.length, 9, "entry.children still lists every child");
+  assertEq(lines(r4co)[2], "Children (6–9 of 9, 4 total entries):", "childOffset header gives the range");
+  assert(!txt(r4co).includes("More children"), "no 'more' hint on the last page");
+}
+const r4co2 = await call("browse", { notation: "73D", childOffset: 7, depth: 2 });
+if (ok(r4co2, "browse 73D childOffset 7 depth 2")) {
+  eqList(notations(sc(r4co2).subtree), ["73D8", "73D81", "73D82", "73D83", "73D9"], "grandchildren still expand under an offset");
+}
+const r4coPast = await call("browse", { notation: "73D", childOffset: 9 });
+if (ok(r4coPast, "browse 73D childOffset 9")) {
+  eqList(sc(r4coPast).subtree, [], "childOffset past the end: empty subtree");
+  assertEq(lines(r4coPast).at(-1), "Children: none at childOffset 9 (9 in total).", "childOffset past the end is said, not silent");
+}
+
 const r4d2 = await call("browse", { notation: "73D", depth: 2 });
 if (ok(r4d2, "browse 73D depth 2")) {
   const s = sc(r4d2);
@@ -426,6 +447,22 @@ const r7pct = await call("search_prefix", { notation: "7%" });
 if (ok(r7pct, "prefix 7%")) assertEq(sc(r7pct).totalResults, 0, "'%' is literal, not a LIKE wildcard");
 const r7all = await call("search_prefix", { notation: "2", maxResults: 1 });
 if (ok(r7all, "prefix 2")) assertEq(sc(r7all).totalResults, 35, "a prefix counts key-expanded notations too (5 + 30)");
+const r7base = await call("search_prefix", { notation: "2", baseOnly: true });
+if (ok(r7base, "prefix 2 baseOnly")) {
+  eqList(notations(sc(r7base).results), ["2", "25", "25F", "25F2", "25F23"], "baseOnly drops the 30 key variants");
+  assertEq(sc(r7base).totalResults, 5, "baseOnly totalResults counts bases only");
+}
+const r7baseP = await call("search_prefix", { notation: "2", baseOnly: true, maxResults: 2, offset: 2 });
+if (ok(r7baseP, "prefix 2 baseOnly paged")) eqList(notations(sc(r7baseP).results), ["25F", "25F2"], "baseOnly pages over bases");
+const r7baseR = await call("search_prefix", { notation: "2", baseOnly: true, collectionId: "rijksmuseum" });
+if (ok(r7baseR, "prefix 2 baseOnly + rijksmuseum")) {
+  assertEq(sc(r7baseR).totalResults, 5, "baseOnly + collection: 8 rows with artworks less 3 variants");
+}
+const r7baseT = await call("search_prefix", { notation: "25F23", collectionId: "testmuseum" });
+const r7baseT2 = await call("search_prefix", { notation: "25F23", collectionId: "testmuseum", baseOnly: true });
+if (ok(r7baseT, "prefix 25F23 + testmuseum") && ok(r7baseT2, "prefix 25F23 + testmuseum baseOnly")) {
+  eqList([sc(r7baseT).totalResults, sc(r7baseT2).totalResults], [1, 0], "testmuseum's only 25F23 row is a variant, which baseOnly drops");
+}
 
 // ══════════════════════════════════════════════════════════════════
 section("8. find_artworks");

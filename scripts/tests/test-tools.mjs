@@ -247,6 +247,23 @@ if (assert(!r4cap.isError, "browse 11H(...) depth 2: no error")) {
   assertEq(sc(r4cap).subtreeCapped, true, "subtreeCapped is set when the cap stops expansion");
   assertEq(txt(r4cap).split("\n").at(-1), CAP_NOTE, "the text ends with the cap note");
 }
+// childOffset pages the 183 saints 25 at a time (the fixture has no branch wider than 25).
+const r4page = await client.callTool({ name: "browse", arguments: { notation: "11H(...)", childOffset: 25 } });
+if (assert(!r4page.isError, "browse 11H(...) childOffset 25: no error")) {
+  const L = txt(r4page).split("\n");
+  assert(L.includes("Children (26–50 of 183, 25 total entries):"), "second page header gives the range");
+  assertEq(L.at(-1), "More children: pass childOffset 50.", "the text ends with the next offset");
+}
+const r4last = await client.callTool({ name: "browse", arguments: { notation: "11H(...)", childOffset: 175 } });
+if (assert(!r4last.isError, "browse 11H(...) childOffset 175: no error")) {
+  assertEq(sc(r4last).subtree.at(-1)?.notation, "11H(ZENOBIUS)", "the last page reaches the last saint");
+  assert(!txt(r4last).includes("More children"), "no 'more' hint on the last page");
+}
+// search_prefix baseOnly: 11H( is 90,464 rows, 6,030 of them base or named notations.
+const r4bo = await client.callTool({ name: "search_prefix", arguments: { notation: "11H(", baseOnly: true, maxResults: 1 } });
+if (assert(!r4bo.isError, "search_prefix 11H( baseOnly: no error")) {
+  assertEq(sc(r4bo).totalResults, 6030, "baseOnly counts the 6,030 non-variant notations");
+}
 // 25F depth 2 is 74 entries (incl. the 25F6(...) and 25F8(...) templates): under the cap, so no flag and no note.
 const r4nocap = await client.callTool({ name: "browse", arguments: { notation: "25F", depth: 2 } });
 if (assert(!r4nocap.isError, "browse 25F depth 2: no error")) {

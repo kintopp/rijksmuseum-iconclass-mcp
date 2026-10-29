@@ -106,7 +106,7 @@ const u = await runAll({
 });
 for (const [name, r] of Object.entries(u)) usage(r, name);
 assertEq(u.unknownFlag.stderr,
-  'Error: --parentNotation is not a flag for "prefix". Tool flags: --notation, --lang, --collectionId, --maxResults, --offset (see `icmcp prefix --help`)\n',
+  'Error: --parentNotation is not a flag for "prefix". Tool flags: --notation, --lang, --collectionId, --baseOnly, --maxResults, --offset (see `icmcp prefix --help`)\n',
   "unknown flag lists the tool's flags");
 assert(u.nearMiss.stderr.includes("Did you mean --parentNotation?"), "kebab-case slip suggests the camelCase flag");
 assert(u.bareTypo.stderr.startsWith('Error: --typo is not a flag for "keys".'), "a value-less typo reads as a typo, not a missing value");

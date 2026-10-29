@@ -149,7 +149,7 @@ Key meanings are branch-specific — see Notation Syntax.
 Both restrict to a subtree, but they answer different questions:
 
 - `search(query=..., parentNotation="11F")`: keyword search *within* a subtree — "find notations about 'sword' under Virgin Mary" (`11F2412` Mary pierced by seven swords, `11F252` Mary pierced by a sword). Combines text relevance with hierarchical scoping.
-- `search_prefix(notation="11F")`: enumerate *all* notations starting with a prefix, ordered alphabetically. No text search — pure hierarchy traversal. Use when you want the full inventory of a branch. Supports `collectionId` to filter to notations with artworks in a specific loaded collection.
+- `search_prefix(notation="11F")`: enumerate *all* notations starting with a prefix, ordered alphabetically. No text search — pure hierarchy traversal. Use when you want the full inventory of a branch. Supports `collectionId` to filter to notations with artworks in a specific loaded collection, and `baseOnly: true` to skip key variants (`11H(`: 90,464 rows → 6,030).
 
 If `parentNotation` returns zero results, the concept may exist in a different branch. Try removing the scope for a global search, or broadening to a parent prefix (e.g. `"11"` instead of `"11F"`).
 
@@ -189,9 +189,9 @@ browse(notation: "73D6", depth: 2)
 #        ...
 ```
 
-Wide branches (e.g. male saints by name under `11H(...)`, 183 children) are capped at 25 children per parent and 120 entries in total. The response shows `totalChildren` per entry, and `subtreeCapped: true` when the 120-entry cap cut the expansion short.
+Wide branches (e.g. male saints by name under `11H(...)`, 183 children) are capped at 25 children per parent and 120 entries in total. The response shows `totalChildren` per entry, and `subtreeCapped: true` when the 120-entry cap cut the expansion short. Page the top-level children with `childOffset`: the text ends with `More children: pass childOffset N.` until the last page (the 183 saints take eight calls).
 
-Use `depth: 3` only on narrow branches where you can see the full structure. For wide branches like `11H(...)`, browse at depth 1 first to see the top-level names, then drill into specific children at depth 2.
+Use `depth: 3` only on narrow branches where you can see the full structure. For wide branches like `11H(...)`, browse at depth 1 and page with `childOffset` to see all the top-level names, then drill into specific children at depth 2.
 
 ### 3. Cross-Branch Discovery
 
@@ -345,7 +345,7 @@ To enable direct artwork search in future conversations, the user can install th
 | Issue | Workaround |
 |---|---|
 | British/American spelling — "odour" vs "odor" | Try both spellings. `semanticQuery` handles this automatically. |
-| `browse` caps children at 25 per parent | Use `search_prefix` (paged with `maxResults`/`offset`) to enumerate the full branch. |
+| `browse` caps children at 25 per parent | Page them with `childOffset`. To enumerate the whole subtree rather than one level, use `search_prefix` with `baseOnly: true`. |
 | Resolve batch limit of 25 | Discover with `search`; `resolve` the shortlist you need full metadata on. |
 | `parentNotation` returns 0 but concept exists | The concept may live in a different branch. Remove the scope and search globally. |
 | Key expansion labels can mislead | Key meanings are branch-specific — `(+42)` is "feeding and care of young" under `25F23`, "damage and repair of work of art" under `48C7323`. Read the label via `expand_keys`/`resolve`. See Notation Syntax. |

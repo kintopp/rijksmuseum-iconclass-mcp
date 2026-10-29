@@ -375,7 +375,7 @@ export function registerTools(
       title: "Browse Iconclass",
       description:
         "Browse an Iconclass notation's hierarchy: its entry, path, children, cross-references, and key variants. " +
-        `Children expand to depth 1-3 (use depth=2 for narrative exploration); wide branches are capped at ${IconclassDb.MAX_CHILDREN_PER_PARENT} children per parent and ${IconclassDb.MAX_SUBTREE_ENTRIES} entries in total. ` +
+        `Children expand to depth 1-3 (use depth=2 for narrative exploration); wide branches are capped at ${IconclassDb.MAX_CHILDREN_PER_PARENT} children per parent and ${IconclassDb.MAX_SUBTREE_ENTRIES} entries in total; page the top-level children with childOffset. ` +
         "To list all key variants of a notation, use expand_keys instead of includeKeys.",
       inputSchema: z.object({
         notation: z.string().min(1).describe("Iconclass notation to browse (e.g. '31A33', '73D82')."),
@@ -388,6 +388,8 @@ export function registerTools(
           .describe(`Maximum key variants to return when includeKeys is true (1-${TOOL_LIMITS.keyVariants.max}, default ${TOOL_LIMITS.keyVariants.default}).`),
         keyOffset: z.number().int().min(0).default(0).optional()
           .describe("Skip this many key variants (for pagination)."),
+        childOffset: z.number().int().min(0).default(0).optional()
+          .describe(`Skip this many top-level children (for paging a branch wider than ${IconclassDb.MAX_CHILDREN_PER_PARENT}).`),
       }).strict(),
       ...withOutputSchema(BrowseOutput),
       annotations: READ_ONLY_ANNOTATIONS,
@@ -395,7 +397,7 @@ export function registerTools(
     withLogging("browse", async (args) => {
       const result = db.browse(
         args.notation, args.lang, args.includeKeys ?? false,
-        args.maxKeyVariants ?? 25, args.keyOffset ?? 0, args.depth ?? 1,
+        args.maxKeyVariants ?? 25, args.keyOffset ?? 0, args.depth ?? 1, args.childOffset ?? 0,
       );
       if (!result) {
         return errorResponse(`Notation "${args.notation}" not found in Iconclass.`);
@@ -421,6 +423,8 @@ export function registerTools(
         if (unresolvedRefs.length > 0) refLines.push(...unresolvedRefs.map(n => `  ${n}`));
         sections.push(`Cross-references (${entry.refs.length}):`, ...refLines);
       }
+      const totalChildren = entry.children.length;
+      const childOffset = args.childOffset ?? 0;
       if (subtree.length > 0) {
         const childLines = subtree.map(c => {
           const indent = "  ".repeat(c.depth);
@@ -428,15 +432,19 @@ export function registerTools(
           const trunc = c.truncated ? ` [${c.totalChildren} children, showing 25]` : "";
           return `${indent}${c.notation}${cc} "${c.text}"${trunc}`;
         });
-        const totalChildren = entry.children.length;
         const shownAtDepth1 = subtree.filter(c => c.depth === 1).length;
         const childHeader = totalChildren > shownAtDepth1
-          ? `Children (${shownAtDepth1} of ${totalChildren} shown, ${subtree.length} total entries):`
+          ? `Children (${childOffset + 1}–${childOffset + shownAtDepth1} of ${totalChildren}, ${subtree.length} total entries):`
           : `Children (${subtree.length}):`;
         sections.push(childHeader, ...childLines);
+        if (childOffset + shownAtDepth1 < totalChildren) {
+          sections.push(`More children: pass childOffset ${childOffset + shownAtDepth1}.`);
+        }
         if (result.subtreeCapped) {
           sections.push(`Subtree capped at ${IconclassDb.MAX_SUBTREE_ENTRIES} entries — browse a child notation or lower depth to see the rest.`);
         }
+      } else if (totalChildren > 0) {
+        sections.push(`Children: none at childOffset ${childOffset} (${totalChildren} in total).`);
       }
       if (keyVariants.length > 0) {
         const keyLines = keyVariants.map(k => {
@@ -576,6 +584,8 @@ export function registerTools(
         lang: LangField(),
         collectionId: optStr()
           .describe("Filter to notations with artworks in this collection."),
+        baseOnly: z.boolean().default(false).optional()
+          .describe("Skip key-expanded variants (e.g. 25F23(+46)), listing base and named notations only."),
         maxResults: z
           .number().int()
           .min(1).max(TOOL_LIMITS.search_prefix.max)
@@ -590,7 +600,7 @@ export function registerTools(
     withLogging("search_prefix", async (args) => {
       const result = db.searchPrefix(
         args.notation, args.maxResults, args.lang,
-        args.offset ?? 0, args.collectionId,
+        args.offset ?? 0, args.collectionId, args.baseOnly ?? false,
       );
 
       const header = `${result.results.length} of ${result.totalResults} notations under "${args.notation}"`;
@@ -598,8 +608,8 @@ export function registerTools(
         const colStr = formatCollections(e.collections);
         return `  ${e.notation}${colStr} "${e.text}"`;
       });
-      const hint = result.totalResults > 200
-        ? `\n(Large subtree — narrow the prefix instead of paginating, e.g. "${args.notation}3" or "${args.notation}A")`
+      const hint = result.totalResults > 200 && !args.baseOnly
+        ? "\n(Large subtree — pass baseOnly: true to skip key variants, or narrow the prefix)"
         : "";
       return structuredResponse(result, [header, ...lines].join("\n") + hint);
     })

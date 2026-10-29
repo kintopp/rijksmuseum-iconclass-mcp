@@ -10,6 +10,15 @@
  * candidates / k = 0 throwing; the full-vector rescore skipped, leaving the
  * prefix order; similarity not equal to the true cosine.
  *
+ * EmbeddingModel failure modes (offline: an empty cache with remote fetches off
+ * makes every load fail fast): a failed load cached until restart, so the next
+ * query never retries; a retry on every call instead of after a pause;
+ * EMBEDDING_THREADS "" or junk passed to onnxruntime (0 = all cores, NaN throws)
+ * instead of falling back to 2 with a warning.
+ *
+ * UsageStats concurrency: processes sharing one stats file renaming each
+ * other's temp file away (ENOENT, logged as "usage stats flush failed").
+ *
  * Run:  node scripts/tests/test-units.mjs
  * Requires: npm run build (imports from dist/)
  *
@@ -28,6 +37,9 @@ import { UsageStats } from "../../dist/utils/UsageStats.js";
 import { ensureDb } from "../../dist/utils/db.js";
 import { VectorIndex } from "../../dist/api/VectorIndex.js";
 import { embeddingsCountConsistent } from "../../dist/api/IconclassDb.js";
+import { EmbeddingModel } from "../../dist/api/EmbeddingModel.js";
+import { env as hfEnv } from "@huggingface/transformers";
+import { spawn } from "node:child_process";
 import { assert, assertEq, section, atest, report } from "./_assert.mjs";
 
 // ── Test helpers ─────────────────────────────────────────────────
@@ -458,6 +470,70 @@ try {
   assert(embeddingsCountConsistent(39802, 39802) === true, "match → trust");
   assert(embeddingsCountConsistent(39802, 12000) === false, "fewer than expected → distrust (partial)");
   assert(embeddingsCountConsistent(39802, 39803) === false, "more than expected → distrust (drift)");
+
+  // ════════════════════════════════════════════════════════════════
+  section("EmbeddingModel — failed load and thread config");
+  {
+    const saved = { cacheDir: hfEnv.cacheDir, remote: hfEnv.allowRemoteModels, local: hfEnv.allowLocalModels,
+      threads: process.env.EMBEDDING_THREADS, hfHome: process.env.HF_HOME, now: Date.now, err: console.error };
+    const lines = [];
+    console.error = (l) => { lines.push(String(l)); };
+    try {
+      delete process.env.HF_HOME;   // init() would otherwise point cacheDir back at it
+      hfEnv.cacheDir = fs.mkdtempSync(path.join(tmpRoot, "hf-empty-"));
+      hfEnv.allowRemoteModels = false;
+      const failures = () => lines.filter((l) => l.includes("Failed to load embedding model")).length;
+      const threadWarnings = () => lines.filter((l) => l.includes("EMBEDDING_THREADS")).map((l) => JSON.parse(l).message);
+
+      process.env.EMBEDDING_THREADS = "abc";
+      const m = new EmbeddingModel();
+      await m.whenReady();
+      assert(!m.available && failures() === 1, "load against an empty offline cache fails once");
+      assertList(threadWarnings(), ['EMBEDDING_THREADS="abc" is not a positive integer — using 2'], "junk EMBEDDING_THREADS → warning, default 2");
+
+      await m.whenReady();
+      assertEq(failures(), 1, "a second query right after the failure does not reload");
+
+      const t = Date.now();
+      Date.now = () => t + 61_000;
+      process.env.EMBEDDING_THREADS = "";
+      await m.whenReady();
+      assertEq(failures(), 2, "a query 61 s after the failure retries the load");
+      assertEq(threadWarnings()[1], 'EMBEDDING_THREADS="" is not a positive integer — using 2', "empty EMBEDDING_THREADS → warning, not 0 threads");
+
+      process.env.EMBEDDING_THREADS = "3";
+      Date.now = () => t + 122_000;
+      await m.whenReady();
+      assert(failures() === 3 && threadWarnings().length === 2, "valid EMBEDDING_THREADS → no warning");
+    } finally {
+      console.error = saved.err;
+      Date.now = saved.now;
+      hfEnv.cacheDir = saved.cacheDir;
+      hfEnv.allowRemoteModels = saved.remote;
+      hfEnv.allowLocalModels = saved.local;
+      if (saved.threads === undefined) delete process.env.EMBEDDING_THREADS; else process.env.EMBEDDING_THREADS = saved.threads;
+      if (saved.hfHome !== undefined) process.env.HF_HOME = saved.hfHome;
+    }
+  }
+
+  // ════════════════════════════════════════════════════════════════
+  section("UsageStats — concurrent writers");
+  await atest("8 processes flushing one file → no failed rename", async () => {
+    const file = path.join(tmpRoot, "shared-usage.json");
+    const mod = path.resolve("dist/utils/UsageStats.js");
+    const child = `import { UsageStats } from ${JSON.stringify(mod)};
+      const s = new UsageStats(${JSON.stringify(file)});
+      for (let i = 0; i < 200; i++) { s.record("search", 1, true); s.flush(); }`;
+    const runs = Array.from({ length: 8 }, () => new Promise((resolve) => {
+      const c = spawn(process.execPath, ["--input-type=module", "-e", child], { stdio: ["ignore", "ignore", "pipe"] });
+      let err = "";
+      c.stderr.on("data", (d) => { err += d; });
+      c.on("exit", (code) => resolve({ code, err }));
+    }));
+    const results = await Promise.all(runs);
+    assert(results.every((r) => r.code === 0), "all writers exit 0");
+    assertEq(results.filter((r) => r.err.includes("usage stats flush failed")).length, 0, "no writer logs a failed flush");
+  });
 
   // ── Summary ───────────────────────────────────────────────────
   report();

@@ -110,7 +110,8 @@ async function initDatabase(): Promise<void> {
     // this same load lazily (so the first semantic query after a wake waits,
     // within the /mcp 30s net), and runStdio() awaits whenReady() to keep
     // stdio startup eager. warmCorePages() likewise moves off the boot path.
-    // Under SKIP_STARTUP_WARM the first semantic query starts the load instead.
+    // Under SKIP_STARTUP_WARM (stdio only: HTTP's warmInBackground still loads
+    // it right after listen) the first semantic query starts the load instead.
     if (!SKIP_STARTUP_WARM) embeddingModel.init();
   }
 
@@ -351,16 +352,18 @@ async function runHttp(): Promise<void> {
 
 function shutdown() {
   logInfo("Shutting down...");
-  usageStats?.flush(); // persist any pending counters (#326)
-  if (!httpServer) {
+  // Flush at exit, not here: calls still in flight finish during the drain (#326).
+  const exit: () => never = () => {
+    usageStats?.flush();
     process.exit(0);
-  }
+  };
+  if (!httpServer) exit();
 
   // Backstop: force exit before SIGKILL if a connection never closes. Exit 0 —
   // Railway reports any non-zero exit on redeploy as "Deploy Crashed".
   const forceExit = setTimeout(() => {
     logWarn("Drain timed out; forcing exit.");
-    process.exit(0);
+    exit();
   }, 5000);
   forceExit.unref();
 
@@ -369,7 +372,7 @@ function shutdown() {
     // wait only on in-flight requests
     clearTimeout(forceExit);
     logInfo("All connections closed.");
-    process.exit(0);
+    exit();
   });
 }
 

@@ -82,7 +82,9 @@ export class UsageStats {
       const dir = path.dirname(this.filePath);
       if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 
-      const tmp = this.filePath + ".tmp";
+      // Per-process temp name: concurrent stdio servers sharing one file would
+      // otherwise rename each other's temp file out from under them.
+      const tmp = `${this.filePath}.${process.pid}.tmp`;
       fs.writeFileSync(tmp, JSON.stringify(this.data, null, 2));
       fs.renameSync(tmp, this.filePath);
       this.dirty = false;

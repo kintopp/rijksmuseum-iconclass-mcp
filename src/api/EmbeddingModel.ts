@@ -6,6 +6,20 @@ import { logInfo, logWarn } from "../utils/log.js";
 export const QUERY_MODEL_ID = "onnx-community/embeddinggemma-2-ONNX";
 export const QUERY_MODEL_REVISION = "daa72c51243991dfcaf9f9137d2c573d8f7790c0";
 const QUERY_PREFIX = "task: search result | query: ";
+// A failed load (e.g. a Hugging Face hiccup on a cold wake) is retried by the
+// next query after this long, not cached until restart.
+const RETRY_AFTER_MS = 60_000;
+const DEFAULT_THREADS = 2;
+
+/** EMBEDDING_THREADS as a positive integer; anything else falls back to the default
+ *  ("" would give onnxruntime 0 = one thread per visible core). */
+function threadCount(raw: string | undefined): number {
+  if (raw === undefined) return DEFAULT_THREADS;
+  const n = Number(raw);
+  if (Number.isInteger(n) && n > 0) return n;
+  logWarn(`EMBEDDING_THREADS=${JSON.stringify(raw)} is not a positive integer — using ${DEFAULT_THREADS}`);
+  return DEFAULT_THREADS;
+}
 
 export class EmbeddingModel {
   // transformers.js model/tokenizer types are too broad to express usefully.
@@ -17,12 +31,18 @@ export class EmbeddingModel {
   // without awaiting it (so the ONNX load never gates app.listen() / a
   // scale-to-zero wake), and embed() awaits this same promise lazily.
   private initPromise: Promise<void> | null = null;
+  private failedAt: number | null = null;
 
   /**
    * Begin loading the model; returns a promise that settles when it is ready
-   * (loaded or failed). Idempotent — repeated calls return the same promise.
+   * (loaded or failed). Repeated calls return the same promise, except that a
+   * failed load is retried once RETRY_AFTER_MS has passed.
    */
   init(): Promise<void> {
+    if (this.failedAt !== null && Date.now() - this.failedAt >= RETRY_AFTER_MS) {
+      this.failedAt = null;
+      this.initPromise = null;
+    }
     this.initPromise ??= this.load();
     return this.initPromise;
   }
@@ -30,7 +50,7 @@ export class EmbeddingModel {
   private async load(): Promise<void> {
     // onnxruntime sizes its pool from the visible cores, not the cgroup quota —
     // on Railway that oversubscribes and triples latency. Always set it.
-    const threads = Number(process.env.EMBEDDING_THREADS ?? 2);
+    const threads = threadCount(process.env.EMBEDDING_THREADS);
     // q8 ≈ +480 MB RSS / ~120 ms per query on Railway; fp32 ≈ +1 GB / ~28 ms.
     const dtype = process.env.EMBEDDING_MODEL_DTYPE ?? "q8";
     try {
@@ -67,6 +87,7 @@ export class EmbeddingModel {
       // is gone, FTS still serves. Kept at the same level as that path.
       logWarn("Failed to load embedding model", err);
       this.model = null;
+      this.failedAt = Date.now();
     }
   }
 

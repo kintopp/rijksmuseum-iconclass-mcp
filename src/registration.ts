@@ -74,6 +74,8 @@ function createLogger(stats?: UsageStats) {
 const stripNull = (v: unknown) =>
   (v === null || v === undefined || v === "null" || v === "") ? undefined : v;
 const optStr = () => z.preprocess(stripNull, z.string().optional());
+/** As optStr, trimmed first: a padded prefix would otherwise match nothing. */
+const optTrimmedStr = () => z.preprocess(v => stripNull(typeof v === "string" ? v.trim() : v), z.string().optional());
 
 type ToolResponse = { content: [{ type: "text"; text: string }] };
 type StructuredToolResponse = ToolResponse & { structuredContent: Record<string, unknown> };
@@ -281,7 +283,7 @@ export function registerTools(
           .describe("Only return notations that have artworks in any loaded collection."),
         collectionId: optStr()
           .describe("Filter to notations with artworks in this specific collection (e.g. 'rijksmuseum')."),
-        parentNotation: optStr()
+        parentNotation: optTrimmedStr()
           .describe("Restrict results to a subtree — only notations starting with this prefix (e.g. '11F' for Virgin Mary, '73D' for life of Christ)."),
         lang: LangField(),
         maxResults: z

@@ -22,7 +22,8 @@
  *  - totalBaseNotations counts base rows instead of distinct bases (a variant
  *    whose base didn't match must still count it), or ignores the filters.
  *  - collectionId / onlyWithArtworks / parentNotation leak results from outside
- *    the filter, or parentNotation treats LIKE wildcards as wildcards.
+ *    the filter, or parentNotation treats LIKE wildcards as wildcards, or a
+ *    padded parentNotation (" 73D") silently matches nothing.
  *  - the phrase → AND-terms fallback doesn't run, or depends on word order, or
  *    is skipped because phrase hits existed that the collection filter removed.
  *  - semanticQuery without embeddings errors with anything but the fixed hint.
@@ -199,6 +200,12 @@ if (ok(r2u, "unknown collectionId")) assertEq(sc(r2u).totalResults, 0, "unknown 
 const r2s = await call("search", { query: "crucifixion", parentNotation: "73D" });
 if (ok(r2s, "parentNotation 73D"))
   eqList(notations(sc(r2s).results), ["73D6", "73D67", "73D5", "73D6712", "73D671"], "parentNotation drops 31E2356, keeps the order");
+const r2pad = await call("search", { query: "crucifixion", parentNotation: " 73D " });
+if (ok(r2pad, "parentNotation ' 73D '"))
+  eqList(notations(sc(r2pad).results), ["73D6", "73D67", "73D5", "73D6712", "73D671"], "padded parentNotation is trimmed");
+const r2blank = await call("search", { query: "crucifixion", parentNotation: "  " });
+if (ok(r2blank, "parentNotation '  '"))
+  assert(notations(sc(r2blank).results).includes("31E2356"), "whitespace-only parentNotation means no scope");
 const r2like = await call("search", { query: "crucifixion", parentNotation: "7_D" });
 if (ok(r2like, "parentNotation 7_D")) assertEq(sc(r2like).totalResults, 0, "'_' in parentNotation is literal, not a LIKE wildcard");
 

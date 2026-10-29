@@ -36,7 +36,10 @@ def export_counts(vocab_db_path: str, output_path: str):
     # see rijksmuseum-mcp-plus#328) cannot pollute the export.
     if has_int:
         fid_row = conn.execute("SELECT id FROM field_lookup WHERE name = 'subject'").fetchone()
-        subject_fid = fid_row[0] if fid_row else -1
+        if not fid_row:
+            print("Error: no 'subject' row in field_lookup", file=sys.stderr)
+            sys.exit(1)
+        subject_fid = fid_row[0]
         rows = conn.execute("""
             SELECT v.notation, COUNT(DISTINCT m.artwork_id) as cnt
             FROM mappings m
@@ -60,6 +63,10 @@ def export_counts(vocab_db_path: str, output_path: str):
         """).fetchall()
 
     conn.close()
+    # An empty export would publish a sidecar with zero Rijksmuseum counts.
+    if not rows:
+        print("Error: no subject classifications found; not writing an empty CSV", file=sys.stderr)
+        sys.exit(1)
 
     os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
     with open(output_path, "w", newline="", encoding="utf-8") as f:

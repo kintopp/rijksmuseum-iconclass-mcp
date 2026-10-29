@@ -39,18 +39,32 @@ const DEFAULT_URL = "https://rijksmuseum-iconclass-mcp-production.up.railway.app
 const DEFAULT_FILE = resolve(__dirname, "warm-cache-prompts.tsv");
 const MODERN_VERSION = "2026-07-28";
 
+const USAGE = "Usage: node scripts/warm-cache.mjs [--url URL] [--file PATH] [--concurrency N]";
+
+// Exits on anything unrecognised: the default URL is production, so a
+// misparsed --url=… would otherwise warm prod while appearing to test local.
 function parseArgs() {
   const args = process.argv.slice(2);
   const opts = { url: DEFAULT_URL, file: DEFAULT_FILE, concurrency: 1 };
+  const fail = (msg) => { console.error(`${msg}\n${USAGE}`); process.exit(2); };
   for (let i = 0; i < args.length; i++) {
-    switch (args[i]) {
-      case "--url":         opts.url = args[++i]; break;
-      case "--file":        opts.file = resolve(args[++i]); break;
-      case "--concurrency": opts.concurrency = Math.max(1, parseInt(args[++i], 10) || 1); break;
+    const eq = args[i].indexOf("=");
+    const flag = eq > 0 ? args[i].slice(0, eq) : args[i];
+    const value = () => {
+      const v = eq > 0 ? args[i].slice(eq + 1) : args[++i];
+      if (!v) fail(`${flag} needs a value`);
+      return v;
+    };
+    switch (flag) {
+      case "--url":         opts.url = value(); break;
+      case "--file":        opts.file = resolve(value()); break;
+      case "--concurrency": opts.concurrency = Math.max(1, parseInt(value(), 10) || 1); break;
       case "--help":
       case "-h":
-        console.log("Usage: node scripts/warm-cache.mjs [--url URL] [--file PATH] [--concurrency N]");
+        console.log(USAGE);
         process.exit(0);
+      default:
+        fail(`Unknown argument: ${args[i]}`);
     }
   }
   return opts;
@@ -134,8 +148,16 @@ async function probeModernWire(url) {
           },
         },
       }),
+      signal: AbortSignal.timeout(30_000),
     });
-    const body = JSON.parse(await res.text());
+    const text = await res.text();
+    let body;
+    try {
+      body = JSON.parse(text);
+    } catch {
+      log(`FAIL  -> HTTP ${res.status} ${res.headers.get("content-type") ?? ""}: ${text.slice(0, 100)}`);
+      return false;
+    }
     const tools = body?.result?.tools?.length;
     if (res.status === 200 && tools) {
       log(`OK  ${tools} tools`);

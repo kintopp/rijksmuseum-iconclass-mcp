@@ -28,7 +28,23 @@ COLLECTION_META: dict[str, tuple[str, str | None]] = {
 }
 
 
+def collection_id_of(csv_path: str) -> str:
+    basename = os.path.basename(csv_path)
+    return basename.replace("-counts.csv", "").replace("_counts.csv", "").replace(".csv", "")
+
+
 def build_counts_db(output_path: str, count_csvs: list[str], release_tag: str = "dev"):
+    # Check inputs before removing the old DB: a skipped or merged collection
+    # still builds a valid-looking sidecar that the server loads without complaint.
+    seen: dict[str, str] = {}
+    for csv_path in count_csvs:
+        if not os.path.exists(csv_path):
+            sys.exit(f"Error: {csv_path} not found")
+        cid = collection_id_of(csv_path)
+        if cid in seen:
+            sys.exit(f"Error: {seen[cid]} and {csv_path} both map to collection '{cid}'")
+        seen[cid] = csv_path
+
     os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
     if os.path.exists(output_path):
         os.remove(output_path)
@@ -64,12 +80,7 @@ def build_counts_db(output_path: str, count_csvs: list[str], release_tag: str = 
     total_notation_counts = 0
 
     for csv_path in count_csvs:
-        if not os.path.exists(csv_path):
-            print(f"  Warning: {csv_path} not found — skipping")
-            continue
-
-        basename = os.path.basename(csv_path)
-        collection_id = basename.replace("-counts.csv", "").replace("_counts.csv", "").replace(".csv", "")
+        collection_id = collection_id_of(csv_path)
         meta = COLLECTION_META.get(collection_id)
         label = meta[0] if meta else collection_id.replace("-", " ").replace("_", " ").title()
         url_template = meta[1] if meta else None
@@ -91,6 +102,10 @@ def build_counts_db(output_path: str, count_csvs: list[str], release_tag: str = 
                         rows.append((collection_id, notation, count))
                 except ValueError:
                     continue
+        if not rows:
+            conn.close()
+            os.remove(output_path)
+            sys.exit(f"Error: {csv_path} has no positive counts")
 
         conn.executemany(
             "INSERT OR REPLACE INTO collection_counts VALUES (?, ?, ?)",

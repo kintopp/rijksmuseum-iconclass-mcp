@@ -37,14 +37,20 @@ def main() -> None:
     z = np.load(args.npz)
     notations = z["object_number"].tolist()
     vecs = z["vec"].astype(np.float32)
-    vecs /= np.linalg.norm(vecs, axis=1, keepdims=True)
+    norms = np.linalg.norm(vecs, axis=1, keepdims=True)
+    bad = ~np.isfinite(vecs).all(axis=1) | (norms[:, 0] < 1e-6)
+    if bad.any():
+        raise SystemExit(f"{bad.sum()} non-finite or zero-norm vectors, e.g. {notations[int(np.argmax(bad))]}")
+    vecs /= norms
     dims = vecs.shape[1]
     # Gemma components peak ~0.35, so ×127 would use under half the int8 range.
     # Cosine is scale-invariant; the server quantises queries with the same scale.
     scale = float(np.floor(127 / np.abs(vecs).max()))
     q = np.clip(np.rint(vecs * scale), -127, 127).astype(np.int8)
 
-    conn = sqlite3.connect(args.db)
+    # Autocommit + explicit BEGIN: in the default mode DDL runs outside the
+    # implicit transaction, so a failed insert would leave the table dropped.
+    conn = sqlite3.connect(args.db, isolation_level=None)
     # Loaded only so DROP TABLE can remove a vec0 table left by an older build.
     conn.enable_load_extension(True)
     sqlite_vec.load(conn)
@@ -56,6 +62,7 @@ def main() -> None:
         raise SystemExit(f"npz/base mismatch: {len(missing)} base notations missing, {len(extra)} unknown")
 
     with conn:
+        conn.execute("BEGIN")
         conn.execute("DROP TABLE IF EXISTS vec_iconclass")
         conn.execute("DROP TABLE IF EXISTS iconclass_embeddings")
         conn.execute("""

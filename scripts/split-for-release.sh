@@ -34,6 +34,10 @@ if [[ ! -f "$gz_file" ]]; then
   exit 1
 fi
 
+# Parts left by an interrupted run would be globbed and uploaded as extra chunks.
+rm -f "${gz_file}.part-"*
+trap 'rm -f "${gz_file}.part-"*' EXIT
+
 echo "Splitting $gz_file into ${CHUNK_SIZE} chunks..."
 split -b "$CHUNK_SIZE" "$gz_file" "${gz_file}.part-"
 
@@ -63,9 +67,6 @@ for chunk in "${chunks[@]}"; do
     failed=$((failed + 1))
   fi
 done
-
-# Clean up chunk files
-rm -f "${gz_file}.part-"*
 
 echo ""
 echo "Done: $uploaded uploaded, $failed failed (out of ${#chunks[@]} chunks)"

@@ -33,17 +33,39 @@ def collection_id_of(csv_path: str) -> str:
     return basename.replace("-counts.csv", "").replace("_counts.csv", "").replace(".csv", "")
 
 
+def read_counts(csv_path: str, collection_id: str) -> list[tuple[str, str, int]]:
+    rows: list[tuple[str, str, int]] = []
+    with open(csv_path, "r", encoding="utf-8") as f:
+        reader = csv.reader(f)
+        for i, row in enumerate(reader):
+            if len(row) < 2:
+                continue
+            notation, count_str = row[0].strip(), row[1].strip()
+            if i == 0 and not count_str.isdigit():
+                continue
+            try:
+                count = int(count_str)
+                if count > 0:
+                    rows.append((collection_id, notation, count))
+            except ValueError:
+                continue
+    return rows
+
+
 def build_counts_db(output_path: str, count_csvs: list[str], release_tag: str = "dev"):
-    # Check inputs before removing the old DB: a skipped or merged collection
-    # still builds a valid-looking sidecar that the server loads without complaint.
-    seen: dict[str, str] = {}
+    # A missing, merged or empty collection still builds a valid-looking
+    # sidecar that the server loads without complaint.
+    collections: dict[str, tuple[str, list[tuple[str, str, int]]]] = {}
     for csv_path in count_csvs:
         if not os.path.exists(csv_path):
             sys.exit(f"Error: {csv_path} not found")
         cid = collection_id_of(csv_path)
-        if cid in seen:
-            sys.exit(f"Error: {seen[cid]} and {csv_path} both map to collection '{cid}'")
-        seen[cid] = csv_path
+        if cid in collections:
+            sys.exit(f"Error: {collections[cid][0]} and {csv_path} both map to collection '{cid}'")
+        rows = read_counts(csv_path, cid)
+        if not rows:
+            sys.exit(f"Error: {csv_path} has no positive counts")
+        collections[cid] = (csv_path, rows)
 
     os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
     # Build beside the target and swap in on success, so a failed build keeps
@@ -83,34 +105,12 @@ def build_counts_db(output_path: str, count_csvs: list[str], release_tag: str = 
     total_collections = 0
     total_notation_counts = 0
 
-    for csv_path in count_csvs:
-        collection_id = collection_id_of(csv_path)
+    for collection_id, (csv_path, rows) in collections.items():
         meta = COLLECTION_META.get(collection_id)
         label = meta[0] if meta else collection_id.replace("-", " ").replace("_", " ").title()
         url_template = meta[1] if meta else None
 
         print(f"  Loading counts for '{collection_id}' from {csv_path}...")
-
-        rows: list[tuple[str, str, int]] = []
-        with open(csv_path, "r", encoding="utf-8") as f:
-            reader = csv.reader(f)
-            for i, row in enumerate(reader):
-                if len(row) < 2:
-                    continue
-                notation, count_str = row[0].strip(), row[1].strip()
-                if i == 0 and not count_str.isdigit():
-                    continue
-                try:
-                    count = int(count_str)
-                    if count > 0:
-                        rows.append((collection_id, notation, count))
-                except ValueError:
-                    continue
-        if not rows:
-            conn.close()
-            os.remove(tmp_path)
-            sys.exit(f"Error: {csv_path} has no positive counts")
-
         conn.executemany(
             "INSERT OR REPLACE INTO collection_counts VALUES (?, ?, ?)",
             rows,

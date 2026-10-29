@@ -33,6 +33,7 @@
 import { readFileSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { parseArgs as utilParseArgs } from "node:util";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 
@@ -44,21 +45,32 @@ const DEFAULT_FILE = resolve(__dirname, "warm-cache-prompts.tsv");
 // Tools whose content text should be a compact human-readable summary, not raw JSON.
 const COMPACT_CONTENT_TOOLS = new Set(["search", "browse", "resolve", "expand_keys", "search_prefix"]);
 
+const USAGE = "Usage: node scripts/warm-cache-local.mjs [--file PATH] [--concurrency N] [--validate]";
+
 function parseArgs() {
-  const args = process.argv.slice(2);
-  const opts = { file: DEFAULT_FILE, concurrency: 1, validate: false };
-  for (let i = 0; i < args.length; i++) {
-    switch (args[i]) {
-      case "--file":        opts.file = resolve(args[++i]); break;
-      case "--concurrency": opts.concurrency = Math.max(1, parseInt(args[++i], 10) || 1); break;
-      case "--validate":    opts.validate = true; break;
-      case "--help":
-      case "-h":
-        console.log("Usage: node scripts/warm-cache-local.mjs [--file PATH] [--concurrency N] [--validate]");
-        process.exit(0);
-    }
+  const fail = (msg) => { console.error(`${msg}\n${USAGE}`); process.exit(2); };
+  let values;
+  try {
+    ({ values } = utilParseArgs({
+      strict: true,
+      options: {
+        file: { type: "string", default: DEFAULT_FILE },
+        concurrency: { type: "string", default: "1" },
+        validate: { type: "boolean", default: false },
+        help: { type: "boolean", short: "h" },
+      },
+    }));
+  } catch (e) {
+    fail(e.message);
   }
-  return opts;
+  if (values.help) {
+    console.log(USAGE);
+    process.exit(0);
+  }
+  if (!values.file) fail("--file needs a value");
+  const concurrency = Number(values.concurrency);
+  if (!Number.isInteger(concurrency) || concurrency < 1) fail(`--concurrency must be a positive integer, got ${values.concurrency}`);
+  return { file: resolve(values.file), concurrency, validate: values.validate };
 }
 
 function parseTsv(filePath) {

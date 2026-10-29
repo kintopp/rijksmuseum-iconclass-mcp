@@ -30,6 +30,7 @@
 import { readFileSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { parseArgs as utilParseArgs } from "node:util";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 
@@ -41,38 +42,32 @@ const MODERN_VERSION = "2026-07-28";
 
 const USAGE = "Usage: node scripts/warm-cache.mjs [--url URL] [--file PATH] [--concurrency N]";
 
-// Exits on anything unrecognised: the default URL is production, so a
-// misparsed --url=… would otherwise warm prod while appearing to test local.
+// strict: the default URL is production, so a misparsed --url would otherwise
+// warm prod while appearing to test local.
 function parseArgs() {
-  const args = process.argv.slice(2);
-  const opts = { url: DEFAULT_URL, file: DEFAULT_FILE, concurrency: 1 };
   const fail = (msg) => { console.error(`${msg}\n${USAGE}`); process.exit(2); };
-  for (let i = 0; i < args.length; i++) {
-    const eq = args[i].indexOf("=");
-    const flag = eq > 0 ? args[i].slice(0, eq) : args[i];
-    const value = () => {
-      const v = eq > 0 ? args[i].slice(eq + 1) : args[++i];
-      if (!v) fail(`${flag} needs a value`);
-      return v;
-    };
-    switch (flag) {
-      case "--url":         opts.url = value(); break;
-      case "--file":        opts.file = resolve(value()); break;
-      case "--concurrency": {
-        const raw = value();
-        opts.concurrency = Number(raw);
-        if (!Number.isInteger(opts.concurrency) || opts.concurrency < 1) fail(`--concurrency must be a positive integer, got ${raw}`);
-        break;
-      }
-      case "--help":
-      case "-h":
-        console.log(USAGE);
-        process.exit(0);
-      default:
-        fail(`Unknown argument: ${args[i]}`);
-    }
+  let values;
+  try {
+    ({ values } = utilParseArgs({
+      strict: true,
+      options: {
+        url: { type: "string", default: DEFAULT_URL },
+        file: { type: "string", default: DEFAULT_FILE },
+        concurrency: { type: "string", default: "1" },
+        help: { type: "boolean", short: "h" },
+      },
+    }));
+  } catch (e) {
+    fail(e.message);
   }
-  return opts;
+  if (values.help) {
+    console.log(USAGE);
+    process.exit(0);
+  }
+  if (!values.url || !values.file) fail("--url and --file need a value");
+  const concurrency = Number(values.concurrency);
+  if (!Number.isInteger(concurrency) || concurrency < 1) fail(`--concurrency must be a positive integer, got ${values.concurrency}`);
+  return { url: values.url, file: resolve(values.file), concurrency };
 }
 
 function parseTsv(filePath) {

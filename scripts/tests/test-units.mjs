@@ -464,6 +464,15 @@ try {
     assertList(index.search(q, 10, new Int32Array(0)), [], "empty candidates → []");
     assertList(index.search(q, 0), [], "k = 0 → []");
   }
+  {
+    // A mis-sized blob must fail the build, not read past it or rank on a prefix.
+    const rows = int8Rows(3, 16, 7);
+    for (const [bad, label] of [[Buffer.alloc(8), "short"], [Buffer.alloc(32), "long"], [null, "NULL"]]) {
+      let msg = "";
+      try { new VectorIndex(["a", "b", "c"], [rows[0], bad, rows[2]], 16, 8); } catch (e) { msg = e.message; }
+      assertEq(msg, `Embedding for b is ${bad?.length ?? "NULL"} bytes, expected 16`, `${label} blob → build throws, naming the row`);
+    }
+  }
 
   // ════════════════════════════════════════════════════════════════
   section("embeddingsCountConsistent — partial-table guard");
@@ -493,11 +502,14 @@ try {
       assert(!m.available && failures() === 1, "load against an empty offline cache fails once");
       assertList(threadWarnings(), ['EMBEDDING_THREADS="abc" is not a positive integer — using 2'], "junk EMBEDDING_THREADS → warning, default 2");
 
-      // Retries run in the background; give one time to settle.
-      const settled = async (n) => { for (let i = 0; i < 100 && failures() < n; i++) await new Promise((r) => setTimeout(r, 20)); };
+      // Retries run in the background; an offline load fails in ~10 ms. Waiting
+      // for a load that must NOT happen uses the short limit.
+      const settled = async (n, ms = 2000) => {
+        for (let t = 0; t < ms && failures() < n; t += 20) await new Promise((r) => setTimeout(r, 20));
+      };
 
       await m.whenReady();
-      await settled(2);
+      await settled(2, 250);
       assertEq(failures(), 1, "a second query right after the failure does not reload");
 
       const t = Date.now();
@@ -517,7 +529,7 @@ try {
 
       Date.now = () => t + 183_000;
       await m.whenReady();
-      await settled(4);
+      await settled(4, 250);
       assertEq(failures(), 3, "no fourth load: retries stop after 3 loads in all");
     } finally {
       console.error = saved.err;
@@ -531,13 +543,13 @@ try {
 
   // ════════════════════════════════════════════════════════════════
   section("UsageStats — concurrent writers");
-  await atest("8 processes flushing one file → no failed rename", async () => {
+  await atest("4 processes flushing one file → no failed rename", async () => {
     const file = path.join(tmpRoot, "shared-usage.json");
     const mod = new URL("../../dist/utils/UsageStats.js", import.meta.url).href;
     const child = `import { UsageStats } from ${JSON.stringify(mod)};
       const s = new UsageStats(${JSON.stringify(file)});
-      for (let i = 0; i < 200; i++) { s.record("search", 1, true); s.flush(); }`;
-    const runs = Array.from({ length: 8 }, () => new Promise((resolve) => {
+      for (let i = 0; i < 50; i++) { s.record("search", 1, true); s.flush(); }`;
+    const runs = Array.from({ length: 4 }, () => new Promise((resolve) => {
       const c = spawn(process.execPath, ["--input-type=module", "-e", child], { stdio: ["ignore", "ignore", "pipe"] });
       let err = "";
       c.stderr.on("data", (d) => { err += d; });

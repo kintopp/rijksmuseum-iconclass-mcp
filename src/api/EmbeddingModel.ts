@@ -7,10 +7,9 @@ export const QUERY_MODEL_ID = "onnx-community/embeddinggemma-2-ONNX";
 export const QUERY_MODEL_REVISION = "daa72c51243991dfcaf9f9137d2c573d8f7790c0";
 const QUERY_PREFIX = "task: search result | query: ";
 // A failed load (e.g. a Hugging Face hiccup on a cold wake) is retried in the
-// background by the first query after this long, up to MAX_LOADS loads in all:
-// a session that loaded and then failed (tokenizer, warm-up run) is disposed,
-// but disposal returns almost none of its native RSS.
+// background by the first query after this long.
 const RETRY_AFTER_MS = 60_000;
+// A failed load's disposed session keeps most of its native RSS, so cap them.
 const MAX_LOADS = 3;
 const DEFAULT_THREADS = 2;
 

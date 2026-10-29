@@ -46,6 +46,8 @@ export class VectorIndex {
     this.inv = new Float32Array(n);
     this.prefixInv = new Float32Array(n);
     vectors.forEach((buf, i) => {
+      // A short buffer would read past its end; a long one would rank on a prefix.
+      if (buf?.length !== dims) throw new Error(`Embedding for ${notations[i]} is ${buf?.length ?? "NULL"} bytes, expected ${dims}`);
       const v = new Int8Array(buf.buffer, buf.byteOffset, dims);
       this.full.set(v, i * dims);
       let ss = 0;

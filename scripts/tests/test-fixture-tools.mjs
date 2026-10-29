@@ -201,8 +201,8 @@ const r2s = await call("search", { query: "crucifixion", parentNotation: "73D" }
 if (ok(r2s, "parentNotation 73D"))
   eqList(notations(sc(r2s).results), ["73D6", "73D67", "73D5", "73D6712", "73D671"], "parentNotation drops 31E2356, keeps the order");
 const r2pad = await call("search", { query: "crucifixion", parentNotation: " 73D " });
-if (ok(r2pad, "parentNotation ' 73D '"))
-  eqList(notations(sc(r2pad).results), ["73D6", "73D67", "73D5", "73D6712", "73D671"], "padded parentNotation is trimmed");
+if (!r2s.isError && ok(r2pad, "parentNotation ' 73D '"))
+  eqList(notations(sc(r2pad).results), notations(sc(r2s).results), "padded parentNotation is trimmed");
 const r2blank = await call("search", { query: "crucifixion", parentNotation: "  " });
 if (ok(r2blank, "parentNotation '  '"))
   assert(notations(sc(r2blank).results).includes("31E2356"), "whitespace-only parentNotation means no scope");

@@ -4,6 +4,10 @@
  * Run:  node scripts/tests/test-tools.mjs
  * Requires: npm run build, data/iconclass.db present, and the embedding model
  * (semantic sections FAIL, not skip, when it is unavailable).
+ *
+ * Not covered: browse paging past a dangling child link (it advances by list
+ * position, not entries shown). The build drops dangling links, and the
+ * fixture can't seed one.
  */
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
@@ -239,7 +243,7 @@ const s4b2 = sc(r4b2);
 assertEq(s4b2.keyVariants.length, 5, "key variants page size respected");
 assert(s4b2.keyVariants[0].notation !== s4b.keyVariants[0].notation, "keyOffset produces different first variant");
 
-// Subtree cap: 11H(...) has 183 named saints, each with children, so depth 2 overflows 120 entries.
+// Subtree cap: 11H(...) has 182 named saints, each with children, so depth 2 overflows 120 entries.
 const CAP_NOTE = "Subtree capped at 120 entries — browse a child notation or lower depth to see the rest.";
 const r4cap = await client.callTool({ name: "browse", arguments: { notation: "11H(...)", depth: 2 } });
 if (assert(!r4cap.isError, "browse 11H(...) depth 2: no error")) {
@@ -247,11 +251,11 @@ if (assert(!r4cap.isError, "browse 11H(...) depth 2: no error")) {
   assertEq(sc(r4cap).subtreeCapped, true, "subtreeCapped is set when the cap stops expansion");
   assertEq(txt(r4cap).split("\n").at(-1), CAP_NOTE, "the text ends with the cap note");
 }
-// childOffset pages the 183 saints 25 at a time (the fixture has no branch wider than 25).
+// childOffset pages the 182 saints 25 at a time (the fixture has no branch wider than 25).
 const r4page = await client.callTool({ name: "browse", arguments: { notation: "11H(...)", childOffset: 25 } });
 if (assert(!r4page.isError, "browse 11H(...) childOffset 25: no error")) {
   const L = txt(r4page).split("\n");
-  assert(L.includes("Children (26–50 of 183, 25 total entries):"), "second page header gives the range");
+  assert(L.includes("Children (26–50 of 182, 25 total entries):"), "second page header gives the range");
   assertEq(L.at(-1), "More children: pass childOffset 50.", "the text ends with the next offset");
 }
 const r4last = await client.callTool({ name: "browse", arguments: { notation: "11H(...)", childOffset: 175 } });
@@ -265,8 +269,7 @@ if (assert(!r4bo.isError, "search_prefix 11H( baseOnly: no error")) {
   assertEq(sc(r4bo).totalResults, 6030, "baseOnly counts the 6,030 non-variant notations");
   assertEq(txt(r4bo).split("\n").at(-1), "(Large subtree — narrow the prefix)", "a large baseOnly result still says to narrow");
 }
-// 25G4(...) lists 55 children, six of them dangling (positions 4, 5, 28, 32, 36, 46):
-// paging must step by list position, or a page that resolves fewer than 25 repeats children.
+// 25G4(...) has 49 children: following the hints must show each exactly once.
 const seen25G4 = [];
 const headers25G4 = [];
 let co25G4 = 0;
@@ -280,12 +283,29 @@ for (let page = 0; page < 5 && co25G4 !== null; page++) {
   co25G4 = more ? Number(more[1]) : null;
 }
 eqList(headers25G4, [
-  "Children (1–25 of 55, 23 total entries):",
-  "Children (26–50 of 55, 21 total entries):",
-  "Children (51–55 of 55, 5 total entries):",
-], "dangling children: pages advance by 25 list positions");
-assertEq(seen25G4.length, 49, "following the hints shows the 49 resolvable children");
+  "Children (1–25 of 49, 25 total entries):",
+  "Children (26–49 of 49, 24 total entries):",
+], "pages advance 25 children at a time");
+assertEq(seen25G4.length, 49, "following the hints shows all 49 children");
 assertEq(new Set(seen25G4).size, seen25G4.length, "no child is shown twice across pages");
+// A key-expanded notation's children are its sub-keys only, never its base's children.
+const r4leaf = await client.callTool({ name: "browse", arguments: { notation: "11H(+0)" } });
+if (assert(!r4leaf.isError, "browse 11H(+0): no error")) {
+  eqList(sc(r4leaf).entry.children, [], "a keyed leaf doesn't inherit its base's children");
+}
+const r4keyed = await client.callTool({ name: "browse", arguments: { notation: "25F23(+1)" } });
+if (assert(!r4keyed.isError, "browse 25F23(+1): no error")) {
+  eqList(sc(r4keyed).entry.children, ["25F23(+11)", "25F23(+12)", "25F23(+13)", "25F23(+14)", "25F23(+15)"],
+    "a keyed parent lists its sub-keys");
+}
+// Dump-only languages compose a named variant's label from its named base, not the stripped
+// code: 11H(JOHN) has no Dutch label, so nl falls back to English.
+const r4nl = await client.callTool({ name: "resolve", arguments: { notation: ["11H(JOHN)(+3)"], lang: "nl" } });
+if (assert(!r4nl.isError, "resolve 11H(JOHN)(+3) nl: no error")) {
+  assertEq(sc(r4nl).notations[0]?.text,
+    "the apostle John the Evangelist; possible attributes: book, cauldron, chalice with snake, eagle, palm, scroll (+ angel(s))",
+    "a named variant's label keeps its name");
+}
 // 25F depth 2 is 74 entries (incl. the 25F6(...) and 25F8(...) templates): under the cap, so no flag and no note.
 const r4nocap = await client.callTool({ name: "browse", arguments: { notation: "25F", depth: 2 } });
 if (assert(!r4nocap.isError, "browse 25F depth 2: no error")) {
@@ -848,8 +868,8 @@ if (assertEq(deeper.code, 0, `CLI semantic, following the hint: exit 0 (${deeper
 // Text-only caveats the CLI must restate as notes (the fixture has no branch this wide).
 const cliBrowse = await runCli(["browse", "25G4(...)", "--fields", "notation"]);
 if (assertEq(cliBrowse.code, 0, "CLI browse 25G4(...): exit 0")) {
-  eqList(stderrLines(cliBrowse), ["note: showing 23 direct children from positions 1–25 of 55; pass --childOffset 25 for more"],
-    "the CLI names the next --childOffset by list position");
+  eqList(stderrLines(cliBrowse), ["note: showing 25 direct children from positions 1–25 of 49; pass --childOffset 25 for more"],
+    "the CLI names the next --childOffset");
 }
 const cliPrefix = await runCli(["prefix", "11H(", "-n", "1", "--fields", "notation"]);
 const cliPrefixBase = await runCli(["prefix", "11H(", "-n", "1", "--baseOnly", "--fields", "notation"]);

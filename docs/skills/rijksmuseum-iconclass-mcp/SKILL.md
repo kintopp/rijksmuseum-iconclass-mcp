@@ -189,7 +189,7 @@ browse(notation: "73D6", depth: 2)
 #        ...
 ```
 
-Wide branches (e.g. male saints by name under `11H(...)`, 183 children) are capped at 25 children per parent and 120 entries in total. The response shows `totalChildren` per entry, and `subtreeCapped: true` when the 120-entry cap cut the expansion short. Page the top-level children with `childOffset`: the text ends with `More children: pass childOffset N.` until the last page (the 183 saints take eight calls).
+Wide branches (e.g. male saints by name under `11H(...)`, 182 children) are capped at 25 children per parent and 120 entries in total. The response shows `totalChildren` per entry, and `subtreeCapped: true` when the 120-entry cap cut the expansion short. Page the top-level children with `childOffset`: the text ends with `More children: pass childOffset N.` until the last page (the 182 saints take eight calls).
 
 Use `depth: 3` only on narrow branches where you can see the full structure. For wide branches like `11H(...)`, browse at depth 1 and page with `childOffset` to see all the top-level names, then drill into specific children at depth 2.
 

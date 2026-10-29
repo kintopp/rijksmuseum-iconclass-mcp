@@ -356,7 +356,10 @@ function paginationSummary(cfg, data, list, args) {
   const s = `${list.length} shown (offset ${offset})`;
   const cap = args?.[cfg.cap];
   const next = offset + list.length;
-  return typeof cap === "number" && list.length === cap && next < 500 ? `${s}; pass --offset ${next} for more` : s;
+  if (typeof cap !== "number" || list.length !== cap || next >= 500) return s;
+  return next + cap <= 500
+    ? `${s}; pass --offset ${next} for more`
+    : `${s}; pass --offset ${next} --max ${500 - next} for more`;
 }
 
 // Caveats the tools state only in their text channel, which JSONL replaces —
@@ -375,12 +378,22 @@ function resultNotes(verb, data, args) {
     }
   }
   if (verb === "prefix" && data.totalResults > 200) {
-    notes.push(`large subtree (${data.totalResults} notations) — a longer prefix narrows it faster than paging`);
+    notes.push(`large subtree (${data.totalResults} notations) — `
+      + (args?.baseOnly ? "a longer prefix narrows it faster than paging"
+        : "--baseOnly skips key variants; a longer prefix narrows it faster than paging"));
   }
   if (verb === "browse") {
-    const direct = (data.subtree ?? []).filter((c) => c.depth === 1).length;
-    const children = data.entry?.children?.length ?? 0;
-    if (children > direct) notes.push(`showing ${direct} of ${children} direct children`);
+    const top = (data.subtree ?? []).filter((c) => c.depth === 1);
+    const children = data.entry?.children ?? [];
+    const childOffset = Number(args?.childOffset ?? 0) || 0;
+    // Positions, not rows: a dangling child link resolves to nothing (as in browse's text).
+    const next = data.subtreeCapped && top.length
+      ? children.indexOf(top[top.length - 1].notation, childOffset) + 1
+      : Math.min(children.length, childOffset + 25);
+    if (childOffset > 0 || next < children.length) {
+      notes.push(`showing ${top.length} direct children from positions ${childOffset + 1}–${next} of ${children.length}`
+        + (next < children.length ? `; pass --childOffset ${next} for more` : ""));
+    }
     const cut = (data.subtree ?? []).filter((c) => c.truncated);
     if (cut.length) {
       notes.push(`children capped for ${cut.map((c) => `${c.notation} (${c.totalChildren})`).join(", ")} — browse that notation`);

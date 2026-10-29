@@ -425,6 +425,11 @@ export function registerTools(
       }
       const totalChildren = entry.children.length;
       const childOffset = args.childOffset ?? 0;
+      // Advance by child-list positions, not entries shown: dangling child links resolve to nothing.
+      const topShown = subtree.filter(c => c.depth === 1);
+      const nextChildOffset = result.subtreeCapped
+        ? entry.children.indexOf(topShown[topShown.length - 1].notation, childOffset) + 1
+        : Math.min(totalChildren, childOffset + IconclassDb.MAX_CHILDREN_PER_PARENT);
       if (subtree.length > 0) {
         const childLines = subtree.map(c => {
           const indent = "  ".repeat(c.depth);
@@ -432,19 +437,18 @@ export function registerTools(
           const trunc = c.truncated ? ` [${c.totalChildren} children, showing 25]` : "";
           return `${indent}${c.notation}${cc} "${c.text}"${trunc}`;
         });
-        const shownAtDepth1 = subtree.filter(c => c.depth === 1).length;
-        const childHeader = totalChildren > shownAtDepth1
-          ? `Children (${childOffset + 1}–${childOffset + shownAtDepth1} of ${totalChildren}, ${subtree.length} total entries):`
+        const childHeader = childOffset > 0 || nextChildOffset < totalChildren
+          ? `Children (${childOffset + 1}–${nextChildOffset} of ${totalChildren}, ${subtree.length} total entries):`
           : `Children (${subtree.length}):`;
         sections.push(childHeader, ...childLines);
-        if (childOffset + shownAtDepth1 < totalChildren) {
-          sections.push(`More children: pass childOffset ${childOffset + shownAtDepth1}.`);
-        }
-        if (result.subtreeCapped) {
-          sections.push(`Subtree capped at ${IconclassDb.MAX_SUBTREE_ENTRIES} entries — browse a child notation or lower depth to see the rest.`);
-        }
       } else if (totalChildren > 0) {
         sections.push(`Children: none at childOffset ${childOffset} (${totalChildren} in total).`);
+      }
+      if (nextChildOffset < totalChildren) {
+        sections.push(`More children: pass childOffset ${nextChildOffset}.`);
+      }
+      if (result.subtreeCapped) {
+        sections.push(`Subtree capped at ${IconclassDb.MAX_SUBTREE_ENTRIES} entries — browse a child notation or lower depth to see the rest.`);
       }
       if (keyVariants.length > 0) {
         const keyLines = keyVariants.map(k => {
@@ -545,7 +549,7 @@ export function registerTools(
       }
       if (/\(\+/.test(args.notation)) {
         return errorResponse(
-          `"${args.notation}" is a key-expanded notation — expand_keys requires a base notation (e.g. "${args.notation.replace(/\(.*$/, "")}").`
+          `"${args.notation}" is a key-expanded notation — expand_keys requires a base notation (e.g. "${args.notation.replace(/\(\+[^)]*\)$/, "")}").`
         );
       }
       const result = db.expandKeys(args.notation, args.lang, args.maxResults, args.offset ?? 0);
@@ -608,9 +612,9 @@ export function registerTools(
         const colStr = formatCollections(e.collections);
         return `  ${e.notation}${colStr} "${e.text}"`;
       });
-      const hint = result.totalResults > 200 && !args.baseOnly
-        ? "\n(Large subtree — pass baseOnly: true to skip key variants, or narrow the prefix)"
-        : "";
+      const hint = result.totalResults <= 200 ? ""
+        : args.baseOnly ? "\n(Large subtree — narrow the prefix)"
+        : "\n(Large subtree — pass baseOnly: true to skip key variants, or narrow the prefix)";
       return structuredResponse(result, [header, ...lines].join("\n") + hint);
     })
   );

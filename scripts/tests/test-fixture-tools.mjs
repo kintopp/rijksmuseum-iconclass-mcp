@@ -34,7 +34,8 @@
  *  - browse loses path labels, depth levels, resolved/unresolved cross-refs,
  *    or key-variant paging; lang falls back in the wrong order.
  *  - resolve drops a miss instead of naming it in notFound.
- *  - expand_keys accepts a key-expanded input or miscounts variants.
+ *  - expand_keys accepts a key-expanded input, names the wrong base for it
+ *    (dropping a named key), or miscounts variants.
  *  - search_prefix loses notation punctuation, mis-orders, or mis-pages; baseOnly
  *    leaks variants, or is dropped on the collection path or before paging.
  *  - browse childOffset doesn't shift the children, stops grandchildren from
@@ -407,6 +408,8 @@ if (ok(r6p, "expand_keys offset 28")) {
 }
 const r6x = await call("expand_keys", { notation: "25F23(+46)" });
 assertEq(txt(r6x), '"25F23(+46)" is a key-expanded notation — expand_keys requires a base notation (e.g. "25F23").', "a key-expanded input is rejected, naming the base");
+const r6xn = await call("expand_keys", { notation: "11H(JOHN)(+3)" });
+assertEq(txt(r6xn), '"11H(JOHN)(+3)" is a key-expanded notation — expand_keys requires a base notation (e.g. "11H(JOHN)").', "the named base keeps its name");
 const r6n = await call("expand_keys", { notation: "73D82(CROSS)" });
 if (ok(r6n, "expand_keys named variant")) {
   assertEq(sc(r6n).baseEntry.notation, "73D82(CROSS)", "a named variant is its own base");

@@ -27,6 +27,8 @@ function txt(result) {
   return result.content?.[0]?.text ?? "";
 }
 
+const eqList = (actual, expected, msg) => assertEq(JSON.stringify(actual), JSON.stringify(expected), msg);
+
 // ── Connect ──────────────────────────────────────────────────────
 
 const transport = new StdioClientTransport({
@@ -263,7 +265,29 @@ if (assert(!r4last.isError, "browse 11H(...) childOffset 175: no error")) {
 const r4bo = await client.callTool({ name: "search_prefix", arguments: { notation: "11H(", baseOnly: true, maxResults: 1 } });
 if (assert(!r4bo.isError, "search_prefix 11H( baseOnly: no error")) {
   assertEq(sc(r4bo).totalResults, 6030, "baseOnly counts the 6,030 non-variant notations");
+  assertEq(txt(r4bo).split("\n").at(-1), "(Large subtree — narrow the prefix)", "a large baseOnly result still says to narrow");
 }
+// 25G4(...) lists 55 children, six of them dangling (positions 4, 5, 28, 32, 36, 46):
+// paging must step by list position, or a page that resolves fewer than 25 repeats children.
+const seen25G4 = [];
+const headers25G4 = [];
+let co25G4 = 0;
+for (let page = 0; page < 5 && co25G4 !== null; page++) {
+  const r = await client.callTool({ name: "browse", arguments: { notation: "25G4(...)", childOffset: co25G4 } });
+  if (!assert(!r.isError, `browse 25G4(...) childOffset ${co25G4}: no error`)) break;
+  seen25G4.push(...sc(r).subtree.map((c) => c.notation));
+  const L = txt(r).split("\n");
+  headers25G4.push(L.find((l) => l.startsWith("Children (")));
+  const more = /^More children: pass childOffset (\d+)\.$/.exec(L.at(-1));
+  co25G4 = more ? Number(more[1]) : null;
+}
+eqList(headers25G4, [
+  "Children (1–25 of 55, 23 total entries):",
+  "Children (26–50 of 55, 21 total entries):",
+  "Children (51–55 of 55, 5 total entries):",
+], "dangling children: pages advance by 25 list positions");
+assertEq(seen25G4.length, 49, "following the hints shows the 49 resolvable children");
+assertEq(new Set(seen25G4).size, seen25G4.length, "no child is shown twice across pages");
 // 25F depth 2 is 74 entries (incl. the 25F6(...) and 25F8(...) templates): under the cap, so no flag and no note.
 const r4nocap = await client.callTool({ name: "browse", arguments: { notation: "25F", depth: 2 } });
 if (assert(!r4nocap.isError, "browse 25F depth 2: no error")) {
@@ -810,6 +834,32 @@ if (assertEq(cli.code, 0, `CLI semantic: exit 0 (${cli.stderr.trim().slice(0, 12
   const cliRows = jsonlRows(cli);
   assertEq(cliRows.length, 3, "CLI semantic fills the page");
   assert(cliRows.length > 0 && cliRows.every((r) => typeof r.similarity === "number"), "CLI semantic rows carry similarity");
+}
+// The CLI's "for more" hint must stay inside the server's semantic depth cap: following it must not error.
+const semLines = (r) => r.stderr.split("\n").filter((l) => l && !l.startsWith("{"));
+const deep = await runCli(["semantic", "ships on a stormy sea", "--offset", "485", "-n", "10", "--fields", "notation"]);
+if (assertEq(deep.code, 0, `CLI semantic offset 485: exit 0 (${deep.stderr.trim().slice(0, 120)})`)) {
+  eqList(semLines(deep), ["10 shown (offset 485); pass --offset 495 --max 5 for more"], "near the cap the hint shrinks --max");
+}
+const deeper = await runCli(["semantic", "ships on a stormy sea", "--offset", "495", "--max", "5", "--fields", "notation"]);
+if (assertEq(deeper.code, 0, `CLI semantic, following the hint: exit 0 (${deeper.stderr.trim().slice(0, 120)})`)) {
+  assertEq(jsonlRows(deeper).length, 5, "the hinted page is served");
+  eqList(semLines(deeper), ["5 shown (offset 495)"], "no 'more' hint at the cap");
+}
+
+// Text-only caveats the CLI must restate as notes (the fixture has no branch this wide).
+const cliBrowse = await runCli(["browse", "25G4(...)", "--fields", "notation"]);
+if (assertEq(cliBrowse.code, 0, "CLI browse 25G4(...): exit 0")) {
+  eqList(semLines(cliBrowse), ["note: showing 23 direct children from positions 1–25 of 55; pass --childOffset 25 for more"],
+    "the CLI names the next --childOffset by list position");
+}
+const cliPrefix = await runCli(["prefix", "11H(", "-n", "1", "--fields", "notation"]);
+const cliPrefixBase = await runCli(["prefix", "11H(", "-n", "1", "--baseOnly", "--fields", "notation"]);
+if (assertEq(cliPrefix.code, 0, "CLI prefix 11H(: exit 0") && assertEq(cliPrefixBase.code, 0, "CLI prefix 11H( --baseOnly: exit 0")) {
+  assert(semLines(cliPrefix).includes("note: large subtree (90464 notations) — --baseOnly skips key variants; a longer prefix narrows it faster than paging"),
+    "the large-subtree note offers --baseOnly");
+  assert(semLines(cliPrefixBase).includes("note: large subtree (6030 notations) — a longer prefix narrows it faster than paging"),
+    "with --baseOnly set, the note only says to narrow");
 }
 
 report();

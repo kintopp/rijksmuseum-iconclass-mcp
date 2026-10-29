@@ -173,6 +173,9 @@ def build(data_dir: str, output_path: str):
     # Get structure for each notation via library obj()
     t0 = time.time()
     notation_data: list[tuple] = []  # (notation, path, children, refs, base_notation, key_id, is_key_expanded)
+    # Key-expanded only: Phase 2 composes their dump-language texts from these.
+    notation_key_source: dict[str, str] = {}
+    notation_base: dict[str, str] = {}
     skipped = 0
     for code in all_codes:
         try:
@@ -191,6 +194,11 @@ def build(data_dir: str, output_path: str):
         base = obj.get("b", None)
         key_source = obj.get("k", None)  # e.g. '25Fk46'
         is_key_expanded = 1 if "(" in code and "+" in code else 0
+        if is_key_expanded:
+            if key_source:
+                notation_key_source[code] = key_source
+            if base:
+                notation_base[code] = base
 
         # Extract key_id from key_source: '25Fk46' → '+46'
         key_id = None
@@ -302,21 +310,6 @@ def build(data_dir: str, output_path: str):
     txt_dir = os.path.join(data_dir, "txt")
     dump_texts = parse_text_files(txt_dir, DUMP_ONLY_LANGS)
     dump_key_texts = parse_key_texts(txt_dir, DUMP_ONLY_LANGS)
-
-    # Build notation → key_text_id mapping for key-expanded notations
-    # We already know base_notation and key_source from Phase 1
-    notation_key_source: dict[str, str] = {}
-    notation_base: dict[str, str] = {}
-    for code in all_codes:
-        try:
-            obj = ic.obj(code)
-            ks = obj.get("k")
-            if ks:
-                notation_key_source[code] = ks
-            if obj.get("b"):
-                notation_base[code] = obj["b"]
-        except Exception:
-            pass
 
     for lang in sorted(DUMP_ONLY_LANGS):
         lang_count = 0

@@ -16,7 +16,8 @@
  *  - stdout is not pure JSONL: summary, notes or server log lines leak into it,
  *    or the server's stderr floods the CLI's
  *  - a capped or partial result reads as complete: notFound, unlabelled codes,
- *    key variants beyond the page, or the "more" offset is wrong or off by one
+ *    key variants or children beyond the page, or the "more" offset is wrong
+ *    or off by one
  *  - --stdin sends one call per code for resolve instead of batching up to the
  *    tool's 25-code limit, ignores comments/blanks, or hides per-line failures
  *  - a tool error or a dead server exits 0
@@ -166,6 +167,7 @@ const o = await runAll({
   browseKv:  { args: ["browse", "25F23", "--includeKeys", "-n", "5", "--fields", "notation,totalKeyVariants"] },
   browseEnd: { args: ["browse", "25F23", "--includeKeys", "-n", "5", "--keyOffset", "25"] },
   browse:    { args: ["browse", "73D", "--fields", "notation"] },
+  browseCo:  { args: ["browse", "73D", "--childOffset", "5", "--fields", "notation"] },
   artworks:  { args: ["artworks", "73D6", "11H(FOO)"] },
   json:      { args: ["resolve", "25F23", "NONEXISTENT", "--json"] },
   quiet:     { args: ["resolve", "25F23", "NONEXISTENT", "--quiet"] },
@@ -193,6 +195,7 @@ eqList(errLines(o.browseKv), ["note: key variants 1–5 of 30; pass --keyOffset 
 assertEq(o.browseEnd.stderr, "", "no key-variant note on the last page (25 + 5 = 30)");
 eqList(rows(o.browse), [{ notation: "73D" }], "browse --fields");
 assertEq(o.browse.stderr, "", "no notes when every child is shown");
+eqList(errLines(o.browseCo), ["note: showing 4 direct children from positions 6–9 of 9"], "a --childOffset page names its range, with no 'more' at the end");
 if (assertEq(o.artworks.code, 0, "artworks: exit 0")) {
   const [a73] = rows(o.artworks);
   eqList(a73.collections.map((c) => [c.collectionId, c.count, c.url]), [

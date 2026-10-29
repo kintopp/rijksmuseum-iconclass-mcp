@@ -29,6 +29,10 @@ export function assertEq(actual, expected, msg) {
   return assert(ok, ok ? msg : `${msg} — expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`);
 }
 
+export function eqList(actual, expected, msg) {
+  return assertEq(JSON.stringify(actual), JSON.stringify(expected), msg);
+}
+
 export function section(name) {
   console.log(`\n${BAR}`);
   console.log(`  ${name}`);

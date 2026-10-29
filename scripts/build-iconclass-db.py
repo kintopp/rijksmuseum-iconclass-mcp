@@ -169,6 +169,7 @@ def build(data_dir: str, output_path: str):
             if code:
                 all_codes.append(code)
     print(f"  Loaded {len(all_codes):,} notation codes from all_notations.gz")
+    known_codes = set(all_codes)
 
     # Get structure for each notation via library obj()
     t0 = time.time()
@@ -215,16 +216,17 @@ def build(data_dir: str, output_path: str):
         # - Base: 'c' gives direct hierarchy children. Keep the name template
         #   (code + '(...)'), but drop its generic slots such as 11H(...)1.
         #   A key-expanded leaf has no children: 'c' would be the base's.
+        # Either way, drop codes the dump doesn't list: they would be dangling links.
         children = []
-        sub_keys = obj.get("l", [])
         if is_key_expanded:
-            for sk in sub_keys if base else []:
-                sk_idx = sk.rfind("k")
-                if sk_idx >= 0:
-                    sub_id = sk[sk_idx + 1:]
-                    children.append(f"{base}(+{sub_id})")
+            if base:
+                for sk in obj.get("l", []):
+                    sk_idx = sk.rfind("k")
+                    if sk_idx >= 0:
+                        children.append(f"{base}(+{sk[sk_idx + 1:]})")
         else:
             children = [c for c in children_raw if "..." not in c or c == f"{code}(...)"]
+        children = [c for c in children if c in known_codes]
 
         notation_data.append((
             code,

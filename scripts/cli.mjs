@@ -33,6 +33,11 @@ class UsageError extends Error {}
 
 const errMsg = (err) => err?.message ?? String(err);
 
+// Mirrors of server limits the tool schemas don't expose: TOOL_LIMITS.semanticDepth
+// and IconclassDb.MAX_CHILDREN_PER_PARENT. Change them together.
+const SEMANTIC_DEPTH = 500;
+const CHILDREN_PER_PAGE = 25;
+
 // ── Verb → tool table (presentation metadata only; schemas come from listTools) ──
 // `pos`      = the input param the positional maps to.
 // `multi`    = every positional goes into `pos` as an array; --stdin batches lines.
@@ -356,10 +361,10 @@ function paginationSummary(cfg, data, list, args) {
   const s = `${list.length} shown (offset ${offset})`;
   const cap = args?.[cfg.cap];
   const next = offset + list.length;
-  if (typeof cap !== "number" || list.length !== cap || next >= 500) return s;
-  return next + cap <= 500
+  if (typeof cap !== "number" || list.length !== cap || next >= SEMANTIC_DEPTH) return s;
+  return next + cap <= SEMANTIC_DEPTH
     ? `${s}; pass --offset ${next} for more`
-    : `${s}; pass --offset ${next} --max ${500 - next} for more`;
+    : `${s}; pass --offset ${next} --max ${SEMANTIC_DEPTH - next} for more`;
 }
 
 // Caveats the tools state only in their text channel, which JSONL replaces —
@@ -379,17 +384,16 @@ function resultNotes(verb, data, args) {
   }
   if (verb === "prefix" && data.totalResults > 200) {
     notes.push(`large subtree (${data.totalResults} notations) — `
-      + (args?.baseOnly ? "a longer prefix narrows it faster than paging"
-        : "--baseOnly skips key variants; a longer prefix narrows it faster than paging"));
+      + (args?.baseOnly ? "" : "--baseOnly skips key variants; ") + "a longer prefix narrows it faster than paging");
   }
   if (verb === "browse") {
     const top = (data.subtree ?? []).filter((c) => c.depth === 1);
     const children = data.entry?.children ?? [];
     const childOffset = Number(args?.childOffset ?? 0) || 0;
-    // Positions, not rows: a dangling child link resolves to nothing (as in browse's text).
+    // Positions, not rows: a dangling child link resolves to nothing. Mirrors browse's text output.
     const next = data.subtreeCapped && top.length
       ? children.indexOf(top[top.length - 1].notation, childOffset) + 1
-      : Math.min(children.length, childOffset + 25);
+      : Math.min(children.length, childOffset + CHILDREN_PER_PAGE);
     if (childOffset > 0 || next < children.length) {
       notes.push(`showing ${top.length} direct children from positions ${childOffset + 1}–${next} of ${children.length}`
         + (next < children.length ? `; pass --childOffset ${next} for more` : ""));

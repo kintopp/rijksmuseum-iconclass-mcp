@@ -34,7 +34,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { assert, assertEq, section, report } from "./_assert.mjs";
+import { assert, assertEq, eqList, section, report } from "./_assert.mjs";
 import { fixtureEnv } from "./fixture-client.mjs";
 import { bootHttpServer, runCli, jsonlRows as rows } from "./_server.mjs";
 
@@ -45,7 +45,6 @@ const VERBS = ["search", "semantic", "browse", "resolve", "keys", "prefix", "art
 
 const errLines = (r) => r.stderr.split("\n").filter(Boolean);
 const notations = (r) => rows(r).map((x) => x.notation);
-const eqList = (a, b, msg) => assertEq(JSON.stringify(a), JSON.stringify(b), msg);
 const usage = (r, msg) => assertEq(r.code, 2, `${msg}: exit 2`);
 
 /** Run every case concurrently (each spawns a server), keyed by name. */

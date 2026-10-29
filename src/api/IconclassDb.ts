@@ -155,6 +155,8 @@ export class IconclassDb {
   private stmtGetKeywordsAny!: Statement;
   private stmtPrefixSearch!: Statement;
   private stmtPrefixCount!: Statement;
+  private stmtPrefixBaseSearch!: Statement;
+  private stmtPrefixBaseCount!: Statement;
   private stmtKeyVariantsPage!: Statement;
   private stmtKeyVariantsCount!: Statement;
   private stmtGetCollectionCounts: Statement | null = null;
@@ -335,11 +337,19 @@ export class IconclassDb {
       this.stmtGetKeywordsAny = this.db.prepare(
         "SELECT keyword FROM keywords WHERE notation = ? LIMIT 40"
       );
+      // Separate baseOnly statements: is_key_expanded isn't in idx_notations_prefix,
+      // so filtering on it costs the default path its covering-index scan.
       this.stmtPrefixSearch = this.db.prepare(
-        "SELECT notation FROM notations WHERE notation LIKE ? ESCAPE '\\' AND (? = 0 OR is_key_expanded = 0) ORDER BY notation LIMIT ? OFFSET ?"
+        "SELECT notation FROM notations WHERE notation LIKE ? ESCAPE '\\' ORDER BY notation LIMIT ? OFFSET ?"
       );
       this.stmtPrefixCount = this.db.prepare(
-        "SELECT COUNT(*) as n FROM notations WHERE notation LIKE ? ESCAPE '\\' AND (? = 0 OR is_key_expanded = 0)"
+        "SELECT COUNT(*) as n FROM notations WHERE notation LIKE ? ESCAPE '\\'"
+      );
+      this.stmtPrefixBaseSearch = this.db.prepare(
+        "SELECT notation FROM notations WHERE notation LIKE ? ESCAPE '\\' AND is_key_expanded = 0 ORDER BY notation LIMIT ? OFFSET ?"
+      );
+      this.stmtPrefixBaseCount = this.db.prepare(
+        "SELECT COUNT(*) as n FROM notations WHERE notation LIKE ? ESCAPE '\\' AND is_key_expanded = 0"
       );
       this.stmtKeyVariantsPage = this.db.prepare(
         "SELECT notation FROM notations WHERE base_notation = ? ORDER BY notation LIMIT ? OFFSET ?"
@@ -630,8 +640,11 @@ export class IconclassDb {
     }
 
     // No collection filter: use SQL COUNT + LIMIT/OFFSET directly
-    const totalResults = (this.stmtPrefixCount.get(likePattern, base) as { n: number }).n;
-    const rows = this.stmtPrefixSearch.all(likePattern, base, maxResults, offset) as { notation: string }[];
+    const [count, page] = baseOnly
+      ? [this.stmtPrefixBaseCount, this.stmtPrefixBaseSearch]
+      : [this.stmtPrefixCount, this.stmtPrefixSearch];
+    const totalResults = (count.get(likePattern) as { n: number }).n;
+    const rows = page.all(likePattern, maxResults, offset) as { notation: string }[];
 
     const textCache = new Map<string, string | null>();
     const results = rows

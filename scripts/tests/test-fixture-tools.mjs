@@ -46,7 +46,7 @@
  *  - totalNotations counts rows for notations missing from the main DB.
  *  - model-facing text lines change shape (path joins, collection suffix).
  */
-import { assert, assertEq, section, report } from "./_assert.mjs";
+import { assert, assertEq, eqList, section, report } from "./_assert.mjs";
 import { connectFixtureClient } from "./fixture-client.mjs";
 
 const client = await connectFixtureClient("tools");
@@ -59,7 +59,6 @@ const ok = (r, what) => {
   const good = !r.isError && r.structuredContent != null;
   return assert(good, good ? `${what}: no error` : `${what}: no error (got: ${txt(r).slice(0, 80)})`);
 };
-const eqList = (actual, expected, msg) => assertEq(JSON.stringify(actual), JSON.stringify(expected), msg);
 const notations = (rows) => rows.map((e) => e.notation);
 
 const KEYS_25F23 = [

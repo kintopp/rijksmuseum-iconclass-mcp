@@ -10,7 +10,7 @@ import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js"
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
-import { assert, assertEq, section, report } from "./_assert.mjs";
+import { assert, assertEq, eqList, section, report } from "./_assert.mjs";
 import { bootHttpServer, runCli, jsonlRows } from "./_server.mjs";
 
 const PROJECT_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
@@ -26,8 +26,6 @@ function sc(result) {
 function txt(result) {
   return result.content?.[0]?.text ?? "";
 }
-
-const eqList = (actual, expected, msg) => assertEq(JSON.stringify(actual), JSON.stringify(expected), msg);
 
 // ── Connect ──────────────────────────────────────────────────────
 
@@ -836,29 +834,29 @@ if (assertEq(cli.code, 0, `CLI semantic: exit 0 (${cli.stderr.trim().slice(0, 12
   assert(cliRows.length > 0 && cliRows.every((r) => typeof r.similarity === "number"), "CLI semantic rows carry similarity");
 }
 // The CLI's "for more" hint must stay inside the server's semantic depth cap: following it must not error.
-const semLines = (r) => r.stderr.split("\n").filter((l) => l && !l.startsWith("{"));
+const stderrLines = (r) => r.stderr.split("\n").filter((l) => l && !l.startsWith("{"));
 const deep = await runCli(["semantic", "ships on a stormy sea", "--offset", "485", "-n", "10", "--fields", "notation"]);
 if (assertEq(deep.code, 0, `CLI semantic offset 485: exit 0 (${deep.stderr.trim().slice(0, 120)})`)) {
-  eqList(semLines(deep), ["10 shown (offset 485); pass --offset 495 --max 5 for more"], "near the cap the hint shrinks --max");
+  eqList(stderrLines(deep), ["10 shown (offset 485); pass --offset 495 --max 5 for more"], "near the cap the hint shrinks --max");
 }
 const deeper = await runCli(["semantic", "ships on a stormy sea", "--offset", "495", "--max", "5", "--fields", "notation"]);
 if (assertEq(deeper.code, 0, `CLI semantic, following the hint: exit 0 (${deeper.stderr.trim().slice(0, 120)})`)) {
   assertEq(jsonlRows(deeper).length, 5, "the hinted page is served");
-  eqList(semLines(deeper), ["5 shown (offset 495)"], "no 'more' hint at the cap");
+  eqList(stderrLines(deeper), ["5 shown (offset 495)"], "no 'more' hint at the cap");
 }
 
 // Text-only caveats the CLI must restate as notes (the fixture has no branch this wide).
 const cliBrowse = await runCli(["browse", "25G4(...)", "--fields", "notation"]);
 if (assertEq(cliBrowse.code, 0, "CLI browse 25G4(...): exit 0")) {
-  eqList(semLines(cliBrowse), ["note: showing 23 direct children from positions 1–25 of 55; pass --childOffset 25 for more"],
+  eqList(stderrLines(cliBrowse), ["note: showing 23 direct children from positions 1–25 of 55; pass --childOffset 25 for more"],
     "the CLI names the next --childOffset by list position");
 }
 const cliPrefix = await runCli(["prefix", "11H(", "-n", "1", "--fields", "notation"]);
 const cliPrefixBase = await runCli(["prefix", "11H(", "-n", "1", "--baseOnly", "--fields", "notation"]);
 if (assertEq(cliPrefix.code, 0, "CLI prefix 11H(: exit 0") && assertEq(cliPrefixBase.code, 0, "CLI prefix 11H( --baseOnly: exit 0")) {
-  assert(semLines(cliPrefix).includes("note: large subtree (90464 notations) — --baseOnly skips key variants; a longer prefix narrows it faster than paging"),
+  assert(stderrLines(cliPrefix).includes("note: large subtree (90464 notations) — --baseOnly skips key variants; a longer prefix narrows it faster than paging"),
     "the large-subtree note offers --baseOnly");
-  assert(semLines(cliPrefixBase).includes("note: large subtree (6030 notations) — a longer prefix narrows it faster than paging"),
+  assert(stderrLines(cliPrefixBase).includes("note: large subtree (6030 notations) — a longer prefix narrows it faster than paging"),
     "with --baseOnly set, the note only says to narrow");
 }
 

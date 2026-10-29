@@ -206,10 +206,11 @@ def build(data_dir: str, output_path: str):
         # - Key-expanded: 'l' gives available sub-keys → child key-expanded notations
         # - Base: 'c' gives direct hierarchy children. Keep the name template
         #   (code + '(...)'), but drop its generic slots such as 11H(...)1.
+        #   A key-expanded leaf has no children: 'c' would be the base's.
         children = []
         sub_keys = obj.get("l", [])
-        if is_key_expanded and sub_keys and base:
-            for sk in sub_keys:
+        if is_key_expanded:
+            for sk in sub_keys if base else []:
                 sk_idx = sk.rfind("k")
                 if sk_idx >= 0:
                     sub_id = sk[sk_idx + 1:]
@@ -305,12 +306,15 @@ def build(data_dir: str, output_path: str):
     # Build notation → key_text_id mapping for key-expanded notations
     # We already know base_notation and key_source from Phase 1
     notation_key_source: dict[str, str] = {}
+    notation_base: dict[str, str] = {}
     for code in all_codes:
         try:
             obj = ic.obj(code)
             ks = obj.get("k")
             if ks:
                 notation_key_source[code] = ks
+            if obj.get("b"):
+                notation_base[code] = obj["b"]
         except Exception:
             pass
 
@@ -320,8 +324,9 @@ def build(data_dir: str, output_path: str):
             text = None
             if "(" in code and "+" in code:
                 # Key-expanded: compose from base text + key text
-                base = code.split("(")[0]
-                base_text = dump_texts.get(base, {}).get(lang)
+                # Not code.split("(")[0], which drops a named key: 11H(JOHN)(+3) → 11H.
+                base = notation_base.get(code)
+                base_text = dump_texts.get(base, {}).get(lang) if base else None
                 if base_text:
                     key_source = notation_key_source.get(code)
                     key_text = dump_key_texts.get(key_source, {}).get(lang) if key_source else None

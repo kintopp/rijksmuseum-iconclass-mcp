@@ -102,6 +102,7 @@ function startRouteServer(routes) {
   return new Promise((resolve) => {
     const server = http.createServer((req, res) => {
       const body = routes[req.url];
+      if (typeof body === "number") { res.statusCode = body; res.end(); return; } // a bare status
       res.statusCode = body ? 200 : 404;
       res.end(body ?? "not found");
     });
@@ -381,6 +382,23 @@ try {
       await callEnsureDb("t10", { refreshOnStartup: true });
       assertEq(sha256(fs.readFileSync(dbPath)), hashBefore, "case 10: local file unchanged after a corrupt reassembly");
       assertNoTempFiles(dbPath, "case 10");
+    } finally {
+      server.close();
+    }
+  });
+
+  await atest("5xx mid-sequence → download rejected, local DB preserved", async () => {
+    // Uncompressed, so no gzip trailer check catches the truncation; SQLite's
+    // own page-count check makes the installed prefix fail validation.
+    const parts = splitParts("/db", validBuf, 3);
+    const server = await startRouteServer({ "/db": GARBAGE, ...parts, "/db.part-ab": 503 });
+    try {
+      const dbPath = setupEnsureDb("c11", serverUrl(server, "/db"));
+      writeValidDb(dbPath);
+      const hashBefore = sha256(fs.readFileSync(dbPath));
+      await callEnsureDb("t11", { refreshOnStartup: true });
+      assertEq(sha256(fs.readFileSync(dbPath)), hashBefore, "case 11: local file unchanged after a failed part");
+      assertNoTempFiles(dbPath, "case 11");
     } finally {
       server.close();
     }

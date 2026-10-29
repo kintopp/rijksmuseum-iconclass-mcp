@@ -200,6 +200,10 @@ const TOOL_LIMITS = {
   search_prefix:  { max: 50, default: 25 },
   keyVariants:    { max: 100, default: 25 },
   find_artworks:  { max: 25 },
+  // Semantic offset + maxResults. Ranks deeper than this are weak matches, and
+  // each extra neighbour widens the coarse KNN pool on the event loop.
+  semanticDepth:  500,
+  semanticQueryChars: 1000,
 } as const;
 
 // ─── Language codes ─────────────────────────────────────────────────
@@ -255,7 +259,8 @@ export function registerTools(
         "Covers base notations only; key-expanded variants are reachable via query" +
         (semanticAvailable ? "" : " [currently unavailable — embeddings not loaded]") + "\n\n" +
         "Keyword results are ranked by collection coverage, then base notations before key variants of matching bases, then FTS relevance; semantic results by similarity. " +
-        "totalResults counts rows (each key variant is one); totalBaseNotations counts distinct base notations, a variant counting as its base.\n\n" +
+        "totalResults counts rows (each key variant is one); totalBaseNotations counts distinct base notations, a variant counting as its base. " +
+        "In semantic mode both count the neighbours ranked (offset + maxResults, fewer if filters leave fewer), not a corpus total.\n\n" +
         "For enumerating all notations under a prefix, use search_prefix instead.",
       inputSchema: z.object({
         query: optStr()
@@ -264,10 +269,10 @@ export function registerTools(
             "Exact word matching — inflected forms may work ('crucified' finds 'crucifixion') " +
             "but spelling variants do not ('odour' won't match 'odor'). Try semanticQuery for fuzzy matching."
           ),
-        semanticQuery: optStr()
+        semanticQuery: z.preprocess(stripNull, z.string().max(TOOL_LIMITS.semanticQueryChars).optional())
           .describe(
             "Semantic concept search — finds notations by meaning rather than exact words. " +
-            "Use when keyword search fails or for broad conceptual queries."
+            `Use when keyword search fails or for broad conceptual queries. Max ${TOOL_LIMITS.semanticQueryChars} characters.`
           ),
         onlyWithArtworks: z
           .boolean()
@@ -285,7 +290,7 @@ export function registerTools(
           .default(TOOL_LIMITS.search.default)
           .describe(`Maximum results (1-${TOOL_LIMITS.search.max}, default ${TOOL_LIMITS.search.default}).`),
         offset: z.number().int().min(0).default(0).optional()
-          .describe("Skip this many results (for pagination)."),
+          .describe(`Skip this many results (for pagination). Semantic mode: offset + maxResults at most ${TOOL_LIMITS.semanticDepth}.`),
       }).strict(),
       ...withOutputSchema(SearchOutput),
       annotations: READ_ONLY_ANNOTATIONS,
@@ -301,6 +306,14 @@ export function registerTools(
 
       // Semantic search mode
       if (args.semanticQuery !== undefined) {
+        const offset = args.offset ?? 0;
+        const needed = offset + args.maxResults;
+        if (needed > TOOL_LIMITS.semanticDepth) {
+          return errorResponse(
+            `Semantic search ranks at most ${TOOL_LIMITS.semanticDepth} neighbours, but offset + maxResults is ${needed}. ` +
+            "Matches that deep are weak; refine semanticQuery or add parentNotation instead."
+          );
+        }
         if (!db.embeddingsAvailable || !embeddingModel) {
           return errorResponse(
             "Semantic search requires embeddings and an embedding model (not available). " +
@@ -323,9 +336,6 @@ export function registerTools(
             `Semantic search requires ${db.embeddingDimensions}d query vectors, but model produced ${queryVec.length}d.`
           );
         }
-
-        const offset = args.offset ?? 0;
-        const needed = offset + args.maxResults;
 
         const result = db.semanticSearch(args.semanticQuery, queryVec, needed, {
           lang: args.lang,

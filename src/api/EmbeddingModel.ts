@@ -83,7 +83,8 @@ export class EmbeddingModel {
   async embed(text: string): Promise<Float32Array> {
     await this.whenReady();   // the model may still be loading in the background
     if (!this.available) throw new Error("Embedding model not initialized");
-    const out = await this.model(await this.tokenizer([QUERY_PREFIX + text]));
+    // Backstop for the schema's length cap: attention cost is quadratic in tokens.
+    const out = await this.model(await this.tokenizer([QUERY_PREFIX + text], { truncation: true, max_length: 2048 }));
     return new Float32Array(out.sentence_embedding.normalize(2, -1).data as ArrayLike<number>);
   }
 }

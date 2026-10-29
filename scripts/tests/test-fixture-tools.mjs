@@ -26,6 +26,9 @@
  *  - the phrase → AND-terms fallback doesn't run, or depends on word order, or
  *    is skipped because phrase hits existed that the collection filter removed.
  *  - semanticQuery without embeddings errors with anything but the fixed hint.
+ *  - semantic offset + maxResults goes past 500 (the KNN pool then grows with
+ *    the client's offset), the cap leaks into keyword search, or an over-long
+ *    semanticQuery reaches the model.
  *  - a `(...)` name template is missing from its parent's children, so browse
  *    and resolve show the parent (73D82, 12A27) as a leaf.
  *  - browse loses path labels, depth levels, resolved/unresolved cross-refs,
@@ -235,6 +238,18 @@ const r3sem = await call("search", { semanticQuery: "grief" });
 assert(r3sem.isError === true, "semanticQuery without embeddings is an error");
 assertEq(txt(r3sem), "Semantic search requires embeddings and an embedding model (not available). Use query (keyword search) instead.",
   "semanticQuery without embeddings: error points to query");
+const r3deep = await call("search", { semanticQuery: "grief", offset: 480, maxResults: 25 });
+assert(r3deep.isError === true, "semantic offset + maxResults past 500 is an error");
+assertEq(txt(r3deep), "Semantic search ranks at most 500 neighbours, but offset + maxResults is 505. " +
+  "Matches that deep are weak; refine semanticQuery or add parentNotation instead.", "semantic depth cap: error wording");
+assertEq(txt(await call("search", { semanticQuery: "grief", offset: 475, maxResults: 25 })),
+  "Semantic search requires embeddings and an embedding model (not available). Use query (keyword search) instead.",
+  "semantic depth of exactly 500 passes the cap");
+const r3kwDeep = await call("search", { query: "trumpet", offset: 600 });
+if (ok(r3kwDeep, "keyword offset 600")) assertEq(sc(r3kwDeep).results.length, 0, "the depth cap does not apply to keyword search");
+const r3long = await call("search", { semanticQuery: "x".repeat(1001) });
+assert(r3long.isError === true && txt(r3long).includes("semanticQuery") && txt(r3long).includes("1000"),
+  `semanticQuery over 1000 characters is rejected by the schema (got: ${txt(r3long).slice(0, 120)})`);
 
 // ══════════════════════════════════════════════════════════════════
 section("4. browse");

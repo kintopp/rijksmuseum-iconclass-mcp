@@ -58,7 +58,7 @@ The `iconclass` parameter accepts exact notation codes (language-independent). T
 | "What's related to this notation?" | `browse` — shows children, cross-refs, path |
 | "List all key variants of 25F23" | `expand_keys` |
 | "Everything under 'the Crucifixion of Christ'" | `search_prefix` with `73D6` |
-| "Find 'reading' within Virgin Mary subjects" | `search` with `query: "reading"`, `parentNotation: "11F"` |
+| "Find 'sword' within Virgin Mary subjects" | `search` with `query: "sword"`, `parentNotation: "11F"` |
 | "Which notations have artworks in a collection?" | `search` with `collectionId` (e.g. `"rijksmuseum"`) |
 | "Which notations have artworks at all (any collection)?" | `search` with `onlyWithArtworks: true` |
 | "How many artworks depict X?" | `find_artworks` with notation(s) from a prior search |
@@ -87,7 +87,7 @@ Iconclass notations encode hierarchy left-to-right. Understanding the syntax hel
 
 Read the label before using a variant: `expand_keys` the base, or `resolve` the variant. Never carry a key's meaning across branches, and never construct a variant you haven't seen in a response — it may not exist under that base.
 
-When using `expand_keys`, pass the **base notation** — `25F23`, not `25F23(+46)`. Named notations like `25F23(LION)` are not base notations either; use `25F23` to expand keys for all beasts of prey, lion included.
+When using `expand_keys`, pass the **base notation** — `25F23`, not `25F23(+46)`. A named notation like `25F23(LION)` is a base notation in its own right, with its own key variants: `expand_keys("25F23(LION)")` lists them, and `expand_keys("25F23")` does not include them.
 
 ---
 
@@ -125,7 +125,7 @@ The keyword search (`query`) uses FTS5 across labels (13 languages) and keywords
 
 **Single words are usually best.** FTS matches whole words against the Iconclass vocabulary, so a single specific word ("salamander", "crucifixion", "lute") has the highest recall. Multi-word queries are useful when a single word is too broad — "broken string" to distinguish from intact string instruments, or "Last Supper" to avoid matching other uses of "supper."
 
-**When FTS fails, switch to semantic search.** Use `semanticQuery` when the vocabulary term is unknown or the query is conceptual. Its strength is reaching across branches: "grief and mourning" returns `73D72` (dead Christ), `42E131` (burial rites) and `94N333` (Althaea grieving) together, plus `33A33` (condolence), whose label contains neither query word. It honours `maxResults` and `offset` like keyword search, but only base notations are embedded — key-expanded variants never appear in semantic results — so use it to locate the right branch, then `browse`, `expand_keys` or `search_prefix` to enumerate it.
+**When FTS fails, switch to semantic search.** Use `semanticQuery` when the vocabulary term is unknown or the query is conceptual. Its strength is reaching across branches: "grief and mourning" returns `73D72` (dead Christ), `42E131` (burial rites) and `94N333` (Althaea grieving) together, plus `33A33` (condolence), whose label contains neither query word. It pages with `maxResults` and `offset`, but only to depth 500 (`offset + maxResults ≤ 500`; deeper matches are weak), and its `totalResults` counts the neighbours ranked, not a corpus total. Only base notations are embedded — key-expanded variants never appear in semantic results — so use it to locate the right branch, then `browse`, `expand_keys` or `search_prefix` to enumerate it.
 
 **Keyword search returns key variants too, after their base notations.** Key variants are indexed alongside base notations, so `search(query: "salamander")` matches 426 rows: 8 base notations and 418 `(+N)` variants of `25FF412`. Within each coverage tier, a variant whose base also matched ranks after the base notations, so the first page shows `25FF412` and `11I62(ANANIAS)` (salamander as Ananias's attribute) before any variant. A variant that matched on its key alone keeps its relevance rank: "sleeping" puts `25F(+46)` "animals (+ sleeping animal(s))" 4th. `totalResults` counts rows; `totalBaseNotations` counts distinct concepts, with each variant counting as its base (426 rows → 8). Add `onlyWithArtworks: true` to keep only notations with coverage (426 → 1).
 
@@ -148,7 +148,7 @@ Key meanings are branch-specific — see Notation Syntax.
 
 Both restrict to a subtree, but they answer different questions:
 
-- `search(query=..., parentNotation="11F")`: keyword search *within* a subtree — "find notations about 'reading' under Virgin Mary." Combines text relevance with hierarchical scoping.
+- `search(query=..., parentNotation="11F")`: keyword search *within* a subtree — "find notations about 'sword' under Virgin Mary" (`11F2412` Mary pierced by seven swords, `11F252` Mary pierced by a sword). Combines text relevance with hierarchical scoping.
 - `search_prefix(notation="11F")`: enumerate *all* notations starting with a prefix, ordered alphabetically. No text search — pure hierarchy traversal. Use when you want the full inventory of a branch. Supports `collectionId` to filter to notations with artworks in a specific loaded collection.
 
 If `parentNotation` returns zero results, the concept may exist in a different branch. Try removing the scope for a global search, or broadening to a parent prefix (e.g. `"11"` instead of `"11F"`).

@@ -351,10 +351,12 @@ function paginationSummary(cfg, data, list, args) {
     const s = `${list.length} shown (offset ${offset}) of ${total}`;
     return offset + list.length < total ? `${s}; pass --offset ${offset + list.length} for more` : s;
   }
-  // No corpus total (semantic): a full page may have more behind it.
+  // No corpus total (semantic): a full page may have more behind it, up to
+  // the server's semantic depth cap (offset + maxResults ≤ 500).
   const s = `${list.length} shown (offset ${offset})`;
   const cap = args?.[cfg.cap];
-  return typeof cap === "number" && list.length === cap ? `${s}; pass --offset ${offset + list.length} for more` : s;
+  const next = offset + list.length;
+  return typeof cap === "number" && list.length === cap && next < 500 ? `${s}; pass --offset ${next} for more` : s;
 }
 
 // Caveats the tools state only in their text channel, which JSONL replaces —

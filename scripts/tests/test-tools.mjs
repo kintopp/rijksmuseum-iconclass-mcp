@@ -306,6 +306,15 @@ if (assert(!r4nl.isError, "resolve 11H(JOHN)(+3) nl: no error")) {
     "the apostle John the Evangelist; possible attributes: book, cauldron, chalice with snake, eagle, palm, scroll (+ angel(s))",
     "a named variant's label keeps its name");
 }
+// A dump-only language without the key's text has no label for the variant (the base text
+// alone would read as the base), so fi falls back to English; one with it composes both.
+const r4fi = await client.callTool({ name: "resolve", arguments: { notation: ["25F23(+46)", "11(+1)"], lang: "fi" } });
+if (assert(!r4fi.isError, "resolve 25F23(+46), 11(+1) fi: no error")) {
+  eqList(sc(r4fi).notations.map((e) => e.text), [
+    "beasts of prey, predatory animals (+ sleeping animal(s))",
+    "kristinusko (+ Pyhä kolminaisuus)",
+  ], "a keyed label names its key: English fallback without fi key text, fi with it");
+}
 // 25F depth 2 is 74 entries (incl. the 25F6(...) and 25F8(...) templates): under the cap, so no flag and no note.
 const r4nocap = await client.callTool({ name: "browse", arguments: { notation: "25F", depth: 2 } });
 if (assert(!r4nocap.isError, "browse 25F depth 2: no error")) {

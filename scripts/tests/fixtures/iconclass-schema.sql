@@ -1,7 +1,7 @@
 -- iconclass.db schema for the fixture DB. Regenerate after a rebuild and review the diff:
 --   node scripts/tests/build-fixture-db.mjs --capture
 -- version_info at capture:
---   built_at = 2026-10-29T20:50:36.611360+00:00
+--   built_at = 2026-10-29T21:34:32.396915+00:00
 --   iconclass_data_commit = f6aae630d8ae43ae2f145dfc1bb0c92eb2274411
 --   notation_count = 1346371
 --   base_notation_count = 39802

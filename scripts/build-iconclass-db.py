@@ -325,10 +325,10 @@ def build(data_dir: str, output_path: str):
                 if base_text:
                     key_source = notation_key_source.get(code)
                     key_text = dump_key_texts.get(key_source, {}).get(lang) if key_source else None
+                    # No key text: store nothing, so the server's language fallback serves a
+                    # label that names the key. The base text alone would read as the base.
                     if key_text:
                         text = f"{base_text} (+ {key_text})"
-                    else:
-                        text = base_text  # No key text for this lang — use base only
             else:
                 text = dump_texts.get(code, {}).get(lang)
 

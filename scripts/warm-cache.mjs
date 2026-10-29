@@ -58,7 +58,12 @@ function parseArgs() {
     switch (flag) {
       case "--url":         opts.url = value(); break;
       case "--file":        opts.file = resolve(value()); break;
-      case "--concurrency": opts.concurrency = Math.max(1, parseInt(value(), 10) || 1); break;
+      case "--concurrency": {
+        const raw = value();
+        opts.concurrency = Number(raw);
+        if (!Number.isInteger(opts.concurrency) || opts.concurrency < 1) fail(`--concurrency must be a positive integer, got ${raw}`);
+        break;
+      }
       case "--help":
       case "-h":
         console.log(USAGE);

@@ -292,7 +292,14 @@ export class IconclassDb {
         const expectedCount = meta.has("embedding_count") ? Number(meta.get("embedding_count")) : null;
         const builtFor = `${meta.get("embedding_query_model")}@${meta.get("embedding_query_model_revision")}`;
 
-        if (!Number.isInteger(this._embeddingDimensions) || this._embeddingDimensions <= 0) {
+        const dimsValid = Number.isInteger(this._embeddingDimensions) && this._embeddingDimensions > 0;
+        // VectorIndex views each blob as exactly `dims` bytes: a short or NULL
+        // blob throws mid-build, a long one ranks against the wrong bytes.
+        const misSized = dimsValid ? (this.db.prepare(
+          "SELECT COUNT(*) AS n FROM iconclass_embeddings WHERE embedding IS NULL OR length(embedding) != ?"
+        ).get(this._embeddingDimensions) as { n: number }).n : 0;
+
+        if (!dimsValid) {
           logWarn(`Iconclass embeddings have no valid embedding_dimensions (${meta.get("embedding_dimensions")}) — disabling semantic search`);
           this._hasEmbeddings = false;
         } else if (builtFor !== `${QUERY_MODEL_ID}@${QUERY_MODEL_REVISION}`) {
@@ -303,6 +310,9 @@ export class IconclassDb {
             `Iconclass embeddings INCOMPLETE: expected ${expectedCount}, found ${embCount.toLocaleString()} — ` +
             `disabling semantic search (likely an interrupted embedding build)`
           );
+          this._hasEmbeddings = false;
+        } else if (misSized > 0) {
+          logWarn(`Iconclass embeddings: ${misSized} blobs are not ${this._embeddingDimensions} bytes — disabling semantic search`);
           this._hasEmbeddings = false;
         } else {
           this._hasEmbeddings = true;
@@ -436,16 +446,8 @@ export class IconclassDb {
     const t0 = Date.now();
     const rows = this.db!.prepare(
       "SELECT notation, embedding FROM iconclass_embeddings ORDER BY notation"
-    ).all() as { notation: string; embedding: Buffer | null }[];
-    // VectorIndex views each blob as exactly `dims` bytes: a short or NULL blob
-    // throws mid-build, a long one silently ranks against the wrong bytes.
-    const bad = rows.find(r => r.embedding?.length !== this._embeddingDimensions);
-    if (bad) {
-      throw new Error(
-        `Corrupt embedding for ${bad.notation}: ${bad.embedding?.length ?? "NULL"} bytes, expected ${this._embeddingDimensions}`
-      );
-    }
-    const index = new VectorIndex(rows.map(r => r.notation), rows.map(r => r.embedding!),
+    ).all() as { notation: string; embedding: Buffer }[];
+    const index = new VectorIndex(rows.map(r => r.notation), rows.map(r => r.embedding),
       this._embeddingDimensions, Math.min(COARSE_DIMS, this._embeddingDimensions));
     this.lowerNotations = index.notations.map(n => n.toLowerCase());
     if (this.stmtGetCollectionCounts) {

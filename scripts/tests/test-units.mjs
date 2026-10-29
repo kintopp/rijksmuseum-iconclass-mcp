@@ -11,8 +11,10 @@
  * prefix order; similarity not equal to the true cosine.
  *
  * EmbeddingModel failure modes (offline: an empty cache with remote fetches off
- * makes every load fail fast): a failed load cached until restart, so the next
- * query never retries; a retry on every call instead of after a pause;
+ * makes every load fail fast): a failed load cached until restart, so a later
+ * query never retries; a retry on every call instead of after a pause; a
+ * query that waits on the retry instead of answering at once; unbounded
+ * retries (each failed session leaks native RSS);
  * EMBEDDING_THREADS "" or junk passed to onnxruntime (0 = all cores, NaN throws)
  * instead of falling back to 2 with a warning.
  *
@@ -474,7 +476,7 @@ try {
   // ════════════════════════════════════════════════════════════════
   section("EmbeddingModel — failed load and thread config");
   {
-    const saved = { cacheDir: hfEnv.cacheDir, remote: hfEnv.allowRemoteModels, local: hfEnv.allowLocalModels,
+    const saved = { cacheDir: hfEnv.cacheDir, remote: hfEnv.allowRemoteModels,
       threads: process.env.EMBEDDING_THREADS, hfHome: process.env.HF_HOME, now: Date.now, err: console.error };
     const lines = [];
     console.error = (l) => { lines.push(String(l)); };
@@ -491,26 +493,37 @@ try {
       assert(!m.available && failures() === 1, "load against an empty offline cache fails once");
       assertList(threadWarnings(), ['EMBEDDING_THREADS="abc" is not a positive integer — using 2'], "junk EMBEDDING_THREADS → warning, default 2");
 
+      // Retries run in the background; give one time to settle.
+      const settled = async (n) => { for (let i = 0; i < 100 && failures() < n; i++) await new Promise((r) => setTimeout(r, 20)); };
+
       await m.whenReady();
+      await settled(2);
       assertEq(failures(), 1, "a second query right after the failure does not reload");
 
       const t = Date.now();
       Date.now = () => t + 61_000;
       process.env.EMBEDDING_THREADS = "";
       await m.whenReady();
+      assertEq(failures(), 1, "a query after the pause answers before the retry it starts has finished");
+      await settled(2);
       assertEq(failures(), 2, "a query 61 s after the failure retries the load");
       assertEq(threadWarnings()[1], 'EMBEDDING_THREADS="" is not a positive integer — using 2', "empty EMBEDDING_THREADS → warning, not 0 threads");
 
       process.env.EMBEDDING_THREADS = "3";
       Date.now = () => t + 122_000;
       await m.whenReady();
+      await settled(3);
       assert(failures() === 3 && threadWarnings().length === 2, "valid EMBEDDING_THREADS → no warning");
+
+      Date.now = () => t + 183_000;
+      await m.whenReady();
+      await settled(4);
+      assertEq(failures(), 3, "no fourth load: retries stop after 3 loads in all");
     } finally {
       console.error = saved.err;
       Date.now = saved.now;
       hfEnv.cacheDir = saved.cacheDir;
       hfEnv.allowRemoteModels = saved.remote;
-      hfEnv.allowLocalModels = saved.local;
       if (saved.threads === undefined) delete process.env.EMBEDDING_THREADS; else process.env.EMBEDDING_THREADS = saved.threads;
       if (saved.hfHome !== undefined) process.env.HF_HOME = saved.hfHome;
     }
@@ -520,7 +533,7 @@ try {
   section("UsageStats — concurrent writers");
   await atest("8 processes flushing one file → no failed rename", async () => {
     const file = path.join(tmpRoot, "shared-usage.json");
-    const mod = path.resolve("dist/utils/UsageStats.js");
+    const mod = new URL("../../dist/utils/UsageStats.js", import.meta.url).href;
     const child = `import { UsageStats } from ${JSON.stringify(mod)};
       const s = new UsageStats(${JSON.stringify(file)});
       for (let i = 0; i < 200; i++) { s.record("search", 1, true); s.flush(); }`;

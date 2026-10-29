@@ -46,10 +46,14 @@ def build_counts_db(output_path: str, count_csvs: list[str], release_tag: str = 
         seen[cid] = csv_path
 
     os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
-    if os.path.exists(output_path):
-        os.remove(output_path)
+    # Build beside the target and swap in on success, so a failed build keeps
+    # the previous sidecar.
+    tmp_path = output_path + ".building"
+    for p in (tmp_path, tmp_path + "-wal", tmp_path + "-shm"):
+        if os.path.exists(p):
+            os.remove(p)
 
-    conn = sqlite3.connect(output_path)
+    conn = sqlite3.connect(tmp_path)
     conn.execute("PRAGMA journal_mode = WAL")
     conn.execute("PRAGMA synchronous = OFF")
 
@@ -104,7 +108,7 @@ def build_counts_db(output_path: str, count_csvs: list[str], release_tag: str = 
                     continue
         if not rows:
             conn.close()
-            os.remove(output_path)
+            os.remove(tmp_path)
             sys.exit(f"Error: {csv_path} has no positive counts")
 
         conn.executemany(
@@ -138,6 +142,7 @@ def build_counts_db(output_path: str, count_csvs: list[str], release_tag: str = 
 
     conn.execute("VACUUM")
     conn.close()
+    os.replace(tmp_path, output_path)
 
     size_kb = os.path.getsize(output_path) / 1024
     print(f"\nDone! {output_path} ({size_kb:.0f} KB)")

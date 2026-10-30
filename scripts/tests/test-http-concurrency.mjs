@@ -9,13 +9,15 @@
  * Response framing and body limits around the SDK's toNodeHandler, failure
  * modes: a Content-Length forwarded beside a gzipped body truncates it; SSE
  * compressed or buffered, so a listen stream's first frame never arrives; a
- * body-less 202 that won't decode; express.json and the adapter disagreeing on
- * the size limit (the adapter alone sees non-JSON bodies); compressed request
- * bodies accepted again (they must stay off zlib); a body express.json rejects
- * answered in HTML, or its stack written to bare stderr, which Railway tags
- * level=error. The handler's own
- * maxRequestBodySize is an equivalent mutation: the adapter's bound applies
- * first and express.json has already checked parsed bodies.
+ * body-less 202 that won't decode; a small JSON answer gzipped because compression
+ * never learned its length; a non-JSON body read before it is refused, so a slow
+ * upload holds the request; compressed request bodies accepted again (they must
+ * stay off zlib); a body express.json rejects answered in HTML, or its stack
+ * written to bare stderr, which Railway tags level=error; client text from a bad
+ * body in the logs; another route's bad body reported as a JSON-RPC parse error; a
+ * client hanging up mid-body logged at error.
+ * Not covered: the error handler's mount path. No other route here can be made to
+ * throw, so mounting it app-wide is an equivalent mutation for now.
  *
  * Run:  node scripts/tests/test-http-concurrency.mjs
  * Requires: npm run build (runs on the fixture DB)
@@ -184,6 +186,14 @@ try {
     });
     assertEq(r.status, 400, "an unsupported revision returns 400");
     assertEq(JSON.parse(r.text).error?.code, -32022, "the error body survives framing");
+    assertEq(r.headers["content-encoding"], undefined, "under the 1 KB threshold it is not compressed");
+    assertEq(Number(r.headers["content-length"]), r.wire.length, "its Content-Length matches the bytes sent");
+  });
+
+  await atest("a small refusal is not compressed", async () => {
+    const r = await raw(url, { headers: { "content-type": "text/plain", "accept-encoding": "gzip" }, body: "x" });
+    assertEq(r.status, 415, "text/plain is refused");
+    assertEq(r.headers["content-encoding"], undefined, "under the 1 KB threshold it is not compressed");
   });
 
   await atest("a legacy SSE response is not compressed", async () => {
@@ -239,21 +249,30 @@ try {
     assertEq(err.error?.message, `Payload Too Large: Request body must not exceed ${LIMIT} bytes`, "the JSON 413 names the limit, as the adapter's does");
   });
 
-  await atest("a non-JSON body hits the same limit in the adapter", async () => {
-    const at = await raw(url, { headers: { "content-type": "text/plain" }, body: "x".repeat(LIMIT) });
-    assertEq(at.status, 415, "a text/plain body at the limit reaches the content-type check");
-    assertEq(
-      JSON.parse(at.text).error?.message,
-      "Unsupported Media Type: Content-Type must be application/json",
-      "the 415 says what's wrong"
-    );
-    const over = await raw(url, { headers: { "content-type": "text/plain" }, body: "x".repeat(LIMIT + 1) });
-    assertEq(over.status, 413, "a text/plain body one byte over is refused");
-    assertEq(
-      JSON.parse(over.text).error?.message,
-      `Payload Too Large: Request body must not exceed ${LIMIT} bytes`,
-      "the 413 names the limit"
-    );
+  await atest("a non-JSON body is refused whatever its size", async () => {
+    for (const size of [LIMIT, LIMIT + 1]) {
+      const r = await raw(url, { headers: { "content-type": "text/plain" }, body: "x".repeat(size) });
+      assertEq(r.status, 415, `a text/plain body of ${size} bytes is refused`);
+      assertEq(
+        JSON.parse(r.text).error?.message,
+        "Unsupported Media Type: Content-Type must be application/json",
+        "the 415 says what's wrong"
+      );
+    }
+  });
+
+  await atest("a non-JSON upload that never finishes is refused unread", async () => {
+    const status = await new Promise((resolve, reject) => {
+      const req = http.request(url, { method: "POST", headers: { "content-type": "text/plain", "content-length": "1000" } }, (res) => {
+        res.resume();
+        resolve(res.statusCode);
+        req.destroy();
+      });
+      req.on("error", reject);
+      req.write("x");
+      setTimeout(() => reject(new Error("no answer until the body finishes")), 3_000).unref();
+    });
+    assertEq(status, 415, "the answer doesn't wait for the body");
   });
 
   await atest("a compressed request body is refused without inflating", async () => {
@@ -268,12 +287,18 @@ try {
   });
 
   await atest("malformed JSON is a JSON-RPC parse error", async () => {
-    const r = await raw(url, { headers: legacyJson, body: "{not json" });
+    const r = await raw(url, { headers: legacyJson, body: '{"leak-canary":nope}' });
     assertEq(r.status, 400, "malformed JSON returns 400");
     const err = JSON.parse(r.text);
     assertEq(err.error?.code, -32700, "the code is -32700 (parse error)");
     assertEq(err.error?.message, "Parse error: the request body is not valid JSON", "the message names the parse failure");
     assertEq(err.id, null, "the id is null, since the body couldn't be read");
+  });
+
+  await atest("another route's bad body is not a JSON-RPC error", async () => {
+    const r = await raw(url.replace(/\/mcp$/, "/health"), { headers: JSON_POST, body: "{not json" });
+    assertEq(r.status, 404, "POST /health has no route, and the body isn't parsed");
+    assert(!r.text.includes("jsonrpc"), "no JSON-RPC error");
   });
 
   await atest("rejected bodies log structured warnings, nothing bare", async () => {
@@ -286,6 +311,26 @@ try {
     assertEq(warns.length, 3, "the 413, the 415 and the parse error each log one line");
     assert(warns.every((l) => JSON.parse(l).level === "warn"), "rejected input is logged at warn, not error");
     assert(warns.every((l) => !l.includes('"stack"')), "a rejected body logs no stack");
+    assert(!frameServer.stderr().includes("leak-canary"), "client text from the bad body stays out of the logs");
+  });
+
+  await atest("a client hanging up mid-body is logged as a rejection, not an error", async () => {
+    await new Promise((resolve) => {
+      const req = http.request(url, { method: "POST", headers: { ...legacyJson, "content-length": "1000" } });
+      req.on("error", () => {});
+      req.write("{", () => { req.destroy(); resolve(); });
+    });
+    const logged = await (async () => {
+      for (let i = 0; i < 100; i++) {
+        const line = frameServer.stderr().split("\n").find((l) => l.includes("request.aborted"));
+        if (line) return line;
+        await new Promise((r) => setTimeout(r, 20));
+      }
+      return null;
+    })();
+    if (assert(logged !== null, "the abort is logged by type")) {
+      assertEq(JSON.parse(logged).level, "warn", "at warn");
+    }
   });
 
   await atest("GET /mcp is 405 with Allow: POST", async () => {

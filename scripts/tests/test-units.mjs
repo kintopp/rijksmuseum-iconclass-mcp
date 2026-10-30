@@ -18,12 +18,17 @@
  * EMBEDDING_THREADS "" or junk passed to onnxruntime (0 = all cores, NaN throws)
  * instead of falling back to 2 with a warning.
  *
- * withResponseTimeout failure modes (through the SDK's toNodeHandler over real
- * HTTP, since its unconditional writeHead is the hazard): a stuck call never
- * answered; the 504 written twice or crashing the adapter; a late response's
- * SSE body left unread, so its keep-alive runs forever (#427); a late rejection
- * going unhandled, which kills the process; a stream cut because it outlived
- * the timeout; a handler throw hidden behind the 504.
+ * withResponseGuard failure modes (real createMcpHandler and toNodeHandler over
+ * real HTTP, since the adapter's unconditional writeHead and its abort path are the
+ * hazards): a stuck call never answered; a 504 that leaves the tool running, so
+ * its McpServer stays held for the life of the process; a 504 without the
+ * request's JSON-RPC id or a Content-Length; a 2025-era SSE call with no deadline;
+ * a late result crashing the adapter or going unhandled, which kills the process;
+ * a listen stream cut at the deadline; a late SSE body left unread, so its
+ * keep-alive runs forever (#427); a handler throw hidden behind the 504; a real
+ * adapter failure swallowed as if it were the late write after a 504.
+ * Dropping the timer's clearTimeout is an equivalent mutation: firing after the
+ * response has closed does nothing visible, it only holds the timer until then.
  *
  * Skill bundles failure mode: SKILL.md edited without rebuilding, so the committed
  * bundles users download are stale (no behaviour can show this; it ships silently),
@@ -59,8 +64,10 @@ import { cachedFor } from "../../dist/utils/MemoryStats.js";
 import { VectorIndex } from "../../dist/api/VectorIndex.js";
 import { embeddingsCountConsistent } from "../../dist/api/IconclassDb.js";
 import { EmbeddingModel } from "../../dist/api/EmbeddingModel.js";
-import { withResponseTimeout } from "../../dist/utils/responseTimeout.js";
+import { withResponseFraming, withResponseGuard } from "../../dist/utils/responseGuard.js";
 import { toNodeHandler } from "@modelcontextprotocol/node";
+import { McpServer, createMcpHandler } from "@modelcontextprotocol/server";
+import { z } from "zod";
 import { env as hfEnv } from "@huggingface/transformers";
 import { spawn, spawnSync } from "node:child_process";
 import { assert, assertEq, section, atest, report } from "./_assert.mjs";
@@ -665,31 +672,105 @@ try {
   });
 
   // ════════════════════════════════════════════════════════════════
-  section("withResponseTimeout — through toNodeHandler");
+  section("withResponseGuard — through toNodeHandler");
   {
-    const TIMEOUT_MS = 50;
+    const TIMEOUT_MS = 100;
     const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     const unhandled = [];
     const onUnhandled = (err) => unhandled.push(err);
     process.on("unhandledRejection", onUnhandled);
 
-    /** Serve one stubbed fetch over real HTTP; the adapter's errors are collected. */
-    const serve = async (fetchStub) => {
-      const adapterErrors = [];
-      const handle = toNodeHandler(withResponseTimeout({ fetch: fetchStub }, TIMEOUT_MS), {
-        onerror: (e) => adapterErrors.push(e.message),
-      });
-      const rejections = [];
+    /** Serve a Node handler over real HTTP, with the body parsed as express.json does. */
+    const listen = async (handle, rejections) => {
       const server = http.createServer((req, res) => {
-        handle(req, res).catch((e) => { rejections.push(e.message); res.destroy(); });
+        const chunks = [];
+        req.on("data", (c) => chunks.push(c));
+        req.on("end", () => {
+          handle(req, res, JSON.parse(Buffer.concat(chunks).toString() || "{}")).catch((e) => { rejections.push(e.message); res.destroy(); });
+        });
       });
       await new Promise((r) => server.listen(0, "127.0.0.1", r));
-      const url = `http://127.0.0.1:${server.address().port}/mcp`;
-      return { url, adapterErrors, rejections, close: () => { server.closeAllConnections(); server.close(); } };
+      return { url: `http://127.0.0.1:${server.address().port}/mcp`, close: () => { server.closeAllConnections(); server.close(); } };
     };
-    const post = (url) => fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
 
-    await atest("a stuck call is answered 504 once, and its late SSE body is cancelled", async () => {
+    /** A real handler with one tool that waits until released, recording its abort signal. */
+    const serveHanging = async () => {
+      const state = { signal: null, release: null, errors: [], rejections: [] };
+      const factory = () => {
+        const s = new McpServer({ name: "guard-test", version: "0" });
+        s.registerTool("hang", { inputSchema: z.object({}) }, async (_args, ctx) => {
+          state.signal = ctx.mcpReq.signal;
+          await new Promise((r) => { state.release = r; });
+          return { content: [{ type: "text", text: "late" }] };
+        });
+        return s;
+      };
+      const onerror = (e) => state.errors.push(e.message);
+      const handle = withResponseGuard(toNodeHandler(withResponseFraming(createMcpHandler(factory, { onerror })), { onerror }), TIMEOUT_MS);
+      return Object.assign(state, await listen(handle, state.rejections));
+    };
+
+    /** One stubbed fetch through the guard; the adapter's errors are collected. */
+    const serve = async (fetchStub) => {
+      const adapterErrors = [];
+      const rejections = [];
+      const handle = withResponseGuard(toNodeHandler(withResponseFraming({ fetch: fetchStub }), {
+        onerror: (e) => adapterErrors.push(e.message),
+      }), TIMEOUT_MS);
+      return { adapterErrors, rejections, ...(await listen(handle, rejections)) };
+    };
+    const post = (url, body = "{}") => fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body });
+
+    const JSON_POST = { "content-type": "application/json", accept: "application/json, text/event-stream" };
+    const MODERN = "2026-07-28";
+    const callHang = (id, params = {}) => JSON.stringify({ jsonrpc: "2.0", id, method: "tools/call", params: { name: "hang", arguments: {}, ...params } });
+
+    await atest("a stuck 2026-07-28 call is answered 504, and the tool is told to stop", async () => {
+      const s = await serveHanging();
+      try {
+        const r = await fetch(s.url, {
+          method: "POST",
+          headers: { ...JSON_POST, "mcp-protocol-version": MODERN, "mcp-method": "tools/call", "mcp-name": "hang" },
+          body: callHang(7, { _meta: {
+            "io.modelcontextprotocol/protocolVersion": MODERN,
+            "io.modelcontextprotocol/clientInfo": { name: "guard-test", version: "0" },
+            "io.modelcontextprotocol/clientCapabilities": {},
+          } }),
+        });
+        assertEq(r.status, 504, "the stuck call is answered 504");
+        const text = await r.text();
+        assertEq(text, '{"jsonrpc":"2.0","error":{"code":-32000,"message":"Request timeout"},"id":7}', "the 504 is a JSON-RPC error with the request's id");
+        assertEq(Number(r.headers.get("content-length")), text.length, "the 504 is framed");
+        await sleep(50);
+        assertEq(s.signal?.aborted, true, "the stuck tool's signal is aborted");
+        s.release();
+        await sleep(TIMEOUT_MS);
+        assertEq(s.rejections.join(), "", "a late result doesn't throw out of the guard");
+        assertEq(s.errors.join(), "", "neither the handler nor the adapter reports an error");
+        assertEq(unhandled.length, 0, "nothing goes unhandled");
+      } finally { s.close(); }
+    });
+
+    await atest("a stuck 2025-era SSE call is cut at the deadline", async () => {
+      const s = await serveHanging();
+      try {
+        const outcome = await Promise.race([
+          fetch(s.url, { method: "POST", headers: { ...JSON_POST, "mcp-protocol-version": "2025-11-25" }, body: callHang(8) })
+            .then((r) => r.text())
+            .then(() => "answered", () => "cut"),
+          sleep(TIMEOUT_MS * 20).then(() => "still open"),
+        ]);
+        assertEq(outcome, "cut", "headers already sent, so the connection is destroyed");
+        await sleep(50);
+        assertEq(s.signal?.aborted, true, "its tool's signal is aborted");
+        s.release();
+        await sleep(TIMEOUT_MS);
+        assertEq(s.rejections.join(), "", "its late result doesn't throw out of the guard");
+        assertEq(s.errors.join(), "", "neither the handler nor the adapter reports an error");
+      } finally { s.close(); }
+    });
+
+    await atest("a late SSE body is cancelled", async () => {
       let cancelled = false;
       const late = new ReadableStream({
         start(c) { c.enqueue(new TextEncoder().encode(": keepalive\n\n")); },
@@ -700,16 +781,14 @@ try {
         return new Response(late, { headers: { "content-type": "text/event-stream" } });
       });
       try {
-        const r = await post(s.url);
-        assertEq(r.status, 504, "the stuck call is answered 504");
-        assertEq(await r.text(), '{"error":"Request timeout"}', "the 504 body names the timeout");
+        assertEq((await post(s.url)).status, 504, "the stuck call is answered 504");
         await sleep(TIMEOUT_MS * 4);
         assert(cancelled, "the late response's body is cancelled");
-        assertEq(s.rejections.length, 0, "the adapter doesn't throw (no ERR_HTTP_HEADERS_SENT)");
+        assertEq(s.rejections.join(), "", "the guard absorbs the adapter's ERR_HTTP_HEADERS_SENT");
       } finally { s.close(); }
     });
 
-    await atest("a client that leaves during a stuck call doesn't break the 504 path", async () => {
+    await atest("a client that leaves during a stuck call doesn't break anything", async () => {
       const s = await serve(async () => { await sleep(TIMEOUT_MS * 3); return new Response("late"); });
       try {
         const ac = new AbortController();
@@ -718,7 +797,7 @@ try {
         ac.abort();
         assertEq(await pending, "AbortError", "the client aborted");
         await sleep(TIMEOUT_MS * 4);
-        assertEq(s.rejections.length, 0, "the adapter survives writing to the closed response");
+        assertEq(s.rejections.join(), "", "the adapter survives writing to the closed response");
       } finally { s.close(); }
     });
 
@@ -728,10 +807,11 @@ try {
         assertEq((await post(s.url)).status, 504, "the stuck call is answered 504");
         await sleep(TIMEOUT_MS * 3);
         assertEq(unhandled.length, 0, "no unhandled rejection");
+        assertEq(s.rejections.join(), "", "nothing throws out of the guard");
       } finally { s.close(); }
     });
 
-    await atest("a stream that outlives the timeout is not cut", async () => {
+    await atest("a listen stream outlives the deadline", async () => {
       const s = await serve(async () => new Response(new ReadableStream({
         async start(c) {
           c.enqueue(new TextEncoder().encode("first,"));
@@ -741,9 +821,9 @@ try {
         },
       }), { headers: { "content-type": "text/event-stream" } }));
       try {
-        const r = await post(s.url);
+        const r = await post(s.url, JSON.stringify({ jsonrpc: "2.0", id: 1, method: "subscriptions/listen", params: {} }));
         assertEq(r.status, 200, "the stream keeps its status");
-        assertEq(await r.text(), "first,last", "the stream runs to its end, past the timeout");
+        assertEq(await r.text(), "first,last", "the stream runs to its end, past the deadline");
       } finally { s.close(); }
     });
 
@@ -754,6 +834,8 @@ try {
         assertEq(r.status, 201, "status passes through");
         assertEq(r.headers.get("x-test"), "1", "headers pass through");
         assertEq(await r.text(), "ok", "body passes through");
+        await sleep(TIMEOUT_MS * 2);
+        assertEq(s.rejections.join(), "", "the timer is cleared once it's done");
       } finally { s.close(); }
     });
 
@@ -765,6 +847,19 @@ try {
         assertEq((await r.json()).error?.message, "Internal server error", "the 500 is the adapter's JSON-RPC error");
         assertEq(s.adapterErrors.join(), "boom", "the adapter's onerror sees the cause");
       } finally { s.close(); }
+    });
+
+    await atest("only the adapter's late write is absorbed", async () => {
+      const failing = (err, delay) => async () => { await sleep(delay); throw err; };
+      for (const [label, delay] of [["before the deadline", 0], ["after the deadline", TIMEOUT_MS * 2]]) {
+        const rejections = [];
+        const s = await listen(withResponseGuard(failing(new Error("adapter failed"), delay), TIMEOUT_MS), rejections);
+        try {
+          await post(s.url).then((r) => r.text()).catch(() => {});
+          await sleep(TIMEOUT_MS * 3);
+          assertEq(rejections.join(), "adapter failed", `another failure ${label} is rethrown`);
+        } finally { s.close(); }
+      }
     });
 
     process.off("unhandledRejection", onUnhandled);

@@ -14,7 +14,7 @@ import { IconclassDb } from "./api/IconclassDb.js";
 import { EmbeddingModel } from "./api/EmbeddingModel.js";
 import { ensureDb, type DbSpec } from "./utils/db.js";
 import { logInfo, logWarn, logError } from "./utils/log.js";
-import { withResponseTimeout } from "./utils/responseTimeout.js";
+import { withResponseFraming, withResponseGuard } from "./utils/responseGuard.js";
 import {
   cachedFor,
   captureMemorySnapshot,
@@ -203,10 +203,16 @@ let httpServer: import("node:http").Server | undefined;
 const MAX_REQUEST_BODY_BYTES = 100 * 1024;
 const RESPONSE_TIMEOUT_MS = 30_000;
 const MEMORY_SNAPSHOT_TTL_MS = 5_000;
-const REJECTED_BODY: Record<number, { code: number; message: string }> = {
-  400: { code: -32700, message: "Parse error: the request body is not valid JSON" },
-  413: { code: -32000, message: `Payload Too Large: Request body must not exceed ${MAX_REQUEST_BODY_BYTES} bytes` },
-  415: { code: -32000, message: "Unsupported Media Type: compressed or non-UTF-8 request bodies are not accepted" },
+const NOT_ACCEPTED = "Unsupported Media Type: compressed or non-UTF-8 request bodies are not accepted";
+const UNREADABLE = "Bad Request: the request body could not be read";
+// body-parser's err.type values; err.status alone can't tell them apart.
+const REJECTED_BODY: Record<string, { status: number; code: number; message: string }> = {
+  "entity.parse.failed": { status: 400, code: -32700, message: "Parse error: the request body is not valid JSON" },
+  "entity.too.large": { status: 413, code: -32000, message: `Payload Too Large: Request body must not exceed ${MAX_REQUEST_BODY_BYTES} bytes` },
+  "encoding.unsupported": { status: 415, code: -32000, message: NOT_ACCEPTED },
+  "charset.unsupported": { status: 415, code: -32000, message: NOT_ACCEPTED },
+  "request.aborted": { status: 400, code: -32000, message: UNREADABLE },
+  "request.size.invalid": { status: 400, code: -32000, message: UNREADABLE },
 };
 
 async function runHttp(): Promise<void> {
@@ -226,9 +232,6 @@ async function runHttp(): Promise<void> {
     })
   );
   app.use(compression({ threshold: 1024 })); // gzip responses >= 1 KB
-  // inflate: false rejects Content-Encoding'd bodies (415): MCP clients never
-  // compress requests, and it keeps zlib/Brotli decoding off attacker input.
-  app.use(express.json({ inflate: false, limit: MAX_REQUEST_BODY_BYTES }));
 
   // ── MCP endpoint (stateless — no sessions) ─────────────────────
   //
@@ -243,20 +246,57 @@ async function runHttp(): Promise<void> {
   // the `sessionIdGenerator: undefined` idiom, so existing connectors keep
   // working unchanged.
   const mcpHandler = createMcpHandler(() => createServer(), {
-    maxRequestBodySize: MAX_REQUEST_BODY_BYTES,
     // Fires for rejected client requests as well as serving failures.
     onerror: (err) => logWarn("MCP handler error", err),
   });
-  const handleMcp = toNodeHandler(withResponseTimeout(mcpHandler, RESPONSE_TIMEOUT_MS), {
-    maxRequestBodySize: MAX_REQUEST_BODY_BYTES,
-    onerror: (err) => logError("MCP endpoint error", err),
-  });
+  const handleMcp = withResponseGuard(
+    toNodeHandler(withResponseFraming(mcpHandler), {
+      onerror: (err) => logError("MCP endpoint error", err),
+    }),
+    RESPONSE_TIMEOUT_MS,
+  );
 
-  app.post("/mcp", (req: express.Request, res: express.Response) => handleMcp(req, res, req.body));
+  // Refused unread, so a slow upload can't hold a request and the adapter never
+  // reads the stream: express.json is the only body reader and limit. `is` returns
+  // null when there is no body at all.
+  const requireJson = (req: express.Request, res: express.Response, next: express.NextFunction) => {
+    if (req.is("application/json") !== false) {
+      next();
+      return;
+    }
+    res.set("Connection", "close").status(415).json({
+      jsonrpc: "2.0",
+      error: { code: -32000, message: "Unsupported Media Type: Content-Type must be application/json" },
+      id: null,
+    });
+  };
+  // inflate: false rejects Content-Encoding'd bodies (415): MCP clients never
+  // compress requests, and it keeps zlib/Brotli decoding off attacker input.
+  const parseJson = express.json({ inflate: false, limit: MAX_REQUEST_BODY_BYTES });
+  app.post("/mcp", requireJson, parseJson, (req: express.Request, res: express.Response) => handleMcp(req, res, req.body));
 
   app.all("/mcp", (_req: express.Request, res: express.Response) => {
     res.setHeader("Allow", "POST");
     res.status(405).json({ error: "Method not allowed — this server is stateless (POST only)" });
+  });
+
+  // Express's default handler answers in HTML and writes the stack to bare
+  // stderr, which Railway tags level=error. Logs err.type, not err.message: V8's
+  // JSON errors can quote client text.
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- Express spots error handlers by their four parameters
+  app.use("/mcp", (err: Error & { type?: string }, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+    const rejection = err.type ? REJECTED_BODY[err.type] : undefined;
+    if (rejection) logWarn("Rejected MCP request body", err.type);
+    else logError("MCP request error", err);
+    if (res.headersSent) {
+      res.destroy();
+      return;
+    }
+    res.status(rejection?.status ?? 500).json({
+      jsonrpc: "2.0",
+      error: rejection ? { code: rejection.code, message: rejection.message } : { code: -32603, message: "Internal server error" },
+      id: null,
+    });
   });
 
   // ── Health check ───────────────────────────────────────────────
@@ -290,26 +330,6 @@ async function runHttp(): Promise<void> {
   // unauthenticated operational signal — tool names, counts, latencies only.
   app.get("/debug/stats", (_req: express.Request, res: express.Response) => {
     res.json(usageStats?.toJSON() ?? { error: "usage stats not initialized" });
-  });
-
-  // ── Rejected requests ──────────────────────────────────────────
-  //
-  // express.json() fails here. Express's default handler answers in HTML and
-  // writes the stack to bare stderr, which Railway tags level=error.
-  app.use((err: Error & { status?: number }, _req: express.Request, res: express.Response, next: express.NextFunction) => {
-    if (res.headersSent) {
-      next(err);
-      return;
-    }
-    const status = err.status ?? 500;
-    const rejection = REJECTED_BODY[status];
-    if (rejection) logWarn("Rejected MCP request body", err.message);
-    else logError("MCP request error", err);
-    res.status(rejection ? status : 500).json({
-      jsonrpc: "2.0",
-      error: rejection ?? { code: -32603, message: "Internal server error" },
-      id: null,
-    });
   });
 
   // ── Start ──────────────────────────────────────────────────────

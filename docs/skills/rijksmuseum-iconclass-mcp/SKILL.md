@@ -121,13 +121,13 @@ The keyword search (`query`) uses FTS5 across labels (13 languages) and keywords
 
 **Inflected forms often work** because the Iconclass keyword data includes variants — "crucified" finds "crucifixion" (675 matches). But **spelling variants do not** — "odour" and "odor" are separate words and won't cross-match. When in doubt, try both spellings or fall back to `semanticQuery`.
 
-**Multi-word queries** try phrase match first (adjacent words), then fall back to AND-ed individual terms if the phrase returns zero results. "Marriage at Cana" finds notations containing both "Marriage" and "Cana" even if they're not adjacent.
+**Multi-word queries** try phrase match first (adjacent words), then fall back to AND-ed individual terms if no phrase match survives the filters (`parentNotation`, `collectionId`, `onlyWithArtworks`). "Marriage at Cana" finds notations containing both "Marriage" and "Cana" even if they're not adjacent.
 
 **Single words are usually best.** FTS matches whole words against the Iconclass vocabulary, so a single specific word ("salamander", "crucifixion", "lute") has the highest recall. Multi-word queries are useful when a single word is too broad — "broken string" to distinguish from intact string instruments, or "Last Supper" to avoid matching other uses of "supper."
 
 **When FTS fails, switch to semantic search.** Use `semanticQuery` when the vocabulary term is unknown or the query is conceptual. Its strength is reaching across branches: "grief and mourning" returns `73D72` (dead Christ), `42E131` (burial rites) and `94N333` (Althaea grieving) together, plus `33A33` (condolence), whose label contains neither query word. It pages with `maxResults` and `offset`, but only to depth 500 (`offset + maxResults ≤ 500`; deeper matches are weak), and its `totalResults` counts the neighbours ranked, not a corpus total. Only base notations are embedded — key-expanded variants never appear in semantic results — so use it to locate the right branch, then `browse`, `expand_keys` or `search_prefix` to enumerate it.
 
-**Keyword search returns key variants too, after their base notations.** Key variants are indexed alongside base notations, so `search(query: "salamander")` matches 426 rows: 8 base notations and 418 `(+N)` variants of `25FF412`. Within each coverage tier, a variant whose base also matched ranks after the base notations, so the first page shows `25FF412` and `11I62(ANANIAS)` (salamander as Ananias's attribute) before any variant. A variant that matched on its key alone keeps its relevance rank: "sleeping" puts `25F(+46)` "animals (+ sleeping animal(s))" 4th. `totalResults` counts rows; `totalBaseNotations` counts distinct concepts, with each variant counting as its base (426 rows → 8). Add `onlyWithArtworks: true` to keep only notations with coverage (426 → 1).
+**Keyword search returns key variants too, after their base notations.** Key variants are indexed alongside base notations, so `search(query: "salamander")` matches 426 rows: 8 base notations and 418 `(+N)` variants of `25FF412`. Within each coverage tier, a variant whose base is also listed ranks after the base notations, so the first page shows `25FF412` and `11I62(ANANIAS)` (salamander as Ananias's attribute) before any variant. A variant that matched on its key alone keeps its relevance rank: "sleeping" puts `25F(+46)` "animals (+ sleeping animal(s))" 4th. `totalResults` counts rows; `totalBaseNotations` counts distinct concepts, with each variant counting as its base (426 rows → 8). Add `onlyWithArtworks: true` to keep only notations with coverage (426 → 1).
 
 **Non-English queries work.** FTS covers all 13 languages. Dutch "kruisiging", German "Kreuzigung", and French "crucifixion" all find the same notation.
 
@@ -162,11 +162,11 @@ If `parentNotation` returns zero results, the concept may exist in a different b
 Start with keyword search. If the term is unknown or the concept is atmospheric/interpretive, use semantic search.
 
 ```
-# Known term — 844 matches; the canonical code is not ranked first
+# Known term — 816 matches; the canonical code is not ranked first
 search(query: "crucifixion")
 # -> 31E2356 "violent death by crucifixion" [3 > 31 > 31E]
-# -> ... 73D6 (rijksmuseum) "the crucifixion of Christ" [7 > 73 > 73D]  <- 11th
-# Scan the full result set — keyword results rank by collection coverage, then bases before their own key variants, then FTS relevance, not by canonicalness.
+# -> ... 73D6 (rijksmuseum) "the crucifixion of Christ" [7 > 73 > 73D]  <- 3rd
+# Scan the full result set — keyword results rank by collection coverage, then bases before key variants of listed bases, then FTS relevance, not by canonicalness.
 
 # Unknown vocabulary — concept search, reaches across branches
 search(semanticQuery: "grief and mourning")
@@ -349,14 +349,14 @@ To enable direct artwork search in future conversations, the user can install th
 | Resolve batch limit of 25 | Discover with `search`; `resolve` the shortlist you need full metadata on. |
 | `parentNotation` returns 0 but concept exists | The concept may live in a different branch. Remove the scope and search globally. |
 | Key expansion labels can mislead | Key meanings are branch-specific — `(+42)` is "feeding and care of young" under `25F23`, "damage and repair of work of art" under `48C7323`. Read the label via `expand_keys`/`resolve`. See Notation Syntax. |
-| `totalResults` looks far too high | It counts rows, including every key variant. Read `totalBaseNotations` for the number of distinct concepts ("salamander": 426 rows, 8 base notations). Base notations rank ahead of their own variants within each coverage tier; `onlyWithArtworks: true` keeps only notations with coverage. |
+| `totalResults` looks far too high | It counts rows, including every key variant. Read `totalBaseNotations` for the number of distinct concepts ("salamander": 426 rows, 8 base notations). Within each coverage tier, base notations rank ahead of any variant whose base is also listed; `onlyWithArtworks: true` keeps only notations with coverage. |
 | Key variant labels switch to English | In `nl`, `es`, `fi`, `pl`, `zh` and `hu`, a variant whose key has no translation is labelled in English, so it still names the key: `73D6` is "kruisdood" but `73D6(+3)` is "the crucifixion of Christ… (+ angel(s))". Match variants to their base by the notation code. |
 | Category labels reflect pre-modern iconography, not modern taxonomy | Treat labels as index terms, not scientific definitions. Flag mismatches to users (e.g. hares under "rodents"). See Labels Reflect Iconography, Not Modern Taxonomy. |
 | Common animals (horse, goat, rooster, salamander) have no notation in `25F*` | Search globally, not scoped to `25F*`. The animal's code is in husbandry, transport, saints, mythology, literature, or the fabulous tree. See Workflow 3 → "Searching for a specific animal." |
 | `find_artworks` batch limit of 25 | Call it on a shortlist. For broad coverage questions use `search` with `onlyWithArtworks` or `collectionId` instead. |
 | Artwork-count overlays are collection-specific | Check the top-level `collections` field to see which overlays are loaded. Coverage changes when the sidecar database is updated. |
-| `find_artworks` returns "no collections" | The notation has no counts in the loaded overlays, or the input notation may not exist. Use `resolve` to verify uncertain codes, then try a parent or sibling notation. |
-| Verifying a notation exists | `resolve` lists absent codes in `notFound` rather than dropping them. On a batch call check `notFound`, not the length of `notations`. |
+| `find_artworks` says "no loaded collection has artworks" | The notation has no counts in the loaded overlays, or the input notation may not exist. Use `resolve` to verify uncertain codes, then try a parent or sibling notation. |
+| Verifying a notation exists | `resolve` lists absent codes in `notFound` rather than dropping them. Check `notFound`, not the length of `notations`: a call where every code is absent is not an error, it returns empty `notations`. Padding around a code is ignored. |
 
 ---
 

@@ -19,22 +19,28 @@ OUT_SKILL="$ROOT/docs/skills/rijksmuseum-iconclass-mcp.skill"
 
 [ -f "$SRC" ] || { echo "error: source not found: $SRC" >&2; exit 1; }
 
-rm -f "$OUT_ZIP" "$OUT_SKILL"
+# Built aside and moved into place, so a failed build leaves the old bundles.
+TMP="$(mktemp -d)"
+trap 'rm -rf "$TMP"' EXIT
+
+# A fixed mtime keeps an unchanged SKILL.md from producing a new binary diff.
+cp "$SRC" "$TMP/SKILL.md"
+TZ=UTC touch -t 202001010000 "$TMP/SKILL.md"
 # -j stores the basename only (SKILL.md at the archive root, no docs/ prefix);
 # -X strips uid/gid and Finder/resource-fork attributes so the archive carries
 # no __MACOSX / AppleDouble junk (the hygiene problem in the old .skill bundle).
-zip -X -j "$OUT_ZIP" "$SRC" >/dev/null
-cp "$OUT_ZIP" "$OUT_SKILL"
+TZ=UTC zip -X -j "$TMP/bundle.zip" "$TMP/SKILL.md" >/dev/null
 
-# Sanity check: each bundle must contain exactly one entry, SKILL.md at root.
-for OUT in "$OUT_ZIP" "$OUT_SKILL"; do
-  entries="$(unzip -Z1 "$OUT")"
-  if [ "$entries" != "SKILL.md" ]; then
-    echo "error: $(basename "$OUT") should contain only 'SKILL.md', got:" >&2
-    printf '%s\n' "$entries" >&2
-    exit 1
-  fi
-done
+# Sanity check: the bundle must contain exactly one entry, SKILL.md at root.
+entries="$(unzip -Z1 "$TMP/bundle.zip")"
+if [ "$entries" != "SKILL.md" ]; then
+  echo "error: bundle should contain only 'SKILL.md', got:" >&2
+  printf '%s\n' "$entries" >&2
+  exit 1
+fi
+
+cp "$TMP/bundle.zip" "$OUT_SKILL"
+mv "$TMP/bundle.zip" "$OUT_ZIP"
 
 echo "Built $(basename "$OUT_ZIP") + $(basename "$OUT_SKILL") from docs/skills/rijksmuseum-iconclass-mcp/SKILL.md:"
 unzip -l "$OUT_ZIP"

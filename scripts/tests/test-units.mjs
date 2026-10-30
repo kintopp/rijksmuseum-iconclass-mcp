@@ -25,6 +25,10 @@
  * going unhandled, which kills the process; a stream cut because it outlived
  * the timeout; a handler throw hidden behind the 504.
  *
+ * Skill bundles failure mode: SKILL.md edited without rebuilding, so the committed
+ * bundles users download are stale (no behaviour can show this; it ships silently),
+ * or its version falling behind package.json.
+ *
  * UsageStats concurrency: processes sharing one stats file renaming each
  * other's temp file away (ENOENT, logged as "usage stats flush failed").
  *
@@ -50,7 +54,7 @@ import { EmbeddingModel } from "../../dist/api/EmbeddingModel.js";
 import { withResponseTimeout } from "../../dist/utils/responseTimeout.js";
 import { toNodeHandler } from "@modelcontextprotocol/node";
 import { env as hfEnv } from "@huggingface/transformers";
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { assert, assertEq, section, atest, report } from "./_assert.mjs";
 
 // ── Test helpers ─────────────────────────────────────────────────
@@ -673,6 +677,20 @@ try {
     });
 
     process.off("unhandledRejection", onUnhandled);
+  }
+
+  // ════════════════════════════════════════════════════════════════
+  section("Skill bundles");
+  {
+    const dir = path.join(import.meta.dirname, "..", "..", "docs", "skills");
+    const source = fs.readFileSync(path.join(dir, "rijksmuseum-iconclass-mcp", "SKILL.md"));
+    const zip = path.join(dir, "rijksmuseum-iconclass-mcp.skill.zip");
+    const unzipped = spawnSync("unzip", ["-p", zip, "SKILL.md"]);
+    assertEq(unzipped.status, 0, "the zip bundle contains SKILL.md");
+    assert(Buffer.compare(unzipped.stdout, source) === 0, "the zip bundle matches SKILL.md (run npm run build:skill)");
+    assert(Buffer.compare(fs.readFileSync(zip), fs.readFileSync(path.join(dir, "rijksmuseum-iconclass-mcp.skill"))) === 0, "the two bundles are identical");
+    const pkg = JSON.parse(fs.readFileSync(path.join(dir, "..", "..", "package.json"), "utf-8"));
+    assertEq(source.toString().match(/^ {2}version: "(.+)"$/m)?.[1], pkg.version, "SKILL.md's version matches package.json");
   }
 
   // ── Summary ───────────────────────────────────────────────────

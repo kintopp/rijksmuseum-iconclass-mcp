@@ -41,7 +41,7 @@ When you ask a question, your AI assistant sends it to the rijksmuseum-iconclass
 Find notations by text or concept.
 
 ```
-query: "crucifixion"          → 844 FTS matches across labels and keywords
+query: "crucifixion"          → 816 FTS matches across labels and keywords
 semanticQuery: "domestic animals" → top matches by embedding similarity
 ```
 

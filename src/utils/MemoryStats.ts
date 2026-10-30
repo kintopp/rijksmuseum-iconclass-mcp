@@ -229,6 +229,16 @@ export function captureMemorySnapshot(handles: DbHandle[]): MemorySnapshot {
   };
 }
 
+/** Reuse a value for `ttlMs`: reading smaps blocks the event loop on every call. */
+export function cachedFor<T>(ttlMs: number, read: () => T): () => T {
+  let cached: { value: T; at: number } | null = null;
+  return () => {
+    const now = performance.now();
+    if (!cached || now - cached.at >= ttlMs) cached = { value: read(), at: now };
+    return cached.value;
+  };
+}
+
 function mb(n: number): string {
   return (n / (1024 * 1024)).toFixed(1);
 }

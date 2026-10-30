@@ -16,6 +16,7 @@ import { ensureDb, type DbSpec } from "./utils/db.js";
 import { logInfo, logWarn, logError } from "./utils/log.js";
 import { withResponseTimeout } from "./utils/responseTimeout.js";
 import {
+  cachedFor,
   captureMemorySnapshot,
   formatMemorySnapshotDetailed,
   startGcObserver,
@@ -201,6 +202,7 @@ let httpServer: import("node:http").Server | undefined;
 
 const MAX_REQUEST_BODY_BYTES = 100 * 1024;
 const RESPONSE_TIMEOUT_MS = 30_000;
+const MEMORY_SNAPSHOT_TTL_MS = 5_000;
 const REJECTED_BODY: Record<number, { code: number; message: string }> = {
   400: { code: -32700, message: "Parse error: the request body is not valid JSON" },
   413: { code: -32000, message: `Payload Too Large: Request body must not exceed ${MAX_REQUEST_BODY_BYTES} bytes` },
@@ -279,8 +281,9 @@ async function runHttp(): Promise<void> {
   // sensitive.
 
   startGcObserver();
+  const memorySnapshot = cachedFor(MEMORY_SNAPSHOT_TTL_MS, () => captureMemorySnapshot(buildMemoryDbHandles()));
   app.get("/debug/memory", (_req: express.Request, res: express.Response) => {
-    res.json(captureMemorySnapshot(buildMemoryDbHandles()));
+    res.json(memorySnapshot());
   });
 
   // Per-tool usage counters (#326). Same convention as /debug/memory:

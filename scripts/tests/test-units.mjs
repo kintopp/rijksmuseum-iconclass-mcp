@@ -32,6 +32,13 @@
  * UsageStats concurrency: processes sharing one stats file renaming each
  * other's temp file away (ENOENT, logged as "usage stats flush failed").
  *
+ * ensureDb stall failure modes: a stalled refresh holding up startup although a
+ * valid local copy can serve; a stalled first part read as "no chunks", so the
+ * single-file fallback spends a second full timeout.
+ *
+ * cachedFor failure modes: every /debug/memory call re-reading smaps; a snapshot
+ * that never refreshes.
+ *
  * Run:  node scripts/tests/test-units.mjs
  * Requires: npm run build (imports from dist/)
  *
@@ -48,6 +55,7 @@ import Database from "better-sqlite3";
 
 import { UsageStats } from "../../dist/utils/UsageStats.js";
 import { ensureDb } from "../../dist/utils/db.js";
+import { cachedFor } from "../../dist/utils/MemoryStats.js";
 import { VectorIndex } from "../../dist/api/VectorIndex.js";
 import { embeddingsCountConsistent } from "../../dist/api/IconclassDb.js";
 import { EmbeddingModel } from "../../dist/api/EmbeddingModel.js";
@@ -403,8 +411,9 @@ try {
     const older = zlib.gzipSync(Buffer.concat([validBuf, crypto.randomBytes(4096)]));
     const server = await startRouteServer({ ...fresh, "/db.gz.part-ac": older.subarray(older.length / 2) });
     try {
+      // Invalid local copy: a valid one takes the refresh path, which never reads parts.
       const dbPath = setupEnsureDb("c10", serverUrl(server, "/db.gz"));
-      writeValidDb(dbPath);
+      writeInvalidDb(dbPath);
       const hashBefore = sha256(fs.readFileSync(dbPath));
       await callEnsureDb("t10", { refreshOnStartup: true });
       assertEq(sha256(fs.readFileSync(dbPath)), hashBefore, "case 10: local file unchanged after a corrupt reassembly");
@@ -421,7 +430,7 @@ try {
     const server = await startRouteServer({ "/db": GARBAGE, ...parts, "/db.part-ab": 503 });
     try {
       const dbPath = setupEnsureDb("c11", serverUrl(server, "/db"));
-      writeValidDb(dbPath);
+      writeInvalidDb(dbPath);
       const hashBefore = sha256(fs.readFileSync(dbPath));
       await callEnsureDb("t11", { refreshOnStartup: true });
       assertEq(sha256(fs.readFileSync(dbPath)), hashBefore, "case 11: local file unchanged after a failed part");
@@ -430,6 +439,88 @@ try {
       server.close();
     }
   });
+
+  // Stalls: a server that accepts a request and never answers. Bounds are far
+  // below the 330 s default, so reaching them means the configured timeout ran.
+  const startStallServer = (routes = {}) => new Promise((resolve) => {
+    const requests = [];
+    const server = http.createServer((req, res) => {
+      requests.push(req.url);
+      if (routes[req.url]) res.end(routes[req.url]);
+    });
+    server.listen(0, "127.0.0.1", () => resolve({ server, requests }));
+  });
+
+  await atest("refresh with a valid local copy and a stalled URL → one short try, local DB kept", async () => {
+    const { server, requests } = await startStallServer();
+    try {
+      const dbPath = setupEnsureDb("c12", serverUrl(server, "/db"));
+      writeValidDb(dbPath);
+      const hashBefore = sha256(fs.readFileSync(dbPath));
+      const t0 = Date.now();
+      await callEnsureDb("t12", { refreshOnStartup: true, refreshTimeoutMs: 150 });
+      assert(Date.now() - t0 < 5_000, `case 12: bounded by refreshTimeoutMs (took ${Date.now() - t0} ms)`);
+      assertList(requests, ["/db"], "case 12: one single-file request, no .part probe");
+      assertEq(sha256(fs.readFileSync(dbPath)), hashBefore, "case 12: local file unchanged");
+      assertNoTempFiles(dbPath, "case 12");
+    } finally {
+      server.closeAllConnections();
+      server.close();
+    }
+  });
+
+  await atest("refresh with a valid local copy → the new file replaces it", async () => {
+    const server = await startRouteServer({ "/db": validBuf });
+    try {
+      const dbPath = setupEnsureDb("c13", serverUrl(server, "/db"));
+      writeValidDb(dbPath);
+      const older = new Database(dbPath);
+      older.exec("INSERT INTO t VALUES (2)");
+      older.close();
+      assert(sha256(fs.readFileSync(dbPath)) !== sha256(validBuf), "case 13: precondition — the local file differs");
+      await callEnsureDb("t13", { refreshOnStartup: true });
+      assertEq(sha256(fs.readFileSync(dbPath)), sha256(validBuf), "case 13: refreshed file installed");
+    } finally {
+      server.close();
+    }
+  });
+
+  await atest("no local copy and a stalled first part → gives up, no second timeout on the base URL", async () => {
+    const { server, requests } = await startStallServer();
+    try {
+      const dbPath = setupEnsureDb("c14", serverUrl(server, "/db"));
+      await callEnsureDb("t14", { downloadTimeoutMs: 150 });
+      assertList(requests, ["/db.part-aa"], "case 14: the stall is not read as 'no chunks'");
+      assert(!fs.existsSync(dbPath), "case 14: nothing installed");
+      assertNoTempFiles(dbPath, "case 14");
+    } finally {
+      server.closeAllConnections();
+      server.close();
+    }
+  });
+
+  await atest("no local copy and no chunks → full download still falls back to the single file", async () => {
+    const server = await startRouteServer({ "/db": validBuf });
+    try {
+      const dbPath = setupEnsureDb("c15", serverUrl(server, "/db"));
+      await callEnsureDb("t15", { refreshOnStartup: true });
+      assertEq(sha256(fs.readFileSync(dbPath)), sha256(validBuf), "case 15: single file installed");
+    } finally {
+      server.close();
+    }
+  });
+
+  // ════════════════════════════════════════════════════════════════
+  section("cachedFor");
+
+  {
+    let reads = 0;
+    const read = cachedFor(150, () => ++reads);
+    assertEq(read(), 1, "cachedFor: first call reads");
+    assertEq(read(), 1, "cachedFor: a call inside the TTL reuses the value");
+    await new Promise((r) => setTimeout(r, 200));
+    assertEq(read(), 2, "cachedFor: a call after the TTL reads again");
+  }
 
   // ════════════════════════════════════════════════════════════════
   section("VectorIndex — two-pass KNN");

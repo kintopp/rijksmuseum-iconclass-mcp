@@ -103,6 +103,10 @@ try {
     assert(!Number.isNaN(Date.parse(gc.at)), `heapAfterMajorGc.at is a timestamp (got ${gc.at})`);
   }
 
+  // Reading smaps blocks the event loop, so a burst of requests must not repeat it.
+  const again = await (await fetch(memServer.url.replace(/\/mcp$/, "/debug/memory"))).json();
+  assertEq(again.timestamp, m.timestamp, "/debug/memory: a second request within the TTL reuses the snapshot");
+
   if (process.platform === "linux" && fs.existsSync("/sys/fs/cgroup/memory.stat")) {
     const c = m.cgroup;
     if (assert(c !== null, "cgroup stats present on a cgroup-v2 Linux host")) {

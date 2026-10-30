@@ -56,6 +56,10 @@ export function resolveDbPath(envVarName: string, defaultFilename: string): stri
 
 /** Timeout per download operation (single file or individual chunk). */
 const DOWNLOAD_TIMEOUT_MS = 330_000;
+/** A valid local copy can serve, so its refresh must not outlast the 360 s healthcheck. */
+const REFRESH_TIMEOUT_MS = 30_000;
+
+class DownloadTimeoutError extends Error {}
 
 export interface DbSpec {
   name: string;
@@ -66,8 +70,11 @@ export interface DbSpec {
   validationQuery: string;
   /** When true, re-download from urlEnvVar on every startup even if the local file passes validation.
    *  Use for small rolling-release sidecars whose content changes without a schema bump.
-   *  The existing local file is preserved if the download or post-download validation fails. */
+   *  The existing local file is preserved if the download or post-download validation fails.
+   *  With a valid local file this is one single-file fetch: chunked assets are not probed. */
   refreshOnStartup?: boolean;
+  downloadTimeoutMs?: number;
+  refreshTimeoutMs?: number;
 }
 
 function resolveDbPathForSpec(spec: DbSpec): string {
@@ -80,13 +87,16 @@ function chunkSuffix(i: number): string {
 }
 
 /** Fetch a single URL to a writable path, with timeout. */
-async function fetchToFile(url: string, destPath: string, flags: "w" | "a" = "w"): Promise<void> {
+async function fetchToFile(url: string, destPath: string, timeoutMs: number, flags: "w" | "a" = "w"): Promise<void> {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), DOWNLOAD_TIMEOUT_MS);
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const res = await fetch(url, { redirect: "follow", signal: controller.signal });
     if (!res.ok || !res.body) throw new Error(`HTTP ${res.status} ${res.statusText}`);
     await pipeline(res.body, fs.createWriteStream(destPath, { flags }));
+  } catch (err) {
+    if (controller.signal.aborted) throw new DownloadTimeoutError(`timed out after ${timeoutMs} ms: ${url}`);
+    throw err;
   } finally {
     clearTimeout(timer);
   }
@@ -97,16 +107,18 @@ async function fetchToFile(url: string, destPath: string, flags: "w" | "a" = "w"
  * Returns true if chunks were found and downloaded, false if no chunks exist.
  * Downloaded chunks are reassembled into `assembledPath` and decompressed to `destPath` if gzip.
  */
-async function tryChunkedDownload(baseUrl: string, destPath: string, assembledPath: string, isGzip: boolean): Promise<boolean> {
+async function tryChunkedDownload(baseUrl: string, destPath: string, assembledPath: string, isGzip: boolean, timeoutMs: number): Promise<boolean> {
   let chunkCount = 0;
 
   for (let i = 0; ; i++) {
     const partUrl = `${baseUrl}.part-${chunkSuffix(i)}`;
     try {
-      await fetchToFile(partUrl, assembledPath, i === 0 ? "w" : "a");
+      await fetchToFile(partUrl, assembledPath, timeoutMs, i === 0 ? "w" : "a");
       chunkCount++;
       logInfo(`chunk ${chunkCount} (${chunkSuffix(i)}) ✓`);
-    } catch {
+    } catch (err) {
+      // A stall is not a missing chunk: falling through would spend a second timeout.
+      if (err instanceof DownloadTimeoutError) throw err;
       if (i === 0) return false; // no chunks exist
       break; // end of chunk sequence
     }
@@ -132,19 +144,21 @@ export async function ensureDb(spec: DbSpec): Promise<void> {
   const url = process.env[spec.urlEnvVar];
   const shouldRefresh = !!spec.refreshOnStartup && !!url;
 
-  if (!shouldRefresh && fs.existsSync(dbPath)) {
+  let localValid = false;
+  if (fs.existsSync(dbPath)) {
     try {
       const { default: Database } = await import("better-sqlite3");
       const db = new Database(dbPath, { readonly: true });
       const row = db.prepare(spec.validationQuery).get();
       db.close();
       if (!row) throw new Error("validation query returned no rows");
-      return;
+      localValid = true;
     } catch {
       logWarn(`${spec.name} DB invalid or outdated — will re-download`);
     }
   }
 
+  if (localValid && !shouldRefresh) return;
   if (!url) return;
 
   logInfo(shouldRefresh ? `Refreshing ${spec.name} DB from ${spec.urlEnvVar}...` : `Downloading ${spec.name} DB...`);
@@ -155,12 +169,15 @@ export async function ensureDb(spec: DbSpec): Promise<void> {
   const gzTmpPath = tmpPath + ".gz";
   try {
     const isGzip = url.endsWith(".gz");
+    const timeoutMs = localValid
+      ? spec.refreshTimeoutMs ?? REFRESH_TIMEOUT_MS
+      : spec.downloadTimeoutMs ?? DOWNLOAD_TIMEOUT_MS;
 
     // Try chunked download first (split-for-release.sh assets), fall back to single file
-    const chunked = await tryChunkedDownload(url, tmpPath, gzTmpPath, isGzip);
+    const chunked = !localValid && await tryChunkedDownload(url, tmpPath, gzTmpPath, isGzip, timeoutMs);
     if (!chunked) {
       logInfo("single-file download...");
-      await fetchToFile(url, isGzip ? gzTmpPath : tmpPath);
+      await fetchToFile(url, isGzip ? gzTmpPath : tmpPath, timeoutMs);
       if (isGzip) {
         await pipeline(fs.createReadStream(gzTmpPath), createGunzip(), fs.createWriteStream(tmpPath));
         fs.unlinkSync(gzTmpPath);

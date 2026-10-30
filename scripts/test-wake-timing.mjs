@@ -121,11 +121,12 @@ try {
   console.log(`  ── wake-to-handshake:       ${Math.max(healthAt, initAt)}ms (budget ${WAKE_BUDGET_MS}ms)`);
 
   const handshake = Math.max(healthAt, initAt);
-  const beatModel = modelLoadedAt === null || handshake < modelLoadedAt;
+  // No model load (it failed, or the DB has no embeddings) means nothing was raced.
+  const beatModel = modelLoadedAt !== null && handshake < modelLoadedAt;
   const pass = initOk && healthAt < WAKE_BUDGET_MS && initAt < WAKE_BUDGET_MS && beatModel;
   console.log(
     `\n${pass ? "✓ PASS" : "✗ FAIL"} — cold-wake /health + initialize answered in ${handshake}ms` +
-      (modelLoadedAt !== null ? `, ${modelLoadedAt - handshake}ms before the model finished loading.` : "."),
+      (modelLoadedAt !== null ? `, ${modelLoadedAt - handshake}ms before the model finished loading.` : ", but the model never loaded."),
   );
   child.kill("SIGTERM");
   await sleep(300);

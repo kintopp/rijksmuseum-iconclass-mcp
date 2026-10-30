@@ -201,6 +201,11 @@ let httpServer: import("node:http").Server | undefined;
 
 const MAX_REQUEST_BODY_BYTES = 100 * 1024;
 const RESPONSE_TIMEOUT_MS = 30_000;
+const REJECTED_BODY: Record<number, { code: number; message: string }> = {
+  400: { code: -32700, message: "Parse error: the request body is not valid JSON" },
+  413: { code: -32000, message: `Payload Too Large: Request body must not exceed ${MAX_REQUEST_BODY_BYTES} bytes` },
+  415: { code: -32000, message: "Unsupported Media Type: compressed or non-UTF-8 request bodies are not accepted" },
+};
 
 async function runHttp(): Promise<void> {
   await initDatabase();
@@ -282,6 +287,26 @@ async function runHttp(): Promise<void> {
   // unauthenticated operational signal — tool names, counts, latencies only.
   app.get("/debug/stats", (_req: express.Request, res: express.Response) => {
     res.json(usageStats?.toJSON() ?? { error: "usage stats not initialized" });
+  });
+
+  // ── Rejected requests ──────────────────────────────────────────
+  //
+  // express.json() fails here. Express's default handler answers in HTML and
+  // writes the stack to bare stderr, which Railway tags level=error.
+  app.use((err: Error & { status?: number }, _req: express.Request, res: express.Response, next: express.NextFunction) => {
+    if (res.headersSent) {
+      next(err);
+      return;
+    }
+    const status = err.status ?? 500;
+    const rejection = REJECTED_BODY[status];
+    if (rejection) logWarn("Rejected MCP request body", err.message);
+    else logError("MCP request error", err);
+    res.status(rejection ? status : 500).json({
+      jsonrpc: "2.0",
+      error: rejection ?? { code: -32603, message: "Internal server error" },
+      id: null,
+    });
   });
 
   // ── Start ──────────────────────────────────────────────────────

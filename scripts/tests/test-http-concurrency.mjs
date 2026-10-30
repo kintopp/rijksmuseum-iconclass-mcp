@@ -11,7 +11,9 @@
  * compressed or buffered, so a listen stream's first frame never arrives; a
  * body-less 202 that won't decode; express.json and the adapter disagreeing on
  * the size limit (the adapter alone sees non-JSON bodies); compressed request
- * bodies accepted again (they must stay off zlib). The handler's own
+ * bodies accepted again (they must stay off zlib); a body express.json rejects
+ * answered in HTML, or its stack written to bare stderr, which Railway tags
+ * level=error. The handler's own
  * maxRequestBodySize is an equivalent mutation: the adapter's bound applies
  * first and express.json has already checked parsed bodies.
  *
@@ -228,6 +230,9 @@ try {
     assertEq(at.status, 200, "a JSON body of exactly 100 KiB is served");
     const over = await raw(url, { headers: legacyJson, body: paddedJson(LIMIT + 1) });
     assertEq(over.status, 413, "a JSON body one byte over is refused");
+    const err = JSON.parse(over.text);
+    assertEq(err.error?.code, -32000, "the JSON 413 is a JSON-RPC error");
+    assertEq(err.error?.message, `Payload Too Large: Request body must not exceed ${LIMIT} bytes`, "the JSON 413 names the limit, as the adapter's does");
   });
 
   await atest("a non-JSON body hits the same limit in the adapter", async () => {
@@ -251,6 +256,32 @@ try {
     const body = zlib.gzipSync(JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list", params: {} }));
     const r = await raw(url, { headers: { ...legacyJson, "content-encoding": "gzip" }, body });
     assertEq(r.status, 415, "Content-Encoding on a JSON request returns 415");
+    assertEq(
+      JSON.parse(r.text).error?.message,
+      "Unsupported Media Type: compressed or non-UTF-8 request bodies are not accepted",
+      "the 415 says what's wrong"
+    );
+  });
+
+  await atest("malformed JSON is a JSON-RPC parse error", async () => {
+    const r = await raw(url, { headers: legacyJson, body: "{not json" });
+    assertEq(r.status, 400, "malformed JSON returns 400");
+    const err = JSON.parse(r.text);
+    assertEq(err.error?.code, -32700, "the code is -32700 (parse error)");
+    assertEq(err.error?.message, "Parse error: the request body is not valid JSON", "the message names the parse failure");
+    assertEq(err.id, null, "the id is null, since the body couldn't be read");
+  });
+
+  await atest("rejected bodies log structured warnings, nothing bare", async () => {
+    const lines = frameServer.stderr().split("\n").filter(Boolean);
+    const bare = lines.filter((l) => {
+      try { return typeof JSON.parse(l).level !== "string"; } catch { return true; }
+    });
+    assertEq(bare.join("\n").slice(0, 200), "", "every stderr line is JSON with a level");
+    const warns = lines.filter((l) => l.includes('"message":"Rejected MCP request body"'));
+    assertEq(warns.length, 3, "the 413, the 415 and the parse error each log one line");
+    assert(warns.every((l) => JSON.parse(l).level === "warn"), "rejected input is logged at warn, not error");
+    assert(warns.every((l) => !l.includes('"stack"')), "a rejected body logs no stack");
   });
 
   await atest("GET /mcp is 405 with Allow: POST", async () => {

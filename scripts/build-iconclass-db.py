@@ -51,6 +51,17 @@ def fix_de_keyword(keyword: str) -> str:
 
 # Languages supported by the iconclass Python library (text composition + keywords)
 LIBRARY_LANGS = {"en", "de", "fr", "it", "pt", "jp"}
+LIBRARY_LANGS_WITHOUT_KEYWORDS = {"jp"}
+
+# Each library language has about 1.35M texts and at least 2.1M keywords. Nothing
+# after the build checks per-language counts, so a language lost here would ship.
+MIN_LIBRARY_LANG_TEXTS = 1_200_000
+MIN_LIBRARY_LANG_KEYWORDS = 1_900_000
+
+
+def require_rows(kind: str, lang: str, count: int, minimum: int) -> None:
+    if count < minimum:
+        sys.exit(f"ERROR: {lang} has {count:,} {kind}, expected at least {minimum:,}")
 
 # All languages in the CC0 dump text files
 ALL_TEXT_LANGS = {"cz", "de", "en", "es", "fi", "fr", "hu", "it", "jp", "nl", "pl", "pt", "zh"}
@@ -153,7 +164,7 @@ def build(data_dir: str, output_path: str):
     # ── Phase 1: Load all notation codes + structure via library ───
     print("Phase 1: Loading notation structure (1.3M notations)...")
 
-    from iconclass import Iconclass
+    from iconclass import Iconclass, NotationNotFound
     ic = Iconclass()
     # Load all library-supported languages
     for lang in sorted(LIBRARY_LANGS):
@@ -289,7 +300,7 @@ def build(data_dir: str, output_path: str):
                 if text:
                     text_batch.append((code, lang, text))
                     lang_count += 1
-            except Exception:
+            except NotationNotFound:
                 pass
 
             # Batch insert every 100K
@@ -300,6 +311,7 @@ def build(data_dir: str, output_path: str):
                 text_batch = []
 
         print(f"  {lang}: {lang_count:,} texts (library)")
+        require_rows("texts", lang, lang_count, MIN_LIBRARY_LANG_TEXTS)
 
     # Flush remaining
     if text_batch:
@@ -391,7 +403,7 @@ def build(data_dir: str, output_path: str):
                         kw = fix_de_keyword(kw)
                     kw_batch.append((code, lang, kw))
                     lang_count += 1
-            except Exception:
+            except NotationNotFound:
                 pass
 
             if len(kw_batch) >= 100_000:
@@ -401,6 +413,8 @@ def build(data_dir: str, output_path: str):
                 kw_batch = []
 
         print(f"  {lang}: {lang_count:,} keywords (library)")
+        if lang not in LIBRARY_LANGS_WITHOUT_KEYWORDS:
+            require_rows("keywords", lang, lang_count, MIN_LIBRARY_LANG_KEYWORDS)
 
     if kw_batch:
         conn.executemany("INSERT INTO keywords VALUES (?, ?, ?)", kw_batch)

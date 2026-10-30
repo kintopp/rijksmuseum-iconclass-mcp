@@ -1,20 +1,20 @@
 #!/usr/bin/env node
 import { McpServer, createMcpHandler } from "@modelcontextprotocol/server";
 import { serveStdio } from "@modelcontextprotocol/server/stdio";
+import { toNodeHandler } from "@modelcontextprotocol/node";
 import express from "express";
 import cors from "cors";
 import compression from "compression";
 import { execSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { Readable, pipeline } from "node:stream";
-import type { ReadableStream } from "node:stream/web";
 import { fileURLToPath } from "node:url";
 
 import { IconclassDb } from "./api/IconclassDb.js";
 import { EmbeddingModel } from "./api/EmbeddingModel.js";
 import { ensureDb, type DbSpec } from "./utils/db.js";
 import { logInfo, logWarn, logError } from "./utils/log.js";
+import { withResponseTimeout } from "./utils/responseTimeout.js";
 import {
   captureMemorySnapshot,
   formatMemorySnapshotDetailed,
@@ -199,6 +199,9 @@ async function runStdio(): Promise<void> {
 
 let httpServer: import("node:http").Server | undefined;
 
+const MAX_REQUEST_BODY_BYTES = 100 * 1024;
+const RESPONSE_TIMEOUT_MS = 30_000;
+
 async function runHttp(): Promise<void> {
   await initDatabase();
   if (!iconclassDb?.available) {
@@ -218,9 +221,9 @@ async function runHttp(): Promise<void> {
   app.use(compression({ threshold: 1024 })); // gzip responses >= 1 KB
   // inflate: false rejects Content-Encoding'd bodies (415): MCP clients never
   // compress requests, and it keeps zlib/Brotli decoding off attacker input.
-  app.use(express.json({ inflate: false }));
+  app.use(express.json({ inflate: false, limit: MAX_REQUEST_BODY_BYTES }));
 
-  // ── MCP endpoint (stateless — no sessions, no SSE streams) ─────
+  // ── MCP endpoint (stateless — no sessions) ─────────────────────
   //
   // createMcpHandler invokes the server factory per request, so a fresh
   // McpServer still backs every POST: the SDK enforces one transport per
@@ -228,67 +231,21 @@ async function runHttp(): Promise<void> {
   // under concurrent POSTs. The expensive state — IconclassDb and
   // EmbeddingModel — is initialized once in initDatabase() and shared
   // read-only via the closure captured by registerTools().
-
-  // 30s safety net — respond 504 before Railway's proxy kills the connection silently
-  app.use("/mcp", (_req: express.Request, res: express.Response, next: express.NextFunction) => {
-    res.setTimeout(30_000, () => {
-      if (!res.headersSent) {
-        res.status(504).json({ error: "Request timeout" });
-      }
-    });
-    next();
+  //
+  // 2026-era requests are served statelessly; 2025-era clients fall back to
+  // the `sessionIdGenerator: undefined` idiom, so existing connectors keep
+  // working unchanged.
+  const mcpHandler = createMcpHandler(() => createServer(), {
+    maxRequestBodySize: MAX_REQUEST_BODY_BYTES,
+    // Fires for rejected client requests as well as serving failures.
+    onerror: (err) => logWarn("MCP handler error", err),
+  });
+  const handleMcp = toNodeHandler(withResponseTimeout(mcpHandler, RESPONSE_TIMEOUT_MS), {
+    maxRequestBodySize: MAX_REQUEST_BODY_BYTES,
+    onerror: (err) => logError("MCP endpoint error", err),
   });
 
-  // One handler for the endpoint's lifetime; it invokes the factory per
-  // request internally. 2026-era requests are served statelessly; 2025-era
-  // clients fall back to the same `sessionIdGenerator: undefined` idiom this
-  // replaces, so existing connectors keep working unchanged.
-  const mcpHandler = createMcpHandler(() => createServer());
-
-  app.post("/mcp", async (req: express.Request, res: express.Response) => {
-    // A client disconnect must reach the SDK: without the signal and the
-    // pipeline's cancel, an SSE response (subscriptions/listen) outlives its
-    // socket and its keep-alive timer queues chunks forever (#427).
-    const disconnect = new AbortController();
-    res.on("close", () => disconnect.abort());
-    try {
-      const headers = new Headers();
-      for (const [key, value] of Object.entries(req.headers)) {
-        // Framing headers describe the raw stream express.json() already
-        // consumed and decoded; re-sending them would misdescribe the body.
-        if (key === "content-length" || key === "content-encoding") continue;
-        if (typeof value === "string") headers.set(key, value);
-        else if (Array.isArray(value)) for (const v of value) headers.append(key, v);
-      }
-      const response = await mcpHandler.fetch(
-        new Request(`http://${req.headers.host ?? "localhost"}/mcp`, {
-          method: "POST",
-          headers,
-          body: JSON.stringify(req.body),
-          signal: disconnect.signal,
-        }),
-        { parsedBody: req.body }
-      );
-      res.status(response.status);
-      response.headers.forEach((value, key) => {
-        // Let Node recompute framing; compression middleware may transform.
-        if (key === "content-length") return;
-        res.setHeader(key, value);
-      });
-      if (response.body) {
-        // pipeline (unlike pipe) destroys the source when res closes, which
-        // cancels the web stream. A premature close is the client leaving.
-        pipeline(Readable.fromWeb(response.body as ReadableStream), res, () => {});
-      } else {
-        res.end();
-      }
-    } catch (err) {
-      logError("MCP endpoint error", err);
-      if (!res.headersSent) {
-        res.status(500).json({ error: "Internal server error" });
-      }
-    }
-  });
+  app.post("/mcp", (req: express.Request, res: express.Response) => handleMcp(req, res, req.body));
 
   app.all("/mcp", (_req: express.Request, res: express.Response) => {
     res.setHeader("Allow", "POST");

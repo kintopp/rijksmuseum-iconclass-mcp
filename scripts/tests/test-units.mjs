@@ -18,6 +18,13 @@
  * EMBEDDING_THREADS "" or junk passed to onnxruntime (0 = all cores, NaN throws)
  * instead of falling back to 2 with a warning.
  *
+ * withResponseTimeout failure modes (through the SDK's toNodeHandler over real
+ * HTTP, since its unconditional writeHead is the hazard): a stuck call never
+ * answered; the 504 written twice or crashing the adapter; a late response's
+ * SSE body left unread, so its keep-alive runs forever (#427); a late rejection
+ * going unhandled, which kills the process; a stream cut because it outlived
+ * the timeout; a handler throw hidden behind the 504.
+ *
  * UsageStats concurrency: processes sharing one stats file renaming each
  * other's temp file away (ENOENT, logged as "usage stats flush failed").
  *
@@ -40,6 +47,8 @@ import { ensureDb } from "../../dist/utils/db.js";
 import { VectorIndex } from "../../dist/api/VectorIndex.js";
 import { embeddingsCountConsistent } from "../../dist/api/IconclassDb.js";
 import { EmbeddingModel } from "../../dist/api/EmbeddingModel.js";
+import { withResponseTimeout } from "../../dist/utils/responseTimeout.js";
+import { toNodeHandler } from "@modelcontextprotocol/node";
 import { env as hfEnv } from "@huggingface/transformers";
 import { spawn } from "node:child_process";
 import { assert, assertEq, section, atest, report } from "./_assert.mjs";
@@ -559,6 +568,112 @@ try {
     assert(results.every((r) => r.code === 0), "all writers exit 0");
     assertEq(results.filter((r) => r.err.includes("usage stats flush failed")).length, 0, "no writer logs a failed flush");
   });
+
+  // ════════════════════════════════════════════════════════════════
+  section("withResponseTimeout — through toNodeHandler");
+  {
+    const TIMEOUT_MS = 50;
+    const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+    const unhandled = [];
+    const onUnhandled = (err) => unhandled.push(err);
+    process.on("unhandledRejection", onUnhandled);
+
+    /** Serve one stubbed fetch over real HTTP; the adapter's errors are collected. */
+    const serve = async (fetchStub) => {
+      const adapterErrors = [];
+      const handle = toNodeHandler(withResponseTimeout({ fetch: fetchStub }, TIMEOUT_MS), {
+        onerror: (e) => adapterErrors.push(e.message),
+      });
+      const rejections = [];
+      const server = http.createServer((req, res) => {
+        handle(req, res).catch((e) => { rejections.push(e.message); res.destroy(); });
+      });
+      await new Promise((r) => server.listen(0, "127.0.0.1", r));
+      const url = `http://127.0.0.1:${server.address().port}/mcp`;
+      return { url, adapterErrors, rejections, close: () => { server.closeAllConnections(); server.close(); } };
+    };
+    const post = (url) => fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
+
+    await atest("a stuck call is answered 504 once, and its late SSE body is cancelled", async () => {
+      let cancelled = false;
+      const late = new ReadableStream({
+        start(c) { c.enqueue(new TextEncoder().encode(": keepalive\n\n")); },
+        cancel() { cancelled = true; },
+      });
+      const s = await serve(async () => {
+        await sleep(TIMEOUT_MS * 3);
+        return new Response(late, { headers: { "content-type": "text/event-stream" } });
+      });
+      try {
+        const r = await post(s.url);
+        assertEq(r.status, 504, "the stuck call is answered 504");
+        assertEq(await r.text(), '{"error":"Request timeout"}', "the 504 body names the timeout");
+        await sleep(TIMEOUT_MS * 4);
+        assert(cancelled, "the late response's body is cancelled");
+        assertEq(s.rejections.length, 0, "the adapter doesn't throw (no ERR_HTTP_HEADERS_SENT)");
+      } finally { s.close(); }
+    });
+
+    await atest("a client that leaves during a stuck call doesn't break the 504 path", async () => {
+      const s = await serve(async () => { await sleep(TIMEOUT_MS * 3); return new Response("late"); });
+      try {
+        const ac = new AbortController();
+        const pending = fetch(s.url, { method: "POST", body: "{}", signal: ac.signal }).catch((e) => e.name);
+        await sleep(TIMEOUT_MS / 5);
+        ac.abort();
+        assertEq(await pending, "AbortError", "the client aborted");
+        await sleep(TIMEOUT_MS * 4);
+        assertEq(s.rejections.length, 0, "the adapter survives writing to the closed response");
+      } finally { s.close(); }
+    });
+
+    await atest("a rejection after the timeout stays handled", async () => {
+      const s = await serve(async () => { await sleep(TIMEOUT_MS * 2); throw new Error("late failure"); });
+      try {
+        assertEq((await post(s.url)).status, 504, "the stuck call is answered 504");
+        await sleep(TIMEOUT_MS * 3);
+        assertEq(unhandled.length, 0, "no unhandled rejection");
+      } finally { s.close(); }
+    });
+
+    await atest("a stream that outlives the timeout is not cut", async () => {
+      const s = await serve(async () => new Response(new ReadableStream({
+        async start(c) {
+          c.enqueue(new TextEncoder().encode("first,"));
+          await sleep(TIMEOUT_MS * 3);
+          c.enqueue(new TextEncoder().encode("last"));
+          c.close();
+        },
+      }), { headers: { "content-type": "text/event-stream" } }));
+      try {
+        const r = await post(s.url);
+        assertEq(r.status, 200, "the stream keeps its status");
+        assertEq(await r.text(), "first,last", "the stream runs to its end, past the timeout");
+      } finally { s.close(); }
+    });
+
+    await atest("a response in time passes through unchanged", async () => {
+      const s = await serve(async () => new Response("ok", { status: 201, headers: { "x-test": "1" } }));
+      try {
+        const r = await post(s.url);
+        assertEq(r.status, 201, "status passes through");
+        assertEq(r.headers.get("x-test"), "1", "headers pass through");
+        assertEq(await r.text(), "ok", "body passes through");
+      } finally { s.close(); }
+    });
+
+    await atest("a handler throw reaches the adapter's 500, not the 504", async () => {
+      const s = await serve(async () => { throw new Error("boom"); });
+      try {
+        const r = await post(s.url);
+        assertEq(r.status, 500, "the throw becomes the adapter's 500");
+        assertEq((await r.json()).error?.message, "Internal server error", "the 500 is the adapter's JSON-RPC error");
+        assertEq(s.adapterErrors.join(), "boom", "the adapter's onerror sees the cause");
+      } finally { s.close(); }
+    });
+
+    process.off("unhandledRejection", onUnhandled);
+  }
 
   // ── Summary ───────────────────────────────────────────────────
   report();

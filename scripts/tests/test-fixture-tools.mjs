@@ -19,6 +19,10 @@
  *    label is shorter, so one concept's variants fill the page; or, the other
  *    way, a variant that matched only on its key (its base didn't match) is
  *    pushed behind weaker base matches.
+ *  - a notation matching in both label and keyword ranks on only the better of
+ *    the two, so a label-only match with a shorter text beats it.
+ *  - a variant is demoted as an echo of a base the collection filter removed,
+ *    so nothing listed explains its demotion.
  *  - totalBaseNotations counts base rows instead of distinct bases (a variant
  *    whose base didn't match must still count it), or ignores the filters.
  *  - collectionId / onlyWithArtworks / parentNotation leak results from outside
@@ -34,7 +38,11 @@
  *    and resolve show the parent (73D82, 12A27) as a leaf.
  *  - browse loses path labels, depth levels, resolved/unresolved cross-refs,
  *    or key-variant paging; lang falls back in the wrong order.
- *  - resolve drops a miss instead of naming it in notFound.
+ *  - resolve drops a miss instead of naming it in notFound, or answers an
+ *    all-miss call with an error, which carries no notFound.
+ *  - a padded notation reads as absent, or find_artworks double-encodes it.
+ *  - browse says nothing when includeKeys yields no key variants, or
+ *    expand_keys prints a backwards range past the end.
  *  - expand_keys accepts a key-expanded input, names the wrong base for it
  *    (dropping a named key), or miscounts variants.
  *  - search_prefix loses notation punctuation, mis-orders, or mis-pages; baseOnly
@@ -80,7 +88,7 @@ if (!ok(r0, "search_prefix 73D") || !assert(sc(r0).collections.some((c) => c.col
 }
 // totalNotations: seeded rows that JOIN to a notation; the "99X" row in each collection must not count.
 eqList(sc(r0).collections, [
-  { collectionId: "rijksmuseum", label: "Rijksmuseum, Amsterdam", countsAsOf: "2026-06-13", totalNotations: 39, searchUrlTemplate: null },
+  { collectionId: "rijksmuseum", label: "Rijksmuseum, Amsterdam", countsAsOf: "2026-06-13", totalNotations: 41, searchUrlTemplate: null },
   { collectionId: "testmuseum", label: "Test Museum", countsAsOf: "2026-01-01", totalNotations: 4, searchUrlTemplate: "https://collection.example.org/search?iconclass={notation}" },
 ], "collections are the fixture's two, with totalNotations excluding unknown notations");
 
@@ -186,6 +194,24 @@ const r2sl = await call("search", { query: "sleeping" });
 if (ok(r2sl, "sleeping"))
   eqList(notations(sc(r2sl).results), ["25F23(+46)", "71F1544"],
     "a variant whose base didn't match keeps its BM25 place ahead of a longer base");
+
+// "christi": 73D matches in label and keyword, 73D81 in a shorter label only. Same
+// tier (one collection each), so the second match must outweigh the shorter text.
+const r2both = await call("search", { query: "christi" });
+if (ok(r2both, "christi"))
+  eqList(notations(sc(r2both).results), ["73D6", "73D", "73D81"], "a match in both label and keyword beats a label-only match with a shorter text");
+
+// "epidaurus": 92F27911(+0) matches in label and keyword, 92F27912 in its label
+// only. Unfiltered the variant's base is listed (no coverage, so last), which makes
+// the variant an echo behind 92F27912. Filtered, the base is gone: not an echo.
+const r2ep = await call("search", { query: "epidaurus" });
+if (ok(r2ep, "epidaurus"))
+  eqList(notations(sc(r2ep).results), ["92F27912", "92F27911(+0)", "92F27911"], "a variant whose base is listed goes after the tier's bases");
+const r2epf = await call("search", { query: "epidaurus", onlyWithArtworks: true });
+if (ok(r2epf, "epidaurus onlyWithArtworks")) {
+  eqList(notations(sc(r2epf).results), ["92F27911(+0)", "92F27912"], "a variant whose base was filtered out keeps its relevance place");
+  assertEq(sc(r2epf).totalBaseNotations, 2, "the filtered-out base still counts for its variant");
+}
 
 const r2r = await call("search", { query: "crucifixion", collectionId: "rijksmuseum" });
 if (ok(r2r, "collectionId rijksmuseum"))
@@ -356,6 +382,20 @@ if (ok(r4kx, "browse key-expanded")) {
   eqList(notations(sc(r4kx).entry.path), ["2", "25", "25F", "25F2", "25F23", "25F23(+4)"], "key-expanded path runs through its key parent");
 }
 
+const r4pad = await call("browse", { notation: " 73D6 " });
+if (ok(r4pad, "browse padded")) assertEq(sc(r4pad).entry.notation, "73D6", "a padded notation browses");
+
+const r4kpast = await call("browse", { notation: "25F23", includeKeys: true, keyOffset: 1000 });
+if (ok(r4kpast, "browse keyOffset past the end"))
+  assertEq(lines(r4kpast).at(-1), "Key variants: none at keyOffset 1000 (30 in total).", "keyOffset past the end says so");
+const r4kself = await call("browse", { notation: "25F23(+46)", includeKeys: true });
+if (ok(r4kself, "browse key-expanded includeKeys"))
+  assertEq(lines(r4kself).at(-1), "Key variants: none, because this notation is itself key-expanded.", "includeKeys on a variant says why there are none");
+const r4knone = await call("browse", { notation: "31E2356", includeKeys: true });
+if (ok(r4knone, "browse no variants")) assertEq(lines(r4knone).at(-1), "Key variants: none.", "a base without variants says so");
+const r4knokeys = await call("browse", { notation: "31E2356" });
+if (ok(r4knokeys, "browse without includeKeys")) assert(!txt(r4knokeys).includes("Key variants"), "no key line unless includeKeys was asked for");
+
 const r4nf = await call("browse", { notation: "ZZZZZ" });
 assert(r4nf.isError === true, "unknown notation is an error");
 assertEq(txt(r4nf), 'Notation "ZZZZZ" not found in Iconclass.', "browse not-found wording");
@@ -392,8 +432,18 @@ if (ok(r5, "resolve batch")) {
 const r5t = await call("resolve", { notation: ["12A27"] });
 if (ok(r5t, "resolve 12A27")) eqList(sc(r5t).notations[0].children, ["12A27(...)"], "resolve lists the name template as a child");
 const r5none = await call("resolve", { notation: ["ZZZZZ", "YYYYY"] });
-assert(r5none.isError === true, "all misses is an error");
-assertEq(txt(r5none), "None of the requested notations were found: ZZZZZ, YYYYY", "all-miss wording names every code");
+if (ok(r5none, "resolve all misses")) {
+  eqList(sc(r5none).notations, [], "all misses: no notations");
+  eqList(sc(r5none).notFound, ["ZZZZZ", "YYYYY"], "all misses are named in notFound, in input order");
+  assertEq(txt(r5none), "not found (2): ZZZZZ, YYYYY", "all-miss text names every code");
+}
+const r5pad = await call("resolve", { notation: [" 73D6", "31E2356 "] });
+if (ok(r5pad, "resolve padded")) {
+  eqList(notations(sc(r5pad).notations), ["73D6", "31E2356"], "padded notations resolve");
+  eqList(sc(r5pad).notFound, [], "padded notations aren't reported missing");
+}
+const r5blank = await call("resolve", { notation: "   " });
+assert(r5blank.isError === true && txt(r5blank).includes("notation"), "a blank notation is rejected, naming the argument");
 const r5lang = await call("resolve", { notation: "73D6", lang: "xx" });
 assert(txt(r5lang).startsWith("Input validation error: Invalid arguments for tool resolve: lang: Invalid option"), "an unsupported lang is rejected");
 
@@ -421,6 +471,11 @@ if (ok(r6n, "expand_keys named variant")) {
   assertEq(sc(r6n).baseEntry.notation, "73D82(CROSS)", "a named variant is its own base");
   assertEq(sc(r6n).totalKeyVariants, 0, "with no key variants");
 }
+const r6past = await call("expand_keys", { notation: "25F23", offset: 1000 });
+if (ok(r6past, "expand_keys offset past the end"))
+  assert(lines(r6past)[0].endsWith("— 30 key variants (none at offset 1000)"), `no backwards range past the end (got: ${lines(r6past)[0]})`);
+const r6pad = await call("expand_keys", { notation: " 25F23 " });
+if (ok(r6pad, "expand_keys padded")) assertEq(sc(r6pad).baseEntry.notation, "25F23", "a padded notation expands");
 assertEq(txt(await call("expand_keys", { notation: "ZZZZZ" })), 'Notation "ZZZZZ" not found in Iconclass.', "expand_keys not-found wording");
 
 // ══════════════════════════════════════════════════════════════════
@@ -450,6 +505,9 @@ if (ok(r7t, "prefix + testmuseum")) eqList(notations(sc(r7t).results), ["73D6", 
 const r7punct = await call("search_prefix", { notation: "12A27(Deut. 21:22-23)" });
 if (ok(r7punct, "prefix with punctuation"))
   eqList(notations(sc(r7punct).results), ["12A27(Deut. 21:22-23)", "12A27(Deut. 21:22-23)(+0)"], "punctuation is part of the prefix");
+const r7pad = await call("search_prefix", { notation: " 73D8 " });
+if (ok(r7pad, "prefix padded")) assertEq(sc(r7pad).prefix, "73D8", "a padded prefix is trimmed");
+if (ok(r7pad, "prefix padded")) assert(sc(r7pad).totalResults > 0, "a padded prefix still matches");
 const r7wild = await call("search_prefix", { notation: "12A2_" });
 if (ok(r7wild, "prefix 12A2_")) assertEq(sc(r7wild).totalResults, 0, "'_' is literal, not a LIKE wildcard");
 const r7pct = await call("search_prefix", { notation: "7%" });
@@ -475,6 +533,14 @@ if (ok(r7baseT, "prefix 25F23 + testmuseum") && ok(r7baseT2, "prefix 25F23 + tes
 
 // ══════════════════════════════════════════════════════════════════
 section("8. find_artworks");
+
+const r8pad = await call("find_artworks", { notation: " 73D6 " });
+if (ok(r8pad, "find_artworks padded")) {
+  const row = sc(r8pad).notations[0];
+  assertEq(row.notation, "73D6", "a padded notation is trimmed");
+  eqList(row.collections.map((c) => c.collectionId).sort(), ["rijksmuseum", "testmuseum"], "and finds its artworks, not a false 'no artworks'");
+  assert(!row.artResearchUrl.includes("%20") && !row.artResearchUrl.includes("%2520"), `and its ArtResearch link carries no encoded padding (got: ${row.artResearchUrl})`);
+}
 
 const r8 = await call("find_artworks", { notation: ["73D6", "NONEXISTENT_ZZZZZ", "12A27(Deut. 21:22-23)"] });
 if (ok(r8, "find_artworks batch")) {

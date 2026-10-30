@@ -76,6 +76,8 @@ const stripNull = (v: unknown) =>
 const optStr = () => z.preprocess(stripNull, z.string().optional());
 /** As optStr, trimmed first: a padded prefix would otherwise match nothing. */
 const optTrimmedStr = () => z.preprocess(v => stripNull(typeof v === "string" ? v.trim() : v), z.string().optional());
+/** Trimmed: notations match byte-for-byte, so a padded code would read as absent. */
+const notationStr = () => z.string().trim().min(1);
 
 type ToolResponse = { content: [{ type: "text"; text: string }] };
 type StructuredToolResponse = ToolResponse & { structuredContent: Record<string, unknown> };
@@ -380,7 +382,7 @@ export function registerTools(
         `Children expand to depth 1-3 (use depth=2 for narrative exploration); wide branches are capped at ${IconclassDb.MAX_CHILDREN_PER_PARENT} children per parent and ${IconclassDb.MAX_SUBTREE_ENTRIES} entries in total; page the top-level children with childOffset. ` +
         "To list all key variants of a notation, use expand_keys instead of includeKeys.",
       inputSchema: z.object({
-        notation: z.string().min(1).describe("Iconclass notation to browse (e.g. '31A33', '73D82')."),
+        notation: notationStr().describe("Iconclass notation to browse (e.g. '31A33', '73D82')."),
         lang: LangField(),
         depth: z.number().int().min(1).max(3).default(1).optional()
           .describe("How many levels deep to expand children (1-3, default 1). Use 2 for narrative exploration; 3 only for narrow branches."),
@@ -433,10 +435,10 @@ export function registerTools(
         ? entry.children.indexOf(topShown[topShown.length - 1].notation, childOffset) + 1
         : Math.min(totalChildren, childOffset + IconclassDb.MAX_CHILDREN_PER_PARENT);
       if (subtree.length > 0) {
-        const childLines = subtree.map(c => {
+        const childLines = subtree.map((c, i) => {
           const indent = "  ".repeat(c.depth);
           const cc = formatCollections(c.collections);
-          const trunc = c.truncated ? ` [${c.totalChildren} children, showing 25]` : "";
+          const trunc = c.truncated ? ` [${c.totalChildren} children, showing ${shownChildren(subtree, i)}]` : "";
           return `${indent}${c.notation}${cc} "${c.text}"${trunc}`;
         });
         const childHeader = childOffset > 0 || nextChildOffset < totalChildren
@@ -462,6 +464,12 @@ export function registerTools(
           ? `Key variants (${kvOff + 1}–${kvOff + keyVariants.length} of ${totalKeyVariants}):`
           : `Key variants (${keyVariants.length}):`;
         sections.push(keyHeader, ...keyLines);
+      } else if (args.includeKeys) {
+        sections.push(
+          entry.isKeyExpanded ? "Key variants: none, because this notation is itself key-expanded."
+          : totalKeyVariants > 0 ? `Key variants: none at keyOffset ${args.keyOffset ?? 0} (${totalKeyVariants} in total).`
+          : "Key variants: none."
+        );
       }
 
       return structuredResponse(result, sections.join("\n"));
@@ -482,8 +490,8 @@ export function registerTools(
         "so this is a reliable way to verify uncertain notations.",
       inputSchema: z.object({
         notation: z.union([
-          z.string().min(1),
-          z.array(z.string().min(1)).min(1).max(TOOL_LIMITS.resolve.max),
+          notationStr(),
+          z.array(notationStr()).min(1).max(TOOL_LIMITS.resolve.max),
         ]).describe("One notation or array of notations to resolve (max 25)."),
         lang: LangField(),
       }).strict(),
@@ -499,10 +507,6 @@ export function registerTools(
       const found = new Set(entries.map(e => e.notation));
       const notFound = notations.filter(n => !found.has(n));
 
-      if (entries.length === 0) {
-        return errorResponse(`None of the requested notations were found: ${notFound.join(", ")}`);
-      }
-
       const lines = entries.map(e => {
         const colStr = formatCollections(e.collections);
         let line = `${e.notation}${colStr} "${e.text}"`;
@@ -512,7 +516,7 @@ export function registerTools(
       });
       // A silently short list reads as "verified" to a caller checking codes.
       if (notFound.length > 0) {
-        lines.push(`\nnot found (${notFound.length}): ${notFound.join(", ")}`);
+        lines.push(`${lines.length > 0 ? "\n" : ""}not found (${notFound.length}): ${notFound.join(", ")}`);
       }
       const data = { notations: entries, notFound, collections: db.collections };
       return structuredResponse(data, lines.join("\n"));
@@ -535,7 +539,7 @@ export function registerTools(
         "use browse with includeKeys for a quick preview alongside children." +
         (keysAvailable ? "" : " [currently unavailable — DB does not include key-expanded notations]"),
       inputSchema: z.object({
-        notation: z.string().min(1).describe("Base notation to expand (e.g. '25F23'). Must not be a key-expanded notation like '25F23(+46)'."),
+        notation: notationStr().describe("Base notation to expand (e.g. '25F23'). Must not be a key-expanded notation like '25F23(+46)'."),
         lang: LangField(),
         maxResults: z.number().int().min(1).max(TOOL_LIMITS.keyVariants.max).default(TOOL_LIMITS.keyVariants.default)
           .describe(`Maximum key variants to return (1-${TOOL_LIMITS.keyVariants.max}, default ${TOOL_LIMITS.keyVariants.default}).`),
@@ -561,8 +565,9 @@ export function registerTools(
 
       const { baseEntry, keyVariants, totalKeyVariants } = result;
       const colStr = formatCollections(baseEntry.collections);
-      const rangeStr = totalKeyVariants > keyVariants.length
-        ? ` (${(args.offset ?? 0) + 1}–${(args.offset ?? 0) + keyVariants.length} of ${totalKeyVariants})`
+      const offset = args.offset ?? 0;
+      const rangeStr = keyVariants.length === 0 && totalKeyVariants > 0 ? ` (none at offset ${offset})`
+        : totalKeyVariants > keyVariants.length ? ` (${offset + 1}–${offset + keyVariants.length} of ${totalKeyVariants})`
         : "";
       const header = `${baseEntry.notation} "${baseEntry.text}"${colStr} — ${totalKeyVariants} key variants${rangeStr}`;
       const lines = keyVariants.map(k => {
@@ -586,7 +591,7 @@ export function registerTools(
         "Results are ordered alphabetically by notation. " +
         "Broad prefixes (1–2 chars) match thousands of notations; results are paged with maxResults/offset, and a longer prefix narrows the set.",
       inputSchema: z.object({
-        notation: z.string().min(1).describe("Notation prefix (e.g. '73D8', '25F'). Matches all notations starting with this prefix."),
+        notation: notationStr().describe("Notation prefix (e.g. '73D8', '25F'). Matches all notations starting with this prefix."),
         lang: LangField(),
         collectionId: optStr()
           .describe("Filter to notations with artworks in this collection."),
@@ -641,8 +646,8 @@ export function registerTools(
         "narrower/key-expanded descendants, including codes absent from the local database.",
       inputSchema: z.object({
         notation: z.union([
-          z.string().min(1),
-          z.array(z.string().min(1)).min(1).max(TOOL_LIMITS.find_artworks.max),
+          notationStr(),
+          z.array(notationStr()).min(1).max(TOOL_LIMITS.find_artworks.max),
         ]).describe(`One notation or array of notations (max ${TOOL_LIMITS.find_artworks.max}).`),
         lang: LangField(),
       }).strict(),
@@ -683,6 +688,15 @@ export function registerTools(
 function formatCollections(collections: string[]): string {
   if (collections.length === 0) return "";
   return ` (${collections.join(", ")})`;
+}
+
+/** Direct children of subtree[i] actually listed: the entry cap can stop short of the per-parent cap. */
+function shownChildren(subtree: { depth: number }[], i: number): number {
+  let shown = 0;
+  for (let j = i + 1; j < subtree.length && subtree[j].depth > subtree[i].depth; j++) {
+    if (subtree[j].depth === subtree[i].depth + 1) shown++;
+  }
+  return shown;
 }
 
 /** Format an entry as a compact one-liner for LLM content. */

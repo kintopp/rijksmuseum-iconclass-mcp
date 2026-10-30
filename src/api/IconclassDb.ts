@@ -508,15 +508,16 @@ export class IconclassDb {
     }
     if (counted.length === 0) return empty;
 
-    // Within a coverage tier, a variant whose base also matched (echo) goes after
+    // Within a coverage tier, a variant whose base is also listed (echo) goes after
     // the bases: it shares its base's label, so on BM25 alone one narrow concept's
     // (+N) rows outrank every other base and fill the page. A variant whose base
     // didn't match ("sleeping" → 25F(+46)) matched on its key, so BM25 places it.
+    const listed = new Set(counted.map(({ notation }) => notation));
     const bases = new Set<string>();
     const rows = counted.map(({ notation, coverage }) => {
       const { rank, base } = hits.get(notation)!;
       bases.add(base ?? notation);
-      return { notation, coverage, rank, echo: base !== null && hits.has(base) ? 1 : 0 };
+      return { notation, coverage, rank, echo: base !== null && listed.has(base) ? 1 : 0 };
     });
     rows.sort((a, b) =>
       (b.coverage - a.coverage) || (a.echo - b.echo) || (a.rank - b.rank) || a.notation.localeCompare(b.notation));
@@ -779,7 +780,12 @@ export class IconclassDb {
 
   // ─── Internal ─────────────────────────────────────────────────────
 
-  /** Best FTS rank per matched notation, plus its base notation (null for a base row). */
+  /**
+   * FTS rank per matched notation, plus its base notation (null for a base row).
+   * The best rank from labels and from keywords are summed: on the better of the
+   * two alone, the many notations tying on one short keyword outrank a notation
+   * matching in both.
+   */
   private runFtsQueries(ftsExpr: string, parentNotation?: string): Map<string, FtsHit> {
     const map = new Map<string, FtsHit>();
     const likePattern = parentNotation ? escapeLikePrefix(parentNotation) : null;
@@ -790,11 +796,16 @@ export class IconclassDb {
       ? this.stmtKwFtsScoped.all(ftsExpr, likePattern)
       : this.stmtKwFts.all(ftsExpr);
 
-    // FTS5 rank is negative BM25 (lower = more relevant). Keep the best (lowest) rank per notation.
+    // FTS5 rank is negative BM25 (lower = more relevant).
     for (const rows of [textRows, keywordRows] as { notation: string; rank: number; base_notation: string | null }[][]) {
+      const best = new Map<string, FtsHit>();
       for (const r of rows) {
-        const prev = map.get(r.notation);
-        if (prev === undefined || r.rank < prev.rank) map.set(r.notation, { rank: r.rank, base: r.base_notation });
+        const prev = best.get(r.notation);
+        if (prev === undefined || r.rank < prev.rank) best.set(r.notation, { rank: r.rank, base: r.base_notation });
+      }
+      for (const [notation, hit] of best) {
+        const other = map.get(notation);
+        map.set(notation, other ? { ...hit, rank: other.rank + hit.rank } : hit);
       }
     }
     return map;

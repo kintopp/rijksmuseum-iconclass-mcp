@@ -252,6 +252,34 @@ if (assert(!r4cap.isError, "browse 11H(...) depth 2: no error")) {
   assertEq(txt(r4cap).split("\n").at(-1), CAP_NOTE, "the text ends with the cap note");
 }
 // childOffset pages the 182 saints 25 at a time (the fixture has no branch wider than 25).
+// A parent's "showing N" must count the children actually listed under it: the
+// 120-entry cap stops 11H's depth-3 expansion short of the 25-per-parent cap.
+const r4shown = await client.callTool({ name: "browse", arguments: { notation: "11H", depth: 3 } });
+if (assert(!r4shown.isError, "browse 11H depth 3: no error")) {
+  const childLines = r4shown.content[0].text.split("\n").filter((l) => /^ +\S/.test(l));
+  const indent = (l) => l.length - l.trimStart().length;
+  const claims = childLines.flatMap((l, i) => {
+    const m = l.match(/children, showing (\d+)\]$/);
+    if (!m) return [];
+    let listed = 0;
+    for (let j = i + 1; j < childLines.length && indent(childLines[j]) > indent(l); j++) {
+      if (indent(childLines[j]) === indent(l) + 2) listed++;
+    }
+    return [{ line: l.trim(), claimed: Number(m[1]), listed }];
+  });
+  if (assert(claims.length > 0, "the expansion has a truncated parent")) {
+    assert(claims.every((c) => c.claimed === c.listed), `each "showing N" matches the children listed (${JSON.stringify(claims.filter((c) => c.claimed !== c.listed).slice(0, 2))})`);
+    assert(claims.some((c) => c.listed < 25), "and at least one parent shows fewer than the per-parent cap, so the count is not a constant");
+  }
+}
+
+// 73D6 matches "crucifixion" in label and keyword. Ranked on the better of the two
+// alone, the 368 notations tying on the exact keyword put it 12th.
+const r4cru = await client.callTool({ name: "search", arguments: { query: "crucifixion", maxResults: 5 } });
+if (assert(!r4cru.isError, "search crucifixion: no error")) {
+  assert(sc(r4cru).results.slice(0, 3).some((r) => r.notation === "73D6"), `73D6 ranks in the top 3 for "crucifixion" (got: ${sc(r4cru).results.map((r) => r.notation).join(" ")})`);
+}
+
 const r4page = await client.callTool({ name: "browse", arguments: { notation: "11H(...)", childOffset: 25 } });
 if (assert(!r4page.isError, "browse 11H(...) childOffset 25: no error")) {
   const L = txt(r4page).split("\n");

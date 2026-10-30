@@ -145,6 +145,10 @@ const NOTATIONS = [
   ["25F23(+333)", ["2","25","25F","25F2","25F23","25F23(+3)","25F23(+33)"], [], ["34B11","34B12"], "25F23", "+333", 1],
   ["25F23(+4)", ["2","25","25F","25F2","25F23"], ["25F23(+46)"], ["34B11","34B12"], "25F23", "+4", 1],
   ["25F23(+46)", ["2","25","25F","25F2","25F23","25F23(+4)"], [], ["34B11","34B12"], "25F23", "+46", 1],
+  // A variant with coverage whose matching base has none.
+  ["92F27911", ["9","92","92F","92F2","92F27","92F279","92F2791"], [], [], null, null, 0],
+  ["92F27911(+0)", ["9","92","92F","92F2","92F27","92F279","92F2791","92F27911"], [], [], "92F27911", "+0", 1],
+  ["92F27912", ["9","92","92F","92F2","92F27","92F279","92F2791"], [], [], null, null, 0],
 ];
 
 // notation, lang, text. English everywhere; every language for 73D and 73D6.
@@ -243,10 +247,16 @@ const TEXTS = [
   ["25F23(+333)", "en", "beasts of prey, predatory animals (+ ears of an animal)"],
   ["25F23(+4)", "en", "beasts of prey, predatory animals (+ animal behaviour)"],
   ["25F23(+46)", "en", "beasts of prey, predatory animals (+ sleeping animal(s))"],
+  ["92F27911", "en", "a Roman embassy in the temple of Aesculapius at Epidaurus"],
+  ["92F27911(+0)", "en", "a Roman embassy in the temple of Aesculapius at Epidaurus (+ variant)"],
+  ["92F27912", "en", "Aesculapius transforms himself into a serpent (or dragon) and leaves Epidaurus by ship"],
 ];
 
 // notation, lang, keyword
 const KEYWORDS = [
+  ["92F27911", "en", "Epidaurus"], ["92F27911", "en", "embassy"], ["92F27911", "en", "temple"],
+  ["92F27911(+0)", "en", "Epidaurus"], ["92F27911(+0)", "en", "embassy"], ["92F27911(+0)", "en", "temple"], ["92F27911(+0)", "en", "variant"],
+  ["92F27912", "en", "dragon"], ["92F27912", "en", "serpent"], ["92F27912", "en", "ship"], ["92F27912", "en", "transformation"],
   ["73D6", "de", "Golgatha"], ["73D6", "de", "Johannes 19"], ["73D6", "de", "Kalvarienberg"],
   ["73D6", "de", "Kreuzigung"], ["73D6", "de", "Lukas 23"], ["73D6", "de", "Markus 15"],
   ["73D6", "de", "Matthaeus 27"], ["73D6", "de", "Tod"], ["73D6", "de", "letzte Stunden"],
@@ -275,6 +285,7 @@ const RIJKS_COUNTS = [
   ["73D82", 65], ["73D82(CROSS)", 17], ["73D82(NAILS)", 18], ["73D83", 3], ["73D9", 26], ["71F1544", 34],
   ["2", 9], ["25", 191], ["25F", 1124], ["25F2", 67], ["25F23", 182],
   ["25F23(+21)", 1], ["25F23(+331)", 1], ["25F23(+333)", 1],
+  ["92F27911(+0)", 1], ["92F27912", 2],
   ["99X", 5],
 ];
 const TEST_COUNTS = [

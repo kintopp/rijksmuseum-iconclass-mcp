@@ -264,7 +264,8 @@ const e = await runAll({
 assertEq(e.tool.code, 1, "tool error: exit 1");
 assertEq(e.tool.stderr, 'Notation "NONEXISTENT" not found in Iconclass.\n', "tool error text on stderr");
 assertEq(e.tool.stdout, "", "nothing on stdout");
-assertEq(e.allMiss.stderr, "None of the requested notations were found: NONEXISTENT\n", "resolve with no hits");
+assertEq(e.allMiss.code, 0, "resolve with no hits is not an error");
+assertEq(e.allMiss.stderr, "0 shown\nnote: not found (1): NONEXISTENT\n", "resolve with no hits names the miss");
 assertEq(e.semantic.code, 1, "semantic without embeddings: exit 1");
 assertEq(e.semantic.stderr, "Semantic search requires embeddings and an embedding model (not available). Use query (keyword search) instead.\n",
   "semantic routes to the search tool's semanticQuery");

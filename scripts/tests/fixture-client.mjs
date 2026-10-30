@@ -38,7 +38,8 @@ export async function connectFixtureClient(name) {
     command: process.execPath,
     args: [path.join(PROJECT_ROOT, "dist", "index.js")],
     cwd: PROJECT_ROOT,
-    env: fixtureEnv(name),
+    // Any PORT puts the server in HTTP mode.
+    env: { ...fixtureEnv(name), PORT: "" },
     stderr: "ignore",
   });
   const client = new Client({ name: `test-${name}`, version: "0.0.0" });

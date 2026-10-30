@@ -292,7 +292,8 @@ async function connect(httpUrl, protocol) {
       // The whole env, so ICONCLASS_DB_PATH etc. reach the server (the transport
       // otherwise passes only a safe allowlist). Skipping the startup warm-up
       // saves ~1.6 s per call; a semantic query still waits for the model.
-      env: { ...process.env, STRUCTURED_CONTENT: "true", MCP_SKIP_STARTUP_WARM: "1" },
+      // PORT is cleared because any value puts the server in HTTP mode.
+      env: { ...process.env, STRUCTURED_CONTENT: "true", MCP_SKIP_STARTUP_WARM: "1", PORT: "" },
       // Kept out of our stderr, which carries the counts and notes; shown only if
       // the connection fails, where it holds the real diagnosis.
       stderr: "pipe",
@@ -348,7 +349,7 @@ function renderTable(rows, fields) {
   return lines.join("\n");
 }
 
-function paginationSummary(cfg, data, list, args) {
+function paginationSummary(cfg, data, list, args, schema) {
   const offset = Number(args?.[cfg.page] ?? 0) || 0;
   const total = cfg.total ? data[cfg.total] : undefined;
   if (!cfg.page) return `${list.length} shown`;
@@ -359,7 +360,7 @@ function paginationSummary(cfg, data, list, args) {
   // No corpus total (semantic): a full page may have more behind it, up to
   // the server's semantic depth cap (offset + maxResults ≤ 500).
   const s = `${list.length} shown (offset ${offset})`;
-  const cap = args?.[cfg.cap];
+  const cap = args?.[cfg.cap] ?? schema?.properties?.[cfg.cap]?.default;
   const next = offset + list.length;
   if (typeof cap !== "number" || list.length !== cap || next >= SEMANTIC_DEPTH) return s;
   return next + cap <= SEMANTIC_DEPTH
@@ -414,7 +415,7 @@ function resultNotes(verb, data, args) {
   return notes;
 }
 
-function renderResult(res, verb, cfg, flags, args) {
+function renderResult(res, verb, cfg, flags, args, schema) {
   const fields = parseFields(flags.fields);
   const data = res.structuredContent;
   const quiet = flags.quiet === true;
@@ -446,7 +447,7 @@ function renderResult(res, verb, cfg, flags, args) {
   } else {
     for (const row of list) process.stdout.write(JSON.stringify(project(row, fields)) + "\n");
   }
-  if (!quiet) process.stderr.write(paginationSummary(cfg, data, list, args) + "\n");
+  if (!quiet) process.stderr.write(paginationSummary(cfg, data, list, args, schema) + "\n");
   emitNotes();
 }
 
@@ -590,6 +591,14 @@ function toolsCompact(toolMap) {
 async function main() {
   const argv = process.argv.slice(2);
 
+  // `icmcp … | head` closing the pipe is a normal way to stop reading, not a failure.
+  for (const stream of [process.stdout, process.stderr]) {
+    stream.on("error", (err) => {
+      if (err.code === "EPIPE") process.exit(0);
+      throw err;
+    });
+  }
+
   // Pre-scan for the transport and the verb (the first bare token), skipping the
   // value of each value-taking global so it isn't mistaken for the verb.
   let httpUrl = process.env.ICMCP_HTTP || null;
@@ -690,7 +699,7 @@ async function main() {
         process.stderr.write(`${label ? `[${label}] ` : ""}${textOf(res)}\n`);
         return false;
       }
-      renderResult(res, verb, cfg, flags, toolArgs);
+      renderResult(res, verb, cfg, flags, toolArgs, tool.inputSchema);
       return true;
     };
 

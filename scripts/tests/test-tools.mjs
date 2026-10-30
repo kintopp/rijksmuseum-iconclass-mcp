@@ -37,7 +37,7 @@ const transport = new StdioClientTransport({
   command: "node",
   args: ["dist/index.js"],
   cwd: PROJECT_DIR,
-  env: { ...process.env, STRUCTURED_CONTENT: "true" },
+  env: { ...process.env, STRUCTURED_CONTENT: "true", PORT: "" },
 });
 
 const client = new Client({ name: "test-tools", version: "0.1" });
@@ -900,6 +900,13 @@ const deeper = await runCli(["semantic", "ships on a stormy sea", "--offset", "4
 if (assertEq(deeper.code, 0, `CLI semantic, following the hint: exit 0 (${deeper.stderr.trim().slice(0, 120)})`)) {
   assertEq(jsonlRows(deeper).length, 5, "the hinted page is served");
   eqList(stderrLines(deeper), ["5 shown (offset 495)"], "no 'more' hint at the cap");
+}
+
+// A default page has as much behind it as an explicit --max page; without the hint it reads as complete.
+const defaultPage = await runCli(["semantic", "ships on a stormy sea", "--fields", "notation"]);
+if (assertEq(defaultPage.code, 0, `CLI semantic, no --max: exit 0 (${defaultPage.stderr.trim().slice(0, 120)})`)) {
+  assertEq(jsonlRows(defaultPage).length, 25, "no --max: the tool's default page of 25");
+  eqList(stderrLines(defaultPage), ["25 shown (offset 0); pass --offset 25 for more"], "no --max: the hint still appears");
 }
 
 // Text-only caveats the CLI must restate as notes (the fixture has no branch this wide).

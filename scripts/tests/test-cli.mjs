@@ -25,6 +25,8 @@
  *    its usage counters
  *  - the 2026-07-28 / auto eras, or --http, don't work
  *  - a --help example stops running against the data it documents
+ *  - PORT in the shell env puts the stdio child in HTTP mode, so the CLI hangs
+ *  - a reader closing the pipe (`| head`) crashes with EPIPE and exit 1
  *
  * Not covered (the fixture can't express them, and seed rows are never invented):
  * browse's subtreeCapped / per-parent children caps and the >200 large-subtree
@@ -35,7 +37,9 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { assert, assertEq, eqList, section, report } from "./_assert.mjs";
+import { spawn } from "node:child_process";
 import { fixtureEnv } from "./fixture-client.mjs";
+import { PROJECT_ROOT } from "./build-fixture-db.mjs";
 import { bootHttpServer, runCli, jsonlRows as rows } from "./_server.mjs";
 
 const ENV = fixtureEnv("cli");
@@ -342,5 +346,27 @@ for (const [v, r] of Object.entries(ex)) {
     assert(r.stdout.trim().length > 0, `${v} example prints a result`);
   }
 }
+
+// ══════════════════════════════════════════════════════════════════
+section("environment and closed pipes");
+
+// PORT is common in a shell env, and any value would put the stdio child in HTTP mode.
+const withPort = await runCli(["resolve", "25F23", "--fields", "notation"], { env: { ...ENV, PORT: "3987" } });
+if (assertEq(withPort.code, 0, `PORT in the env: resolve still answers on stdio (${withPort.stderr.trim().slice(0, 120)})`)) {
+  eqList(notations(withPort), ["25F23"], "PORT in the env: the expected row");
+}
+
+// Like `icmcp … | head -1`: the reader goes away while more output is due.
+const closedPipe = await new Promise((resolve) => {
+  const child = spawn(process.execPath, [path.join(PROJECT_ROOT, "scripts", "cli.mjs"), "prefix", "--stdin", "--fields", "notation"],
+    { cwd: PROJECT_ROOT, env: ENV, stdio: ["pipe", "pipe", "pipe"] });
+  let stderr = "";
+  child.stderr.on("data", (c) => { stderr += c; });
+  child.stdout.once("data", () => child.stdout.destroy());
+  child.on("close", (code) => resolve({ code, stderr }));
+  child.stdin.end("73D\n25F\n73D\n25F\n73D\n25F\n73D\n25F\n");
+});
+assertEq(closedPipe.code, 0, "closed stdout: exit 0, not a false failure");
+assert(!/EPIPE|Unhandled|node:internal/.test(closedPipe.stderr), `closed stdout: no stack trace (${closedPipe.stderr.slice(0, 120)})`);
 
 report();

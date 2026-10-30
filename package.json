@@ -18,7 +18,7 @@
     "start": "node dist/index.js",
     "serve": "node dist/index.js --http",
     "lint": "eslint src/",
-    "test": "node scripts/tests/test-pure-functions.mjs && node scripts/tests/test-units.mjs && node scripts/tests/test-fixture-tools.mjs && node scripts/tests/test-http-concurrency.mjs && node scripts/tests/test-modern-wire.mjs && node scripts/tests/test-cli.mjs",
+    "test": "node scripts/tests/test-pure-functions.mjs && node scripts/tests/test-units.mjs && node scripts/tests/test-fixture-tools.mjs && node scripts/tests/test-http-concurrency.mjs && node scripts/tests/test-modern-wire.mjs && node scripts/tests/test-harness.mjs && node scripts/tests/test-cli.mjs",
     "test:tools": "node scripts/tests/test-tools.mjs",
     "test:fixture": "node scripts/tests/test-fixture-tools.mjs",
     "test:http": "node scripts/tests/test-http-concurrency.mjs",

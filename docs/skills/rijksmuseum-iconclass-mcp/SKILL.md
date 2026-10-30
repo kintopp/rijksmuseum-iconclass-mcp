@@ -1,7 +1,7 @@
 ---
 name: iconclass-mcp
 metadata:
-  version: "0.7.0"
+  version: "0.8.0"
 description: >
   Companion vocabulary layer to rijksmuseum-mcp+: maps art-subject concepts
   to Iconclass notation codes (~1.3M codes across 13 languages) and checks

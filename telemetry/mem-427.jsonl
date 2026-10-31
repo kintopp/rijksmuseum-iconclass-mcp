@@ -24,3 +24,4 @@
 {"sampledAt":"2026-10-30T12:17:45Z","commit":"fbb8219","uptimeH":0.57,"heapAfterMajorGcMB":159.5,"heapAfterMajorGcAt":"2026-10-30T12:12:20.137Z","heapUsedMB":163.2,"rssMB":1077.7,"cgroupCurrentMB":1712.1,"anonMB":597.1,"fileMB":1100.9,"fileMappedMB":396.9,"inactiveFileMB":425.9,"dbMmapResidentMB":231.6,"event":"restart-deploy"}
 {"sampledAt":"2026-10-30T18:16:38Z","error":"curl exit 56: CONNECT tunnel failed, response 403 (agent proxy blocked host) on /health and /debug/memory, retried once"}
 {"sampledAt":"2026-10-31T00:14:48Z","error":"curl exit 56: CONNECT tunnel failed, response 403 (egress proxy blocks rijksmuseum-iconclass-mcp-production.up.railway.app); retried, both endpoints failed"}
+{"sampledAt":"2026-10-31T06:15:05Z","error":"curl exit 56: egress proxy refused connection to rijksmuseum-iconclass-mcp-production.up.railway.app:443 (connect_rejected; host not allowed for session); retry also failed","event":null}

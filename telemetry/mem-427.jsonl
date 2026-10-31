@@ -26,3 +26,4 @@
 {"sampledAt":"2026-10-31T00:14:48Z","error":"curl exit 56: CONNECT tunnel failed, response 403 (egress proxy blocks rijksmuseum-iconclass-mcp-production.up.railway.app); retried, both endpoints failed"}
 {"sampledAt":"2026-10-31T06:15:05Z","error":"curl exit 56: egress proxy refused connection to rijksmuseum-iconclass-mcp-production.up.railway.app:443 (connect_rejected; host not allowed for session); retry also failed","event":null}
 {"sampledAt":"2026-10-31T12:17:23Z","error":"curl exit 56: CONNECT tunnel failed, response 403 (egress proxy blocks host); retry also failed","event":null}
+{"sampledAt":"2026-10-31T18:14:42Z","error":"curl exit 56: CONNECT tunnel failed, 403 from agent proxy (network policy blocks rijksmuseum-iconclass-mcp-production.up.railway.app); /health and /debug/memory unreachable, retried once"}

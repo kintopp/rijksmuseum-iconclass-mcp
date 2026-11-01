@@ -473,14 +473,18 @@ def build(data_dir: str, output_path: str):
     built_at = datetime.now(timezone.utc).isoformat()
     iconclass_commit = get_iconclass_commit(data_dir)
 
+    # Read from the data: a configured language can end up with no rows.
+    text_langs = [r[0] for r in conn.execute("SELECT DISTINCT lang FROM texts ORDER BY lang")]
+    keyword_langs = [r[0] for r in conn.execute("SELECT DISTINCT lang FROM keywords ORDER BY lang")]
+
     conn.executemany("INSERT INTO version_info VALUES (?, ?)", [
         ("built_at", built_at),
         ("iconclass_data_commit", iconclass_commit),
         ("notation_count", str(len(notation_data))),
         ("base_notation_count", str(base_count)),
         ("key_expanded_count", str(key_count)),
-        ("text_languages", ",".join(sorted(ALL_TEXT_LANGS))),
-        ("keyword_languages", ",".join(sorted(ALL_KW_LANGS | LIBRARY_LANGS))),
+        ("text_languages", ",".join(text_langs)),
+        ("keyword_languages", ",".join(keyword_langs)),
         ("schema_version", "3"),  # v3 = counts moved to sidecar DB
     ])
     conn.commit()
@@ -493,8 +497,8 @@ def build(data_dir: str, output_path: str):
     size_mb = os.path.getsize(output_path) / (1024 * 1024)
     print(f"\nDone! {output_path} ({size_mb:.1f} MB) in {elapsed:.1f}s")
     print(f"  Notations: {len(notation_data):,} ({base_count:,} base + {key_count:,} key-expanded)")
-    print(f"  Texts: {text_count:,} entries across {len(ALL_TEXT_LANGS)} languages")
-    print(f"  Keywords: {kw_count:,} entries across {len(ALL_KW_LANGS | LIBRARY_LANGS)} languages")
+    print(f"  Texts: {text_count:,} entries across {len(text_langs)} languages")
+    print(f"  Keywords: {kw_count:,} entries across {len(keyword_langs)} languages")
     print(f"  Iconclass commit: {iconclass_commit[:7]}")
 
 

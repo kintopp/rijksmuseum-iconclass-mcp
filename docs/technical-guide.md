@@ -12,7 +12,7 @@ npm start          # stdio mode
 npm run serve      # HTTP mode on port 3000
 ```
 
-On first run, the server downloads `iconclass.db` (~0.7 GB compressed) to `data/` if `ICONCLASS_DB_URL` is set. Subsequent starts are fast.
+On first run, the server downloads `iconclass.db` (~0.7 GB compressed) to `data/` if `ICONCLASS_DB_URL` is set. Subsequent starts are fast. Note that currently (October, 2026) Mistral Vibe can't use a locally hosted MCP server.
 
 To use the local server with Claude Desktop (stdio), add to your `claude_desktop_config.json`:
 

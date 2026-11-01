@@ -12,7 +12,7 @@ license: MIT
 compatibility: Requires the rijksmuseum-iconclass-mcp MCP server and network access.
 metadata:
   version: "0.8.0"
-  last_updated: "2026-10-31"
+  last_updated: "2026-11-01"
 ---
 
 # Iconclass MCP Research Skill
@@ -120,7 +120,7 @@ When in doubt, `resolve` the notation and check its hierarchy path — the path 
 
 ## FTS Query Patterns
 
-The keyword search (`query`) uses FTS5 across labels (13 languages) and keywords (11 languages). Understanding its behaviour avoids wasted tool calls.
+The keyword search (`query`) uses FTS5 across labels (12 languages) and keywords (9 languages). Understanding its behaviour avoids wasted tool calls.
 
 **Inflected forms often work** because the Iconclass keyword data includes variants — "crucified" finds "crucifixion" (675 matches). But **spelling variants do not** — "odour" and "odor" are separate words and won't cross-match. When in doubt, try both spellings or fall back to `semanticQuery`.
 

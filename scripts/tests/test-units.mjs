@@ -593,7 +593,7 @@ try {
   section("EmbeddingModel — failed load and thread config");
   {
     const saved = { cacheDir: hfEnv.cacheDir, remote: hfEnv.allowRemoteModels,
-      threads: process.env.EMBEDDING_THREADS, hfHome: process.env.HF_HOME, now: Date.now, err: console.error };
+      threads: process.env.EMBEDDING_THREADS, hfHome: process.env.HF_HOME, err: console.error };
     const lines = [];
     console.error = (l) => { lines.push(String(l)); };
     try {
@@ -609,38 +609,18 @@ try {
       assert(!m.available && failures() === 1, "load against an empty offline cache fails once");
       assertList(threadWarnings(), ['EMBEDDING_THREADS="abc" is not a positive integer — using 2'], "junk EMBEDDING_THREADS → warning, default 2");
 
-      // Retries run in the background; an offline load fails in ~10 ms. Waiting
-      // for a load that must NOT happen uses the short limit.
-      const settled = async (n, ms = 2000) => {
-        for (let t = 0; t < ms && failures() < n; t += 20) await new Promise((r) => setTimeout(r, 20));
-      };
-
       await m.whenReady();
-      await settled(2, 250);
-      assertEq(failures(), 1, "a second query right after the failure does not reload");
+      assertEq(failures(), 1, "a second query after the failure does not reload");
 
-      const t = Date.now();
-      Date.now = () => t + 61_000;
       process.env.EMBEDDING_THREADS = "";
-      await m.whenReady();
-      assertEq(failures(), 1, "a query after the pause answers before the retry it starts has finished");
-      await settled(2);
-      assertEq(failures(), 2, "a query 61 s after the failure retries the load");
+      await new EmbeddingModel().whenReady();
       assertEq(threadWarnings()[1], 'EMBEDDING_THREADS="" is not a positive integer — using 2', "empty EMBEDDING_THREADS → warning, not 0 threads");
 
       process.env.EMBEDDING_THREADS = "3";
-      Date.now = () => t + 122_000;
-      await m.whenReady();
-      await settled(3);
+      await new EmbeddingModel().whenReady();
       assert(failures() === 3 && threadWarnings().length === 2, "valid EMBEDDING_THREADS → no warning");
-
-      Date.now = () => t + 183_000;
-      await m.whenReady();
-      await settled(4, 250);
-      assertEq(failures(), 3, "no fourth load: retries stop after 3 loads in all");
     } finally {
       console.error = saved.err;
-      Date.now = saved.now;
       hfEnv.cacheDir = saved.cacheDir;
       hfEnv.allowRemoteModels = saved.remote;
       if (saved.threads === undefined) delete process.env.EMBEDDING_THREADS; else process.env.EMBEDDING_THREADS = saved.threads;

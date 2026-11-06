@@ -13,7 +13,7 @@
  * the request; compressed request bodies accepted again (they must stay off zlib);
  * a body express.json rejects answered in HTML, or its stack written to bare
  * stderr, which Railway tags level=error; a client hanging up mid-body logged at
- * error.
+ * error; a request the SDK refuses logged nowhere, or at error.
  *
  * Run:  node scripts/tests/test-http-concurrency.mjs
  * Requires: npm run build (runs on the fixture DB)
@@ -246,6 +246,21 @@ try {
         "Unsupported Media Type: Content-Type must be application/json",
         "the 415 says what's wrong"
       );
+    }
+  });
+
+  await atest("a request the SDK refuses is logged at warn", async () => {
+    const handlerLines = () => frameServer.stderr().split("\n").filter((l) => l.includes('"message":"MCP handler error"'));
+    const before = handlerLines().length;
+    const r = await raw(url, { headers: { "content-type": "text/plain" }, body: "x" });
+    assertEq(r.status, 415, "text/plain is refused");
+    let lines = handlerLines();
+    for (let i = 0; i < 100 && lines.length === before; i++) {
+      await new Promise((res) => setTimeout(res, 20));
+      lines = handlerLines();
+    }
+    if (assert(lines.length > before, "the refusal leaves a log line")) {
+      assertEq(JSON.parse(lines.at(-1)).level, "warn", "at warn, not error");
     }
   });
 

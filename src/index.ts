@@ -252,7 +252,10 @@ async function runHttp(): Promise<void> {
   // request internally. 2026-era requests are served statelessly; 2025-era
   // clients fall back to the same `sessionIdGenerator: undefined` idiom this
   // replaces, so existing connectors keep working unchanged.
-  const mcpHandler = createMcpHandler(() => createServer());
+  const mcpHandler = createMcpHandler(() => createServer(), {
+    // Fires for rejected client requests as well as serving failures.
+    onerror: (err) => logWarn("MCP handler error", err),
+  });
 
   app.post("/mcp", async (req: express.Request, res: express.Response) => {
     // A client disconnect must reach the SDK: without the signal and the

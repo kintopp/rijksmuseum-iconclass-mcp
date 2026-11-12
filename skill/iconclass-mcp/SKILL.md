@@ -12,7 +12,7 @@ license: MIT
 compatibility: Requires the rijksmuseum-iconclass-mcp MCP server and network access.
 metadata:
   version: "0.8.0"
-  last_updated: "2026-11-01"
+  last_updated: "2026-11-12"
 ---
 
 # Iconclass MCP Research Skill
@@ -26,7 +26,7 @@ DISCOVER  ->  NARROW  ->  RESOLVE  ->  FIND ARTWORKS  ->  HAND OFF
 (search)     (browse)    (resolve)    (find_artworks)    (rijksmuseum-mcp+)
 ```
 
-The final step — handing notation codes to `search_artwork(iconclass: [...])` on rijksmuseum-mcp+ — is the expected outcome of most workflows. When rijksmuseum-mcp+ is available, prefer passing notation codes to it directly rather than presenting them as plain text for the user to act on. If it is not available, that's fine — see the fallback guidance below.
+When the user's goal is artworks and rijksmuseum-mcp+ is connected, finish by passing the notation codes to its `search_artwork(iconclass: [...])` rather than presenting them as plain text for the user to act on. When the user wants a code or the taxonomy itself, the answer ends here. If it is not available, that's fine — see the fallback guidance below.
 
 For simple single-concept queries ("show me paintings of dogs"), rijksmuseum-mcp+'s `subject` parameter can sometimes find artworks directly without needing notation codes — it searches the same Iconclass label vocabulary. The full Iconclass workflow (search → browse → handoff with `iconclass:`) is most valuable for compound queries, cross-branch discovery, or when the user wants to understand the taxonomy itself.
 
@@ -130,7 +130,7 @@ The keyword search (`query`) uses FTS5 across labels (12 languages) and keywords
 
 **When FTS fails, switch to semantic search.** Use `semanticQuery` when the vocabulary term is unknown or the query is conceptual. Its strength is reaching across branches: "grief and mourning" returns `73D72` (dead Christ), `42E131` (burial rites) and `94N333` (Althaea grieving) together, plus `33A33` (condolence), whose label contains neither query word. It pages with `maxResults` and `offset`, but only to depth 500 (`offset + maxResults ≤ 500`; deeper matches are weak), and its `totalResults` counts the neighbours ranked, not a corpus total. Only base notations are embedded — key-expanded variants never appear in semantic results — so use it to locate the right branch, then `browse`, `expand_keys` or `search_prefix` to enumerate it.
 
-**Keyword search returns key variants too, after their base notations.** Key variants are indexed alongside base notations, so `search(query: "salamander")` matches 426 rows: 8 base notations and 418 `(+N)` variants of `25FF412`. Within each coverage tier, a variant whose base is also listed ranks after the base notations, so the first page shows `25FF412` and `11I62(ANANIAS)` (salamander as Ananias's attribute) before any variant. A variant that matched on its key alone keeps its relevance rank: "sleeping" puts `25F(+46)` "animals (+ sleeping animal(s))" 4th. `totalResults` counts rows; `totalBaseNotations` counts distinct concepts, with each variant counting as its base (426 rows → 8). Add `onlyWithArtworks: true` to keep only notations with coverage (426 → 1).
+**Keyword search returns key variants too, after their base notations.** Key variants are indexed alongside base notations, so `search(query: "salamander")` matches 426 rows: 8 base notations and 418 `(+N)` variants of `25FF412`. Within each coverage tier, a variant whose base is also listed ranks after the base notations, so the first page shows `25FF412` and `11I62(ANANIAS)` (salamander as Ananias's attribute) before any variant. A variant that matched on its key alone keeps its relevance rank: "sleeping" puts `25F(+46)` "animals (+ sleeping animal(s))" 2nd. `totalResults` counts rows; `totalBaseNotations` counts distinct concepts, with each variant counting as its base (426 rows → 8). Add `onlyWithArtworks: true` to keep only notations with coverage (426 → 1).
 
 **Non-English queries work.** FTS covers all 13 languages. Dutch "kruisiging", German "Kreuzigung", and French "crucifixion" all find the same notation.
 

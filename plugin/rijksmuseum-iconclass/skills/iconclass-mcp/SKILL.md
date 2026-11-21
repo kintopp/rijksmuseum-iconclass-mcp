@@ -1,0 +1,375 @@
+---
+name: iconclass-mcp
+description: >
+  Companion vocabulary layer to rijksmuseum-mcp+: maps art-subject concepts
+  to Iconclass notation codes (~1.3M codes across 13 languages) and checks
+  which loaded collections have artworks tagged with them. Use this skill whenever the user
+  mentions Iconclass, iconography, subject classification, what an artwork
+  depicts, or wants to search/browse art subjects — even if they don't name
+  the server. Codes discovered here flow directly into rijksmuseum-mcp+'s
+  search_artwork(iconclass=...).
+license: MIT
+compatibility: Requires the rijksmuseum-iconclass-mcp MCP server and network access.
+metadata:
+  version: "0.8.0"
+  last_updated: "2026-11-21"
+---
+
+# Iconclass MCP Research Skill
+
+## Core Mental Model
+
+This server is the **vocabulary layer** — it helps you find and understand Iconclass notation codes. Its companion server, **rijksmuseum-mcp+**, is the **collection layer** that searches actual Rijksmuseum artworks. The two servers are designed to work together. The canonical workflow is:
+
+```
+DISCOVER  ->  NARROW  ->  RESOLVE  ->  FIND ARTWORKS  ->  HAND OFF
+(search)     (browse)    (resolve)    (find_artworks)    (rijksmuseum-mcp+)
+```
+
+When the user's goal is artworks and rijksmuseum-mcp+ is connected, finish by passing the notation codes to its `search_artwork(iconclass: [...])` rather than presenting them as plain text for the user to act on. When the user wants a code or the taxonomy itself, the answer ends here. If it is not available, that's fine — see the fallback guidance below.
+
+For simple single-concept queries ("show me paintings of dogs"), rijksmuseum-mcp+'s `subject` parameter can sometimes find artworks directly without needing notation codes — it searches the same Iconclass label vocabulary. The full Iconclass workflow (search → browse → handoff with `iconclass:`) is most valuable for compound queries, cross-branch discovery, or when the user wants to understand the taxonomy itself.
+
+Iconclass is a retrieval tool, not a descriptive language. A notation's meaning comes from its position in the hierarchy, not just its label. Complex artworks carry many codes (often 30+) across different branches because a single image contains multiple subjects — a scene, its setting, its actors, their attributes, symbolic objects. The goal is not to find *the one right code* but to identify the set of codes that carve out the search space you need.
+
+Most of the ~40K base notations are "theoretical" — they exist in the taxonomy but no loaded collection has tagged artworks with them. Check the `collections` array before handing a code to a collection server. An empty array means no loaded collection has artwork-count data for that notation; if you specifically need Rijksmuseum coverage, look for `rijksmuseum`. The `find_artworks` tool returns per-notation artwork counts by loaded collection.
+
+For discovery searches, keep `maxResults` at the default (25) or higher. The collection-presence markers across the full result set are what tell you which codes are worth handing off; a short page hides them.
+
+---
+
+## Companion Server: rijksmuseum-mcp+
+
+This server's notation codes are the input to rijksmuseum-mcp+'s `search_artwork(iconclass: [...])` parameter. The handoff is direct:
+
+- **Single notation:** `search_artwork(iconclass: "73D6")` — finds all Rijksmuseum artworks tagged with "the Crucifixion of Christ"
+- **Multiple notations (AND):** `search_artwork(iconclass: ["11H(FRANCIS)53", "25F3"])` — finds artworks tagged with *both* codes
+- **Combined with other filters:** `search_artwork(iconclass: "73D641", type: "painting")` — paintings of the crucified Christ with Mary and John
+
+The `iconclass` parameter accepts exact notation codes (language-independent). These are the same codes returned by this server's `search`, `browse`, `resolve`, and `search_prefix` tools. Note that rijksmuseum-mcp+'s `subject` parameter is different — it searches Iconclass label *text* (primarily Dutch/English), not notation codes.
+
+---
+
+## Tool Selection Guide
+
+| Question type | Start here |
+|---|---|
+| "What's the Iconclass code for X?" — known term | `search` with `query` |
+| "Find notations about X" — conceptual / atmospheric | `search` with `semanticQuery` |
+| "What subjects exist under X?" — exploring a branch | `browse` with `depth: 2` |
+| "What does notation 73D82 mean?" | `resolve` with the notation |
+| "What's related to this notation?" | `browse` — shows children, cross-refs, path |
+| "List all key variants of 25F23" | `expand_keys` |
+| "Everything under 'the Crucifixion of Christ'" | `search_prefix` with `73D6` |
+| "Find 'sword' within Virgin Mary subjects" | `search` with `query: "sword"`, `parentNotation: "11F"` |
+| "Which notations have artworks in a collection?" | `search` with `collectionId` (e.g. `"rijksmuseum"`) |
+| "Which notations have artworks at all (any collection)?" | `search` with `onlyWithArtworks: true` |
+| "How many artworks depict X?" | `find_artworks` with notation(s) from a prior search |
+| "Show me artworks about X" | Full workflow: `search` → `find_artworks` → `search_artwork(iconclass: ...)` on rijksmuseum-mcp+ |
+| "Show me artworks of [a common animal]" | Start global (no `parentNotation`) — the animal may not be in `25F*`. See Workflow 3 → Searching for a specific animal. |
+
+---
+
+## Notation Syntax
+
+Iconclass notations encode hierarchy left-to-right. Understanding the syntax helps you read results and construct queries.
+
+**Base notations** use alphanumeric codes: `7` (Bible) → `73` (New Testament) → `73D` (Passion of Christ) → `73D6` (the Crucifixion of Christ) → `73D64` (crucified Christ with particular persons under the cross) → `73D641` (crucified Christ with Mary and John on either side; Holy Rood).
+
+**Named notations** add a parenthesised qualifier for specific entities: `11H(FRANCIS)` (St. Francis), `25F26(WOMBAT)` (wombat). The name is part of the notation — `11H(FRANCIS)` and `11H(JEROME)` are siblings under `11H(...)` (male saints). Named notations for female saints use `11HH(...)`.
+
+**Key-expanded notations** add modifiers in `(+N)` suffixes: `25F23(+46)` means "beasts of prey, sleeping."
+
+**Key meanings are branch-specific, not global** — the most common trap. A `(+N)` is an index into whichever key set the base notation's branch uses, so the same suffix means unrelated things under different bases:
+
+| Suffix | under `25F23` (beasts of prey) | under `48C7323` (lute) |
+|---|---|---|
+| `(+1)` | animals used symbolically | artist at work |
+| `(+42)` | feeding and care of young | damage and repair of work of art |
+| `(+46)` | sleeping animal(s) | *(no such variant)* |
+
+Read the label before using a variant: `expand_keys` the base, or `resolve` the variant. Never carry a key's meaning across branches, and never construct a variant you haven't seen in a response — it may not exist under that base.
+
+When using `expand_keys`, pass the **base notation** — `25F23`, not `25F23(+46)`. A named notation like `25F23(LION)` is a base notation in its own right, with its own key variants: `expand_keys("25F23(LION)")` lists them, and `expand_keys("25F23")` does not include them.
+
+---
+
+## Labels Reflect Iconography, Not Modern Taxonomy
+
+Iconclass was designed in the 1970s–80s as an **iconographic retrieval system** — a vocabulary for art subjects, not a scientific or scholarly taxonomy. Its category labels often encode **pre-modern European perception** of the subject matter: how artists and viewers grouped things visually, functionally, or symbolically, rather than how modern specialists classify them. This matters when reading results and presenting them to users.
+
+Concrete cases:
+
+- **`25F26` "rodents"** contains hares and rabbits (lagomorphs, split from rodents by Gidley in 1912) and even wombats (Australian marsupials). The category groups small-to-medium quadrupeds as pre-Linnaean bestiaries did, not by modern clade.
+- **The real salamander has no entry in the naturalistic tree at all.** The only salamander notation is `25FF412` "salamander (fabulous animal); salamander as spirit of fire" — in the fabulous tree. `25F5` amphibians has no `(SALAMANDER)` variant. A client looking for salamander images must use `25FF412` even when the painting shows an ordinary amphibian: the code is labelled "fabulous" but it is the only code the catalogue offers.
+- **Many common animals have no real-animal notation at all.** Horse, goat, sheep, cattle, donkey, reindeer, and rooster are all absent from `25F*`. They exist in the catalogue only through their functional roles — husbandry (`47I2*`), transport and traction (`46C13/14*`), saint attributes (`11H(GEORGE)`, `11H(ELOI)`, `11H(PETER)`), mythology (`25FF24(PEGASUS)`), literature (`82B(BAIARDO)`), and the fabulous tree more broadly. `25F24` "hoofed animals" in particular contains only wild and exotic species (antelope, camel, giraffe, rhinoceros, zebra) — the familiar European domesticated quadrupeds are elsewhere. This is not an accident; it reflects Iconclass's working definition of what counts as a "naturalistic animal picture."
+- **Real vipers and fishes known via the bestiary tradition** (aspic, cerastes, remora, sea-dragon) appear only in `25FF*` (fabulous), despite being real species. They entered the catalogue through their medieval literary identity rather than their zoology.
+- **Geographical and ethnographic labels** (in branches like `32` and `47`) often use historical exonyms, colonial-era region names, or broad continental groupings that would not pass muster in a contemporary atlas or ethnographic study.
+- **Religious and mythological branches** classify figures by the hagiographic or literary tradition in which they were depicted, not by historical-critical scholarship — apocryphal saints sit alongside canonical ones without distinction.
+
+The practical implications:
+
+1. **A label is an index term, not a definition.** `25F26(WOMBAT)` means "the notation we use to tag images of wombats," which Iconclass happens to have filed under its "rodents" heading. It does not assert that wombats are rodents.
+2. **Handoff still works.** The taxonomy quirks don't affect retrieval — `search_artwork(iconclass: "25F26(WOMBAT)")` is the correct way to ask a collection server for wombat images when that collection has tagged them. Notation codes are stable identifiers regardless of whether the label tree reflects current scholarship.
+3. **Flag the mismatch when presenting results to users.** If a user asks about rabbits and you return notations prefixed "rodents:", add a brief note that the Iconclass label reflects older classification, not modern taxonomy. Silently echoing the label can mislead users who read it as a scientific claim.
+4. **Don't "correct" the notation.** There is no alternative code to use — `25F26(HARE)` is the tagged notation, full stop. Work with it and annotate.
+
+When in doubt, `resolve` the notation and check its hierarchy path — the path shows you which pre-modern conceptual grouping Iconclass has placed the subject in, which is usually what explains a surprising label.
+
+---
+
+## FTS Query Patterns
+
+The keyword search (`query`) uses FTS5 across labels (12 languages) and keywords (9 languages). Understanding its behaviour avoids wasted tool calls.
+
+**Inflected forms often work** because the Iconclass keyword data includes variants — "crucified" finds "crucifixion" (675 matches). But **spelling variants do not** — "odour" and "odor" are separate words and won't cross-match. When in doubt, try both spellings or fall back to `semanticQuery`.
+
+**Multi-word queries** try phrase match first (adjacent words), then fall back to AND-ed individual terms if no phrase match survives the filters (`parentNotation`, `collectionId`, `onlyWithArtworks`). "Marriage at Cana" finds notations containing both "Marriage" and "Cana" even if they're not adjacent.
+
+**Single words are usually best.** FTS matches whole words against the Iconclass vocabulary, so a single specific word ("salamander", "crucifixion", "lute") has the highest recall. Multi-word queries are useful when a single word is too broad — "broken string" to distinguish from intact string instruments, or "Last Supper" to avoid matching other uses of "supper."
+
+**When FTS fails, switch to semantic search.** Use `semanticQuery` when the vocabulary term is unknown or the query is conceptual. Its strength is reaching across branches: "grief and mourning" returns `73D72` (dead Christ), `42E131` (burial rites) and `94N333` (Althaea grieving) together, plus `33A33` (condolence), whose label contains neither query word. It pages with `maxResults` and `offset`, but only to depth 500 (`offset + maxResults ≤ 500`; deeper matches are weak), and its `totalResults` counts the neighbours ranked, not a corpus total. Only base notations are embedded — key-expanded variants never appear in semantic results — so use it to locate the right branch, then `browse`, `expand_keys` or `search_prefix` to enumerate it.
+
+**Keyword search returns key variants too, after their base notations.** Key variants are indexed alongside base notations, so `search(query: "salamander")` matches 426 rows: 8 base notations and 418 `(+N)` variants of `25FF412`. Within each coverage tier, a variant whose base is also listed ranks after the base notations, so the first page shows `25FF412` and `11I62(ANANIAS)` (salamander as Ananias's attribute) before any variant. A variant that matched on its key alone keeps its relevance rank: "sleeping" puts `25F(+46)` "animals (+ sleeping animal(s))" 2nd. `totalResults` counts rows; `totalBaseNotations` counts distinct concepts, with each variant counting as its base (426 rows → 8). Add `onlyWithArtworks: true` to keep only notations with coverage (426 → 1).
+
+**Non-English queries work.** FTS covers all 13 languages. Dutch "kruisiging", German "Kreuzigung", and French "crucifixion" all find the same notation.
+
+---
+
+## Critical Parameter Distinctions
+
+### `browse` vs `expand_keys` for key variants
+
+Both can show key-expanded variants (e.g. `25F23(+46)` "beasts of prey, sleeping"), but they serve different purposes:
+
+- `browse` with `includeKeys: true`: quick preview of key variants alongside the entry's children, path, and cross-refs. Use for orientation — "what modifiers exist for this notation?"
+- `expand_keys`: paginated list of all key variants with full metadata. Use when you need the complete inventory — some base notations have 200+ variants; `browse` shows 25 by default (`maxKeyVariants` up to 100, `keyOffset` to page) alongside everything else it returns.
+
+Key meanings are branch-specific — see Notation Syntax.
+
+### `search` with `parentNotation` vs `search_prefix`
+
+Both restrict to a subtree, but they answer different questions:
+
+- `search(query=..., parentNotation="11F")`: keyword search *within* a subtree — "find notations about 'sword' under Virgin Mary" (`11F2412` Mary pierced by seven swords, `11F252` Mary pierced by a sword). Combines text relevance with hierarchical scoping.
+- `search_prefix(notation="11F")`: enumerate *all* notations starting with a prefix, ordered alphabetically. No text search — pure hierarchy traversal. Use when you want the full inventory of a branch. Supports `collectionId` to filter to notations with artworks in a specific loaded collection, and `baseOnly: true` to skip key variants (`11H(`: 90,464 rows → 6,030).
+
+If `parentNotation` returns zero results, the concept may exist in a different branch. Try removing the scope for a global search, or broadening to a parent prefix (e.g. `"11"` instead of `"11F"`).
+
+---
+
+## Key Workflows
+
+### 1. Discover a Notation Code
+
+Start with keyword search. If the term is unknown or the concept is atmospheric/interpretive, use semantic search.
+
+```
+# Known term — 816 matches; the canonical code is not ranked first
+search(query: "crucifixion")
+# -> 31E2356 "violent death by crucifixion" [3 > 31 > 31E]
+# -> ... 73D6 (rijksmuseum) "the crucifixion of Christ" [7 > 73 > 73D]  <- 3rd
+# Scan the full result set — keyword results rank by collection coverage, then bases before key variants of listed bases, then FTS relevance, not by canonicalness.
+
+# Unknown vocabulary — concept search, reaches across branches
+search(semanticQuery: "grief and mourning")
+# -> 73D72 "the mourning over the dead Christ" [7 > 73 > 73D]
+# -> 42E131 "mourning the dead" [4 > 42 > 42E]
+# -> 94N333 "Althaea grieving at the death of her brothers" [9 > 94 > 94N]
+```
+
+### 2. Explore a Hierarchy Branch
+
+Use `browse` with `depth: 2` for narrative exploration — it returns the entry, its children, and their children in one call.
+
+```
+browse(notation: "73D6", depth: 2)
+# -> 73D6 "the crucifixion of Christ: Christ's death on the cross; Golgotha"
+#      73D64 "crucified Christ, with particular persons under the cross"
+#        73D641 "crucified Christ with Mary and John on either side; Holy Rood"
+#        73D642 ...
+#      73D65 ...
+#        ...
+```
+
+Wide branches (e.g. male saints by name under `11H(...)`, 182 children) are capped at 25 children per parent and 120 entries in total. The response shows `totalChildren` per entry, and `subtreeCapped: true` when the 120-entry cap cut the expansion short. Page the top-level children with `childOffset`: the text ends with `More children: pass childOffset N.` until the last page (the 182 saints take eight calls).
+
+Use `depth: 3` only on narrow branches where you can see the full structure. For wide branches like `11H(...)`, browse at depth 1 and page with `childOffset` to see all the top-level names, then drill into specific children at depth 2.
+
+### 3. Cross-Branch Discovery
+
+The same concept can appear in multiple Iconclass branches because the system classifies by context, not just identity. A dog might be:
+- `34B11` — "dog", under `34B1` "domestic animals, kept in the house" (the `34` man-and-animal branch, not the zoological tree — there is no dog notation under `25F` at all)
+- `11H(BERNARD)` — St. Bernard with a white dog among his possible attributes (saint iconography)
+- `25FF21` — fabulous animals ~ domestic animals (fabulous-animal context)
+
+Use keyword or semantic search to discover all branches, then `resolve` to compare them side by side:
+
+```
+search(query: "dog", maxResults: 25)
+# -> multiple notations across branches 11, 25, 34, 46...
+
+resolve(notation: ["34B11", "11H(BERNARD)", "25FF21"])
+# -> full metadata for comparison — paths, keywords, collection presence
+```
+
+#### Searching for a specific animal — the animal tree is a cultural index, not a biological one
+
+**Cross-branch presence is the rule for animals, not the exception.** Iconclass indexes animals by their culturally dominant role, and for many common species the `25F*` "real-animal tree" notation you would expect simply does not exist. A client asking "show me artworks depicting horses" cannot start with `25F24` — there is no `25F24(HORSE)`. Real horses live only in transport, saint attributes, mythology, and literature.
+
+Three patterns to recognise:
+
+- **Domesticated animals are usually outside `25F*`.** Horse, goat, sheep, cattle, donkey, reindeer, and rooster have no entries under real animals. Look in `47I2*` husbandry, `46C13/14*` transport and traction, `11H(*)` saint attributes, `25FF*` fabulous variants, `9X` classical mythology, `82B(*)` literary characters.
+- **Bestiary-famous real animals may live only in `25FF*`.** Salamander, aspic, cerastes (both real vipers), remora, sea-dragon — all real species — appear only in the fabulous tree. Do not skip `25FF*` just because the target animal is biologically real.
+- **Wild/exotic animals are reliably in `25F*`.** Antelope, bison, camel, giraffe, rhinoceros, zebra, wombat, elk, oryx, elephant, monkey, most birds and invertebrates — these are in the naturalistic tree as expected. `25F3` birds is the cleanest branch in the whole catalogue.
+
+Search strategy for a specific animal:
+
+1. **Start global, not scoped.** `search(query: "animal-name", maxResults: 25)` — do **not** pass `parentNotation: "25F"`. A scoped search hides the cross-branch reality.
+2. **Read the branches, not just the labels.** The hierarchy path on each result tells you which cultural role the notation captures. For horse you will see `46C13*` (transport), `11H(GEORGE)` (saint), `25FF24(PEGASUS)` (myth), etc.
+3. **Use `find_artworks` counts to choose.** When an animal appears in several branches, a collection usually tags most artworks with one canonical notation. The one with the strongest coverage in your target collection is the best handoff code. A `25F*` notation with no target-collection counts is a strong signal that the collection may use a different branch's code for that animal.
+4. **For compound queries, combine across branches.** "Artworks of St. George with a horse" is `search_artwork(iconclass: ["11H(GEORGE)", ...])` where the second code is whichever transport/saint horse notation actually has coverage — not `25F24(HORSE)`, which does not exist.
+
+When presenting results to users, flag the pattern honestly. A user who asked for horse images should be told the animal tree doesn't cover horses and that the catalogue indexes them by role; silently returning only `11H(GEORGE)` results without that context can mislead.
+
+### 4. Scoped Search Within a Subtree
+
+When you know the branch but need to find a specific concept within it, use `parentNotation` to avoid drowning in global results:
+
+```
+# "reading" within New Testament (73)
+search(query: "reading", parentNotation: "73")
+# -> 73A51 "Mary alone reading", 73B732 "Mary teaches the Christ-child to read"
+
+# "crown" within saints (11H)
+search(query: "crown", parentNotation: "11H")
+# -> notations about crowned saints, martyrs' crowns, etc.
+```
+
+If a scoped search returns zero results, the concept may live in a different branch than expected. "reading" under `11F` (Virgin Mary) returns nothing — those notations are under `73` (New Testament narrative). Remove the scope and search globally to find where the concept actually lives.
+
+### 5. Querying with Multiple Codes
+
+Complex artworks carry codes from multiple branches because a single image contains overlapping subjects: a scene, its actors, their attributes, symbolic objects, the setting. When searching for artworks of a specific subject, you can exploit this by combining codes from different branches. A search for artworks of St. Francis preaching to birds might use:
+
+```
+# Scene
+search(query: "Francis", parentNotation: "11H")
+# -> 11H(FRANCIS)53 "St. Francis of Assisi preaching to the birds"
+
+# Animals
+search(query: "birds", parentNotation: "25F")
+# -> 25F3 "birds"
+
+# Setting
+browse(notation: "25H1", depth: 2)
+# -> landscape subcategories
+```
+
+When passed to rijksmuseum-mcp+, these codes AND-combine — `search_artwork(iconclass: ["11H(FRANCIS)53", "25F3"])` finds artworks tagged with *both* codes. This is how you express compound iconographic queries.
+
+When no notation exactly captures a nuanced concept (e.g., a broken lute string as a vanitas symbol), use the closest codes (`11R7` vanitas symbols + `48C7323` lute) and note the interpretive nuance separately. Verify the key's actual meaning before using key expansions (see Notation Syntax above).
+
+### 6. Check Artwork Counts
+
+After discovering notation codes via `search` or `browse`, use `find_artworks` to check artwork counts in the loaded collection overlays. This answers "how many artworks in the available collections use this subject?" — essential for gauging a notation's practical usefulness before handing it to rijksmuseum-mcp+ or another collection server.
+
+```
+# Single notation
+find_artworks(notation: "73D6")
+# -> 73D6 "the crucifixion of Christ: Christ's death on the cross; Golgotha"
+#      Rijksmuseum, Amsterdam: matching artworks
+
+# Batch: compare counts across multiple notations (up to 25)
+find_artworks(notation: ["34B11", "25F23", "11H(FRANCIS)53"])
+# -> per-notation breakdown with per-collection artwork counts
+```
+
+**When to use `find_artworks` vs `collections`:**
+- `collections` (returned by `search`, `browse`, `resolve`) gives a quick signal — "does any loaded collection have artworks for this code?" Useful for filtering during discovery.
+- `find_artworks` gives exact artwork counts by collection. Use it when you need to know *how many* artworks are tagged with a notation, or when comparing coverage across notations before handoff.
+
+**Practical patterns:**
+
+- **After narrowing to a handful of codes:** Run `find_artworks` on your shortlist to see counts, then hand off the codes with the best coverage to rijksmuseum-mcp+.
+- **Comparing parent vs child notations:** When a parent and a more specific child seem interchangeable (e.g. `73D6` "Crucifixion" vs `73D641` "crucified Christ with Mary and John"), `find_artworks` reveals which one the target collection actually uses more often — the one with stronger coverage is usually the better handoff code.
+- **Checking before handoff:** A notation with no artwork counts in the target collection will usually return nothing on that collection server. Look for a parent or sibling notation instead.
+- **When all queried notations return no counts:** The specific codes may be too narrow, or the notation may not exist in the canonical database. First `resolve` any uncertain code; if it exists, try the parent notation — often the broader category has artworks even when the children don't:
+  ```
+  # A deep child of "crucified Christ with Mary and John" — no target-collection counts
+  # Try the parent:
+  find_artworks(notation: "73D641")
+  # -> target collections may have broader matches
+  ```
+
+The `lang` parameter controls the language of notation labels in the response (default: `"en"`). Some collection overlays may include link-out URL templates; if a collection has no template, `find_artworks` returns counts without a URL. `find_artworks` also returns a ready-to-use `artResearchUrl` for each notation — a PHAROS-consortium aggregator link covering that notation and its narrower/key-expanded descendants — offer it to the user as a general web fallback.
+
+### 7. Cross-Server Handoff to rijksmuseum-mcp+
+
+This is the terminal step of most workflows. Once you have notation codes with confirmed artwork counts, pass them directly to rijksmuseum-mcp+:
+
+```
+# Step 1: discover the code
+search(query: "Jerome")
+# -> 11H(JEROME) (rijksmuseum) "the monk and hermit Jerome (Hieronymus)"
+
+# Step 2: check artwork counts
+find_artworks(notation: "11H(JEROME)")
+# -> per-collection artwork counts
+
+# Step 3: hand off to rijksmuseum-mcp+
+search_artwork(iconclass: ["11H(JEROME)"])
+# -> Rijksmuseum artworks depicting St. Jerome
+```
+
+**Combining iconclass with other filters on rijksmuseum-mcp+:**
+```
+# Paintings only
+search_artwork(iconclass: ["11H(JEROME)"], type: "painting")
+
+# By a specific artist
+search_artwork(iconclass: ["11H(JEROME)"], creator: "Rembrandt van Rijn")
+
+# Multiple subjects (AND)
+search_artwork(iconclass: ["11H(JEROME)", "25F23"])
+# -> artworks tagged with BOTH St. Jerome AND beasts of prey
+```
+
+### When rijksmuseum-mcp+ is not available
+
+If `search_artwork` is not available (the server is not connected), present the notation codes you've found with their collection coverage, artwork counts, and hierarchy context — this is more useful than bare codes alone. If `find_artworks` returns link-out URLs for a loaded collection, include them; otherwise, offer the `artResearchUrl` field returned by `find_artworks` as a broader web fallback.
+
+To enable direct artwork search in future conversations, the user can install the companion server **rijksmuseum-mcp+** from [github.com/kintopp/rijksmuseum-mcp-plus](https://github.com/kintopp/rijksmuseum-mcp-plus).
+
+---
+
+## Known Limitations
+
+| Issue | Workaround |
+|---|---|
+| British/American spelling — "odour" vs "odor" | Try both spellings. `semanticQuery` handles this automatically. |
+| `browse` caps children at 25 per parent | Page them with `childOffset`. To enumerate the whole subtree rather than one level, use `search_prefix` with `baseOnly: true`. |
+| Resolve batch limit of 25 | Discover with `search`; `resolve` the shortlist you need full metadata on. |
+| `parentNotation` returns 0 but concept exists | The concept may live in a different branch. Remove the scope and search globally. |
+| Key expansion labels can mislead | Key meanings are branch-specific — `(+42)` is "feeding and care of young" under `25F23`, "damage and repair of work of art" under `48C7323`. Read the label via `expand_keys`/`resolve`. See Notation Syntax. |
+| `totalResults` looks far too high | It counts rows, including every key variant. Read `totalBaseNotations` for the number of distinct concepts ("salamander": 426 rows, 8 base notations). Within each coverage tier, base notations rank ahead of any variant whose base is also listed; `onlyWithArtworks: true` keeps only notations with coverage. |
+| Key variant labels switch to English | In `nl`, `es`, `fi`, `pl`, `zh` and `hu`, a variant whose key has no translation is labelled in English, so it still names the key: `73D6` is "kruisdood" but `73D6(+3)` is "the crucifixion of Christ… (+ angel(s))". Match variants to their base by the notation code. |
+| Category labels reflect pre-modern iconography, not modern taxonomy | Treat labels as index terms, not scientific definitions. Flag mismatches to users (e.g. hares under "rodents"). See Labels Reflect Iconography, Not Modern Taxonomy. |
+| Common animals (horse, goat, rooster, salamander) have no notation in `25F*` | Search globally, not scoped to `25F*`. The animal's code is in husbandry, transport, saints, mythology, literature, or the fabulous tree. See Workflow 3 → "Searching for a specific animal." |
+| `find_artworks` batch limit of 25 | Call it on a shortlist. For broad coverage questions use `search` with `onlyWithArtworks` or `collectionId` instead. |
+| Artwork-count overlays are collection-specific | Check the top-level `collections` field to see which overlays are loaded. Coverage changes when the sidecar database is updated. |
+| `find_artworks` says "no loaded collection has artworks" | The notation has no counts in the loaded overlays, or the input notation may not exist. Use `resolve` to verify uncertain codes, then try a parent or sibling notation. |
+| Verifying a notation exists | `resolve` lists absent codes in `notFound` rather than dropping them. Check `notFound`, not the length of `notations`: a call where every code is absent is not an error, it returns empty `notations`. Padding around a code is ignored. |
+
+---
+
+## Output Conventions
+
+- Show notation codes (e.g. `73D82`) — they are the stable identifiers across both servers and the handoff format to rijksmuseum-mcp+
+- Include artwork counts when available — they signal whether a code is useful for artwork retrieval
+- Show hierarchy paths (e.g. `7 > 73 > 73D > 73D8`) — they help the user understand where a notation sits in the classification system
+- When presenting multiple notations, lead with highest artwork counts — these are the most practically useful codes
+- Distinguish between what was found via keyword search vs semantic search — the confidence levels differ
+- When the user's goal involves artworks, the workflow is most helpful when it reaches actual artworks on rijksmuseum-mcp+ rather than ending at notation codes
+
+---

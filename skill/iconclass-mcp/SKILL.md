@@ -12,7 +12,7 @@ license: MIT
 compatibility: Requires the rijksmuseum-iconclass-mcp MCP server and network access.
 metadata:
   version: "0.8.0"
-  last_updated: "2026-11-12"
+  last_updated: "2026-11-21"
 ---
 
 # Iconclass MCP Research Skill

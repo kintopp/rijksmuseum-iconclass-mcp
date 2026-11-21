@@ -30,9 +30,18 @@ Alternatively, you can install the Iconclass MCP server _locally_ on your own co
 
 **Recommended:** Next, follow the same procedure to install its sibling resource, [rijksmuseum-mcp+](https://github.com/kintopp/rijksmuseum-mcp-plus). This allows you to explore over 830,000 artworks and metadata records from the Rijksmuseum with semantic search, provenance analysis, similarity comparisons, and spatial reasoning. 
 
+## Plugin (connector and skill)
+
+The Rijksmuseum Iconclass plugin installs the hosted connector and the [research skill](#research-skill) together. It is listed in the [kintopp-plugins](https://github.com/kintopp/kintopp-plugins) marketplace.
+
+- **claude.ai or Claude Desktop:** go to _Customize_ → _Plugins_ → _Add_ → _Add marketplace_ and enter `kintopp/kintopp-plugins`. Add the plugin, then connect its connector on the plugin's _Connectors_ tab.
+- **Claude Code:** `claude plugin marketplace add kintopp/kintopp-plugins`, then `claude plugin install rijksmuseum-iconclass@kintopp-plugins`.
+- **ChatGPT desktop app:** go to _Plugins_ → _Add plugin marketplace_, enter `kintopp/kintopp-plugins` as the Source, and leave Git ref and Sparse paths empty. Then install the plugin from the plugin browser. The plugin runs only in Codex mode, not in ordinary ChatGPT chats. ChatGPT on the web (chatgpt.com) can't add a marketplace.
+- **Codex CLI:** `codex plugin marketplace add kintopp/kintopp-plugins`, then `codex plugin add rijksmuseum-iconclass@kintopp-plugins`.
+
 ## Research skill
 
-The [`iconclass-mcp.skill.zip`](skill/iconclass-mcp.skill.zip) file (.zip archive) is a [research skill](https://support.claude.com/en/articles/12512176-what-are-skills) that gives the AI assistant detailed guidance on how best to use this resource effectively: which tool (see [How it works](#how-it-works)) to choose for a given question type, how to combine searches, important metadata distinctions (e.g. `subject` terms vs `iconclass` notations), and known limitations. Installing the skill is optional but will significantly improve the quality and efficiency of your AI assistant's responses. Skill files were originally developed by Anthropic for their Claude products but have since become an [open standard](https://agentskills.io/home). The skill can be installed in Claude by following [these instructions](https://claude.com/resources/tutorials/teach-claude-your-way-of-working-using-skills). 
+The [`iconclass-mcp.skill.zip`](skill/iconclass-mcp.skill.zip) file (.zip archive) is a [research skill](https://support.claude.com/en/articles/12512176-what-are-skills) that gives the AI assistant detailed guidance on how best to use this resource effectively: which tool (see [How it works](#how-it-works)) to choose for a given question type, how to combine searches, important metadata distinctions (e.g. `subject` terms vs `iconclass` notations), and known limitations. Installing the skill is optional but will significantly improve the quality and efficiency of your AI assistant's responses. Skill files were originally developed by Anthropic for their Claude products but have since become an [open standard](https://agentskills.io/home). The [plugin](#plugin-connector-and-skill) installs it with the connector. To install it in Claude on its own, follow [these instructions](https://claude.com/resources/tutorials/teach-claude-your-way-of-working-using-skills). To give the AI assistant your own instructions, such as how to cite results, put them in a second skill or in your project's instructions rather than in this skill, so that an update of the skill doesn't overwrite them. 
 
 Currently (October, 2026) ChatGPT's free tier makes uploading skill files cumbersome. Instead, use [Mistral Vibe](https://mistral.ai/products/vibe/) and install the skill via the 'folder' option, first downloading and unpacking [`iconclass-mcp.zip`](https://github.com/kintopp/rijksmuseum-iconclass-mcp/releases/latest/download/iconclass-mcp.zip).
 

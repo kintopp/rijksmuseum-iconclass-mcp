@@ -1,18 +1,21 @@
 #!/usr/bin/env node
 // Repack skill/iconclass-mcp/ into the committed .skill bundle and an
 // identical .skill.zip copy (some clients and browsers only accept a .zip extension),
-// after syncing SKILL.md's metadata.version from package.json.
+// after syncing SKILL.md's metadata.version from package.json. Also copies the skill
+// folder into plugin/rijksmuseum-iconclass/skills/ and writes the version into both
+// plugin manifests: a marketplace installs the plugin from that git subdirectory alone,
+// and installed copies update only when the version changes.
 //
 // A rebuild that changes nothing must be byte-identical on any machine, so the
 // gate can compare bytes. Hence no system `zip`, timestamps from SKILL.md's
 // metadata.last_updated (never the clock or an mtime), byte-ordered entries, and
 // STORED entries, since DEFLATE output varies between zlib builds.
 //
-// Usage: npm run build:skill          rewrite the version and both bundles
+// Usage: npm run build:skill          rewrite the version, both bundles and the plugin
 //        node scripts/build-skill.mjs --check   exit 1 if anything is stale
 
 import { crc32 } from "node:zlib";
-import { readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -22,9 +25,14 @@ const SKILL_DIR = join(ROOT, "skill", SKILL_NAME);
 const SKILL_MD = join(SKILL_DIR, "SKILL.md");
 const OUT_SKILL = join(ROOT, "skill", `${SKILL_NAME}.skill`);
 const OUT_ZIP = `${OUT_SKILL}.zip`;
+const PLUGIN_DIR = join(ROOT, "plugin", "rijksmuseum-iconclass");
+const PLUGIN_SKILL_DIR = join(PLUGIN_DIR, "skills", SKILL_NAME);
+// Claude reads .claude-plugin/plugin.json; ChatGPT and Codex read the root plugin.json.
+const PLUGIN_MANIFESTS = [join(PLUGIN_DIR, ".claude-plugin", "plugin.json"), join(PLUGIN_DIR, "plugin.json")];
+
+const { version } = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8"));
 
 function withPackageVersion(md) {
-  const { version } = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8"));
   const synced = md.replace(/^ {2}version: .*$/m, `  version: "${version}"`);
   if (!/^metadata:\n(?: {2}.*\n)*? {2}version: /m.test(synced)) {
     throw new Error("SKILL.md has no metadata.version line to sync");
@@ -96,16 +104,34 @@ function buildZip(entries, dosDate) {
   return Buffer.concat([...locals, directory, end]);
 }
 
+function withVersion(manifestPath) {
+  const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
+  return `${JSON.stringify({ ...manifest, version }, null, 2)}\n`;
+}
+
 const source = readFileSync(SKILL_MD, "utf8");
 const md = withPackageVersion(source);
 const dosDate = dosDateFrom(md);
-const skill = buildZip(skillEntries(md), dosDate);
+const entries = skillEntries(md);
+const skill = buildZip(entries, dosDate);
 
 if (process.argv.includes("--check")) {
   const stale = [];
   if (md !== source) stale.push("SKILL.md metadata.version differs from package.json");
   if (!skill.equals(readFileSync(OUT_SKILL))) stale.push(`${SKILL_NAME}.skill is not a rebuild of the folder`);
   if (!skill.equals(readFileSync(OUT_ZIP))) stale.push(`${SKILL_NAME}.skill.zip is not a copy of the .skill`);
+  const copied = !existsSync(PLUGIN_SKILL_DIR) ? [] : readdirSync(PLUGIN_SKILL_DIR, { recursive: true })
+    .map((rel) => String(rel).split(sep).join("/"))
+    .filter((rel) => statSync(join(PLUGIN_SKILL_DIR, rel)).isFile());
+  const sameFiles = copied.length === entries.length
+    && entries.every(({ name, content }) => {
+      const rel = name.slice(SKILL_NAME.length + 1);
+      return copied.includes(rel) && content.equals(readFileSync(join(PLUGIN_SKILL_DIR, rel)));
+    });
+  if (!sameFiles) stale.push(`plugin/rijksmuseum-iconclass/skills/${SKILL_NAME}/ is not a copy of the skill folder`);
+  for (const path of PLUGIN_MANIFESTS) {
+    if (withVersion(path) !== readFileSync(path, "utf8")) stale.push(`${path.slice(ROOT.length + 1)} does not carry version ${version}`);
+  }
   for (const line of stale) console.error(`stale: ${line}`);
   if (stale.length > 0) {
     console.error("run `npm run build:skill` and commit the result");
@@ -115,5 +141,13 @@ if (process.argv.includes("--check")) {
   writeFileSync(SKILL_MD, md);
   writeFileSync(OUT_SKILL, skill);
   writeFileSync(OUT_ZIP, skill);
+  rmSync(PLUGIN_SKILL_DIR, { recursive: true, force: true });
+  for (const { name, content } of entries) {
+    const out = join(PLUGIN_DIR, "skills", name);
+    mkdirSync(dirname(out), { recursive: true });
+    writeFileSync(out, content);
+  }
+  for (const path of PLUGIN_MANIFESTS) writeFileSync(path, withVersion(path));
   console.error(`skill/${SKILL_NAME}.skill + .skill.zip built from skill/${SKILL_NAME}/ (${skill.length} bytes)`);
+  console.error(`plugin/rijksmuseum-iconclass/ ← skill/${SKILL_NAME}/, version ${version}`);
 }

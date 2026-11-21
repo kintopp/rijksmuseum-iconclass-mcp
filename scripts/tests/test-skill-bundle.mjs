@@ -13,9 +13,17 @@
  *  - Skill folder renamed away from `name`, or a description over the 1024-char cap.
  *  - license or compatibility dropped. Their values are per-server choices, so only
  *    presence and the spec's length cap are checked.
+ *  - SKILL.md hard-wraps a paragraph, which ChatGPT's skill page shows as broken lines.
+ *  - plugin/rijksmuseum-iconclass/ goes stale: its skill copy differs from the source
+ *    folder, or a manifest keeps an old version, so installed plugins never update.
+ *  - A plugin MCP config points elsewhere, uses the other platform's transport name,
+ *    carries a key the Agent Plugins schema rejects, or renames the connector (every
+ *    user would have to reconnect).
+ *  - The plugin gains a top-level bin/, which claude.ai refuses.
+ *  - A manifest loses the display name, or ChatGPT shows the skill as "Iconclass Mcp".
  */
 import { spawnSync } from "node:child_process";
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { inflateRawSync } from "node:zlib";
 import { dirname, join, sep } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -101,6 +109,58 @@ const metadata = lines.slice(metaStart + 1, metaEnd === -1 ? undefined : metaEnd
 check("metadata values are quoted strings", metadata.length > 0 && metadata.every((l) => /^ {2}[a-z_]+: ".*"$/.test(l)), metadata.join(" | "));
 check("metadata.version equals package.json", metadata.includes(`  version: "${pkg.version}"`), metadata.join(" | "));
 check("metadata.last_updated is a date", metadata.some((l) => /^ {2}last_updated: "\d{4}-\d{2}-\d{2}"$/.test(l)));
+
+// ChatGPT's skill page keeps line breaks inside a paragraph; Claude joins them.
+const body = bundledMd.slice(bundledMd.indexOf("\n---\n", 4) + 5).replace(/^ *```[\s\S]*?^ *```$/gm, "");
+// A line that opens no list item, table row, heading or quote must not follow another line.
+const wrapped = body.split("\n").filter((line, i, all) =>
+  i > 0 && all[i - 1].trim() !== "" && line.trim() !== "" && !/^\s*([-*+>] |#{1,6} |\||\d+\. )/.test(line));
+check("each paragraph and list item of the skill body is one line", wrapped.length === 0, wrapped.map((l) => l.slice(0, 60)).join(" | "));
+
+// --- plugin/rijksmuseum-iconclass/: what a marketplace installs on Claude and ChatGPT ---
+// A git-subdir install sees only this folder, so the skill there is a real copy.
+const PLUGIN = join(ROOT, "plugin", "rijksmuseum-iconclass");
+const REBUILD = "run `npm run build:skill` and commit the result";
+const readJson = (...p) => JSON.parse(readFileSync(join(PLUGIN, ...p), "utf8"));
+function tree(dir) {
+  if (!existsSync(dir)) return [];
+  return readdirSync(dir, { recursive: true })
+    .map((rel) => String(rel).split(sep).join("/"))
+    .filter((rel) => !rel.split("/").some((seg) => seg.startsWith(".")) && statSync(join(dir, rel)).isFile())
+    .sort()
+    .map((rel) => [rel, readFileSync(join(dir, rel), "utf8")]);
+}
+const sourceTree = tree(SKILL_DIR);
+check("source skill folder is non-empty", sourceTree.length > 0);
+check("plugin carries an exact copy of the skill folder",
+  JSON.stringify(tree(join(PLUGIN, "skills", SKILL_NAME))) === JSON.stringify(sourceTree), REBUILD);
+
+const claudeManifest = readJson(".claude-plugin", "plugin.json");
+const agentManifest = readJson("plugin.json");
+for (const [label, m] of [["Claude", claudeManifest], ["Agent Plugins", agentManifest]]) {
+  check(`${label} manifest is named rijksmuseum-iconclass`, m.name === "rijksmuseum-iconclass", m.name);
+  check(`${label} manifest carries package.json's version`, m.version === pkg.version, `${m.version}: ${REBUILD}`);
+}
+check("Agent Plugins manifest declares its schema", agentManifest.$schema === "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json");
+check('Claude manifest shows "Rijksmuseum Iconclass"', claudeManifest.displayName === "Rijksmuseum Iconclass");
+check('Agent Plugins manifest shows "Rijksmuseum Iconclass"',
+  agentManifest.extensions?.["com.openai"]?.interface?.displayName === "Rijksmuseum Iconclass");
+
+// The key is the connector's label on both platforms. Claude calls the transport "http",
+// the Agent Plugins schema "streamable-http", and that schema allows no other server keys.
+const url = "https://rijksmuseum-iconclass-mcp-production.up.railway.app/mcp";
+check(".mcp.json serves the hosted server as Iconclass over http",
+  JSON.stringify(readJson(".mcp.json")) === JSON.stringify({ mcpServers: { Iconclass: { type: "http", url } } }));
+check("mcp.json serves the hosted server as Iconclass over streamable-http",
+  JSON.stringify(readJson("mcp.json")) === JSON.stringify({
+    $schema: "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json",
+    mcpServers: { Iconclass: { type: "streamable-http", url } },
+  }));
+check("plugin has no top-level bin/, which claude.ai refuses", !existsSync(join(PLUGIN, "bin")));
+
+// ChatGPT otherwise title-cases the skill's name into "Iconclass Mcp".
+const openaiYaml = readFileSync(join(SKILL_DIR, "agents", "openai.yaml"), "utf8");
+check('agents/openai.yaml shows the skill as "Iconclass"', /^interface:\n {2}display_name: "Iconclass"$/m.test(openaiYaml));
 
 if (failures > 0) {
   console.error(`skill-bundle: ${failures} check(s) failed`);

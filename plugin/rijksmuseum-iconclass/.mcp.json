@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "Iconclass": {
+      "type": "http",
+      "url": "https://rijksmuseum-iconclass-mcp-production.up.railway.app/mcp"
+    }
+  }
+}

@@ -10,7 +10,7 @@ It includes data from the [Rijksmuseum](https://www.rijksmuseum.nl/en/collection
 
 This tool was developed as a technology demo by the [Research and Infrastructure Support](https://rise.unibas.ch/en/) (RISE) group at the University of Basel. We are particularly interested in exploring the research opportunities, methodological risks, and technical challenges posed by retrieving and analysing data with LLMs. If you are interested in collaborating with us in this area, please [get in touch](mailto:rise@unibas.ch).
 
-## Sample Queries
+## Research Scenarios
 
 The system is designed to let you search, explore and ask questions about the Iconclass in natural language. For examples of the kinds of queries it can answer, please see these [example prompts](docs/example-prompts.md). The links following each prompt demonstrate how each query was previously answered by an AI assistant using Claude Desktop. For further examples, please see the related discussion in the [IconClass Forum](https://forum.iconclass.org/t/working-with-the-elephant/339/2).
 

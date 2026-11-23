@@ -32,12 +32,7 @@ Alternatively, you can install the Iconclass MCP server _locally_ on your own co
 
 ## Plugin (connector and skill)
 
-The Rijksmuseum Iconclass plugin installs the hosted connector and the [research skill](#research-skill) together. It is listed in the [kintopp-plugins](https://github.com/kintopp/kintopp-plugins) marketplace.
-
-- **claude.ai or Claude Desktop:** go to _Customize_ → _Plugins_ → _Add_ → _Add marketplace_ and enter `kintopp/kintopp-plugins`. Add the plugin, then connect its connector on the plugin's _Connectors_ tab.
-- **Claude Code:** `claude plugin marketplace add kintopp/kintopp-plugins`, then `claude plugin install rijksmuseum-iconclass@kintopp-plugins`.
-- **ChatGPT desktop app:** go to _Plugins_ → _Add plugin marketplace_, enter `kintopp/kintopp-plugins` as the Source, and leave Git ref and Sparse paths empty. Then install the plugin from the plugin browser. The plugin runs only in Codex mode, not in ordinary ChatGPT chats. ChatGPT on the web (chatgpt.com) can't add a marketplace.
-- **Codex CLI:** `codex plugin marketplace add kintopp/kintopp-plugins`, then `codex plugin add rijksmuseum-iconclass@kintopp-plugins`.
+The Rijksmuseum Iconclass plugin installs the hosted connector and the [research skill](#research-skill) together. It comes as two zip files, one for each platform: [plugin/rijksmuseum-iconclass-claude.zip](plugin/rijksmuseum-iconclass-claude.zip) for Claude and [plugin/rijksmuseum-iconclass-chatgpt.zip](plugin/rijksmuseum-iconclass-chatgpt.zip) for ChatGPT. Upload the one for your app as a plugin.
 
 ## Research skill
 

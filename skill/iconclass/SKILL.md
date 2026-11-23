@@ -1,5 +1,5 @@
 ---
-name: iconclass-mcp
+name: iconclass
 description: >
   Companion vocabulary layer to rijksmuseum-mcp+: maps art-subject concepts
   to Iconclass notation codes (~1.3M codes across 13 languages) and checks
@@ -12,7 +12,7 @@ license: MIT
 compatibility: Requires the rijksmuseum-iconclass-mcp MCP server and network access.
 metadata:
   version: "0.8.0"
-  last_updated: "2026-11-21"
+  last_updated: "2026-11-23"
 ---
 
 # Iconclass MCP Research Skill

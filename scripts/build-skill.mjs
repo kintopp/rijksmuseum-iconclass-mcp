@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// Repack skill/iconclass-mcp/ into the committed .skill bundle and an
-// identical .skill.zip copy (some clients and browsers only accept a .zip extension),
+// Repack skill/iconclass/ into the committed .skill bundle and an
+// identical .zip copy (some clients and browsers only accept a .zip extension; both are release assets),
 // after syncing SKILL.md's metadata.version from package.json. Also copies the skill
 // folder into plugin/rijksmuseum-iconclass/skills/ and writes the version into both
 // plugin manifests: a marketplace installs the plugin from that git subdirectory alone,
@@ -21,11 +21,11 @@ import { dirname, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const SKILL_NAME = "iconclass-mcp";
+const SKILL_NAME = "iconclass";
 const SKILL_DIR = join(ROOT, "skill", SKILL_NAME);
 const SKILL_MD = join(SKILL_DIR, "SKILL.md");
 const OUT_SKILL = join(ROOT, "skill", `${SKILL_NAME}.skill`);
-const OUT_ZIP = `${OUT_SKILL}.zip`;
+const OUT_ZIP = join(ROOT, "skill", `${SKILL_NAME}.zip`);
 const PLUGIN_DIR = join(ROOT, "plugin", "rijksmuseum-iconclass");
 const PLUGIN_SKILL_DIR = join(PLUGIN_DIR, "skills", SKILL_NAME);
 // Claude reads .claude-plugin/plugin.json; ChatGPT and Codex read the root plugin.json.
@@ -143,7 +143,7 @@ if (process.argv.includes("--check")) {
   const stale = [];
   if (md !== source) stale.push("SKILL.md metadata.version differs from package.json");
   if (!skill.equals(readFileSync(OUT_SKILL))) stale.push(`${SKILL_NAME}.skill is not a rebuild of the folder`);
-  if (!skill.equals(readFileSync(OUT_ZIP))) stale.push(`${SKILL_NAME}.skill.zip is not a copy of the .skill`);
+  if (!skill.equals(readFileSync(OUT_ZIP))) stale.push(`${SKILL_NAME}.zip is not a copy of the .skill`);
   const copied = !existsSync(PLUGIN_SKILL_DIR) ? [] : readdirSync(PLUGIN_SKILL_DIR, { recursive: true })
     .map((rel) => String(rel).split(sep).join("/"))
     .filter((rel) => statSync(join(PLUGIN_SKILL_DIR, rel)).isFile());
@@ -176,6 +176,6 @@ if (process.argv.includes("--check")) {
   }
   for (const path of PLUGIN_MANIFESTS) writeFileSync(path, withVersion(path));
   for (const { path, zip } of uploads) writeFileSync(path, zip);
-  console.error(`skill/${SKILL_NAME}.skill + .skill.zip built from skill/${SKILL_NAME}/ (${skill.length} bytes)`);
+  console.error(`skill/${SKILL_NAME}.skill + .zip built from skill/${SKILL_NAME}/ (${skill.length} bytes)`);
   console.error(`plugin/rijksmuseum-iconclass/ + its two upload zips ← skill/${SKILL_NAME}/, version ${version}`);
 }

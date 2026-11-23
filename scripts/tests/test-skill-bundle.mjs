@@ -22,7 +22,7 @@
  *  - The plugin gains a top-level bin/, which claude.ai refuses.
  *  - An upload zip is missing, stale, nests its files in a folder, or carries the
  *    other platform's manifest; ChatGPT's shortDescription runs over 57 characters.
- *  - A manifest loses the display name, or ChatGPT shows the skill as "Iconclass Mcp".
+ *  - A manifest loses the display name, or ChatGPT shows the skill title-cased.
  */
 import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
@@ -31,7 +31,7 @@ import { dirname, join, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
-const SKILL_NAME = "iconclass-mcp";
+const SKILL_NAME = "iconclass";
 const SKILL_DIR = join(ROOT, "skill", SKILL_NAME);
 const SPEC_FIELDS = new Set(["name", "description", "license", "compatibility", "metadata", "allowed-tools"]);
 
@@ -71,7 +71,7 @@ check("bundles and metadata.version are a rebuild of the source", rebuild.status
 
 const bundleBytes = readFileSync(join(ROOT, "skill", `${SKILL_NAME}.skill`));
 const bundle = readZip(bundleBytes);
-check(".skill.zip is a byte-identical copy of the .skill", readFileSync(join(ROOT, "skill", `${SKILL_NAME}.skill.zip`)).equals(bundleBytes));
+check(".zip is a byte-identical copy of the .skill", readFileSync(join(ROOT, "skill", `${SKILL_NAME}.zip`)).equals(bundleBytes));
 
 const names = [...bundle.keys()];
 check("SKILL.md is the first entry, inside the skill folder", names[0] === `${SKILL_NAME}/SKILL.md`, names[0]);
@@ -181,7 +181,7 @@ for (const [platform, expected] of Object.entries(uploads)) {
     expected.every((n) => zip.get(n)?.equals(readFileSync(join(PLUGIN, n)))), REBUILD);
 }
 
-// ChatGPT otherwise title-cases the skill's name into "Iconclass Mcp".
+// ChatGPT otherwise title-cases the skill's name.
 const openaiYaml = readFileSync(join(SKILL_DIR, "agents", "openai.yaml"), "utf8");
 check('agents/openai.yaml shows the skill as "Iconclass"', /^interface:\n {2}display_name: "Iconclass"$/m.test(openaiYaml));
 

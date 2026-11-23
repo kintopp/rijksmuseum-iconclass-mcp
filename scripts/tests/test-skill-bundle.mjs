@@ -20,6 +20,8 @@
  *    carries a key the Agent Plugins schema rejects, or renames the connector (every
  *    user would have to reconnect).
  *  - The plugin gains a top-level bin/, which claude.ai refuses.
+ *  - An upload zip is missing, stale, nests its files in a folder, or carries the
+ *    other platform's manifest; ChatGPT's shortDescription runs over 57 characters.
  *  - A manifest loses the display name, or ChatGPT shows the skill as "Iconclass Mcp".
  */
 import { spawnSync } from "node:child_process";
@@ -157,6 +159,27 @@ check("mcp.json serves the hosted server as Iconclass over streamable-http",
     mcpServers: { Iconclass: { type: "streamable-http", url } },
   }));
 check("plugin has no top-level bin/, which claude.ai refuses", !existsSync(join(PLUGIN, "bin")));
+
+// ChatGPT cuts the plugin's short description off after 57 characters.
+const shortDescription = agentManifest.extensions?.["com.openai"]?.interface?.shortDescription ?? "";
+check(`ChatGPT shortDescription is 1-57 characters (${[...shortDescription].length})`,
+  [...shortDescription].length >= 1 && [...shortDescription].length <= 57);
+
+// The upload zips: each holds exactly its platform's plugin files, at the root.
+const skillPaths = sourceFiles.map((rel) => `skills/${SKILL_NAME}/${rel}`);
+const uploads = {
+  claude: [".claude-plugin/plugin.json", ".mcp.json", ...skillPaths.filter((p) => !p.includes("/agents/"))],
+  chatgpt: ["plugin.json", "mcp.json", ...skillPaths],
+};
+for (const [platform, expected] of Object.entries(uploads)) {
+  const zipPath = join(ROOT, "plugin", `rijksmuseum-iconclass-${platform}.zip`);
+  const zip = existsSync(zipPath) ? readZip(readFileSync(zipPath)) : new Map();
+  const zipNames = [...zip.keys()].sort();
+  check(`${platform} zip holds exactly its platform's files`,
+    JSON.stringify(zipNames) === JSON.stringify([...expected].sort()), `${zipNames.join(", ")}; ${REBUILD}`);
+  check(`${platform} zip matches the plugin folder`,
+    expected.every((n) => zip.get(n)?.equals(readFileSync(join(PLUGIN, n)))), REBUILD);
+}
 
 // ChatGPT otherwise title-cases the skill's name into "Iconclass Mcp".
 const openaiYaml = readFileSync(join(SKILL_DIR, "agents", "openai.yaml"), "utf8");

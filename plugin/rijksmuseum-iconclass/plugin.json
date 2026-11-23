@@ -21,7 +21,7 @@
     "com.openai": {
       "interface": {
         "displayName": "Rijksmuseum Iconclass",
-        "shortDescription": "Find Iconclass codes for art subjects, with Rijksmuseum artwork counts",
+        "shortDescription": "Iconclass art-subject codes, with Rijksmuseum counts",
         "developerName": "RISE (University of Basel)",
         "category": "Productivity",
         "websiteURL": "https://github.com/kintopp/rijksmuseum-iconclass-mcp"

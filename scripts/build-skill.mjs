@@ -4,7 +4,8 @@
 // after syncing SKILL.md's metadata.version from package.json. Also copies the skill
 // folder into plugin/rijksmuseum-iconclass/skills/ and writes the version into both
 // plugin manifests: a marketplace installs the plugin from that git subdirectory alone,
-// and installed copies update only when the version changes.
+// and installed copies update only when the version changes. Last, it zips the plugin as
+// plugin/rijksmuseum-iconclass-{claude,chatgpt}.zip for uploading by hand.
 //
 // A rebuild that changes nothing must be byte-identical on any machine, so the
 // gate can compare bytes. Hence no system `zip`, timestamps from SKILL.md's
@@ -114,6 +115,29 @@ const md = withPackageVersion(source);
 const dosDate = dosDateFrom(md);
 const entries = skillEntries(md);
 const skill = buildZip(entries, dosDate);
+const pluginEntry = (name, rel = name) => ({ name, content: readFileSync(join(PLUGIN_DIR, rel)) });
+const skillUnder = (keep) =>
+  entries.filter(({ name }) => keep(name)).map(({ name, content }) => ({ name: `skills/${name}`, content }));
+// Upload zips for adding the plugin by hand, one per platform, each with its files at the root.
+const uploads = [
+  {
+    path: join(ROOT, "plugin", "rijksmuseum-iconclass-claude.zip"),
+    entries: [
+      { name: ".claude-plugin/plugin.json", content: Buffer.from(withVersion(PLUGIN_MANIFESTS[0])) },
+      pluginEntry(".mcp.json"),
+      // agents/openai.yaml is ChatGPT's skill label; Claude ignores it.
+      ...skillUnder((name) => !name.startsWith(`${SKILL_NAME}/agents/`)),
+    ],
+  },
+  {
+    path: join(ROOT, "plugin", "rijksmuseum-iconclass-chatgpt.zip"),
+    entries: [
+      { name: "plugin.json", content: Buffer.from(withVersion(PLUGIN_MANIFESTS[1])) },
+      pluginEntry("mcp.json"),
+      ...skillUnder(() => true),
+    ],
+  },
+].map(({ path, entries: files }) => ({ path, zip: buildZip(files, dosDate) }));
 
 if (process.argv.includes("--check")) {
   const stale = [];
@@ -132,6 +156,9 @@ if (process.argv.includes("--check")) {
   for (const path of PLUGIN_MANIFESTS) {
     if (withVersion(path) !== readFileSync(path, "utf8")) stale.push(`${path.slice(ROOT.length + 1)} does not carry version ${version}`);
   }
+  for (const { path, zip } of uploads) {
+    if (!existsSync(path) || !zip.equals(readFileSync(path))) stale.push(`${path.slice(ROOT.length + 1)} is not a rebuild of the plugin folder`);
+  }
   for (const line of stale) console.error(`stale: ${line}`);
   if (stale.length > 0) {
     console.error("run `npm run build:skill` and commit the result");
@@ -148,6 +175,7 @@ if (process.argv.includes("--check")) {
     writeFileSync(out, content);
   }
   for (const path of PLUGIN_MANIFESTS) writeFileSync(path, withVersion(path));
+  for (const { path, zip } of uploads) writeFileSync(path, zip);
   console.error(`skill/${SKILL_NAME}.skill + .skill.zip built from skill/${SKILL_NAME}/ (${skill.length} bytes)`);
-  console.error(`plugin/rijksmuseum-iconclass/ ← skill/${SKILL_NAME}/, version ${version}`);
+  console.error(`plugin/rijksmuseum-iconclass/ + its two upload zips ← skill/${SKILL_NAME}/, version ${version}`);
 }

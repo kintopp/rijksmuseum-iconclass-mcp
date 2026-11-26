@@ -14,31 +14,51 @@ This tool was developed as a technology demo by the [Research and Infrastructure
 
 The system is designed to let you search, explore and ask questions about the Iconclass in natural language. For examples of the kinds of queries it can answer, please see these [example prompts](docs/example-prompts.md). The links following each prompt demonstrate how each query was previously answered by an AI assistant using Claude Desktop. For further examples, please see the related discussion in the [IconClass Forum](https://forum.iconclass.org/t/working-with-the-elephant/339/2).
 
-## Quick start
+## Installation
 
-For the best results, add rijksmuseum-iconclass-mcp as a custom, _remotely hosted_ connector in [Claude Desktop](https://claude.com/download) or [claude.ai](https://claude.ai) using the URL below. This currently free for one custom connector – additional connectors requires a paid ('Pro') or higher [subscription](https://claude.com/pricing) from Anthropic.
+### Hosted
+
+The easiest way to start is to install the Rijksmuseum Iconclass plugin. It adds the hosted version of the server as a connector (shown as "Iconclass"), together with the [research skill](#research-skill) that tells the AI assistant how to use it. The server needs no account or sign-in information.
+
+**Claude** ([claude.ai](https://claude.ai), or the Claude [desktop app](https://claude.com/download)): *// recommended*
+
+1. Download [`rijksmuseum-iconclass-claude.zip`](https://github.com/kintopp/rijksmuseum-iconclass-mcp/raw/refs/heads/main/plugin/rijksmuseum-iconclass-claude.zip).
+2. In Claude, go to _Settings_ → _Plugins_ → _Browse plugins_ (scroll down to the bottom) → _Add_ → _Upload plugin_ and choose the file.
+3. Open the plugin, go to its _Connectors_ tab, and add the "Iconclass" connector.
+4. If you like, set the permissions for its tools in _Customize_ → _Connectors_, for example to "Always allow".
+
+**N.B.** A free Claude account allows only one custom connector. To make room for it, you will need to remove (not just disable) any existing custom connector in _Customize_ → _Connectors_ first. Adding rijksmuseum-mcp+ as well (see below) requires a paid ('Pro') or higher [subscription](https://claude.com/pricing). Anthropic's [plugin instructions](https://claude.com/docs/plugins/overview#install-a-plugin) provide more details.
+
+**ChatGPT** ([desktop app](https://chatgpt.com/download/) – not chatgpt.com):
+
+1. Download [`rijksmuseum-iconclass-chatgpt.zip`](https://github.com/kintopp/rijksmuseum-iconclass-mcp/raw/refs/heads/main/plugin/rijksmuseum-iconclass-chatgpt.zip).
+2. In the ChatGPT desktop app, go to _Settings_ → _Plugins_ → _Add_ and _Upload plugin archive_. Select and _Add_ the plugin.
+3. Next select _Install plugin_. After this the plugin is available.
+4. To use it, create a new chat, switch to 'Work' mode, and select the plugin via the + symbol. Else, type "@Rijksmuseum Iconclass" at the start of the prompt. **N.B.** You can only use a custom plugin from the 'Work' mode in ChatGPT or in Codex.
+
+**Other AI clients:** add the hosted server as a remote MCP server (often called a "custom connector") with this URL, and leave the authentication settings empty:
 
 ```
 https://rijksmuseum-iconclass-mcp-production.up.railway.app/mcp
 ```
 
-Go to _Settings_ → _Connectors_ → _Add custom connector_ → name it as you like and paste the URL into the _Remote MCP Server URL_ field. You can ignore the Authentication section. Once configured, optionally set the permissions for its tools (e.g. 'Always allow'). See Anthropic's [instructions](https://support.claude.com/en/articles/11175166-get-started-with-custom-connectors-using-remote-mcp) for  details. 
+For example, the free version of [Mistral's Vibe](https://chat.mistral.ai) has excellent support for MCP servers, including components like interactive image viewers. **N.B.** A connector added this way (i.e. without the use of a plugin) has no skill file; install the skill file separately (see [below](#research-skill)).
 
-Many other desktop and web-based clients such as OpenAI's ChatGPT or Mistral's Vibe and open-source applications support custom MCP servers. Please consult their documentation for more information. [Mistral's Vibe](https://chat.mistral.ai) in particular has excellent support for MCP servers and skills (see below). In contrast, ChatGPT can currently (October, 2026) only support viewing and interacting with images in the chat timeline (a feature of the Rijksmuseum+ MCP server) in conjunction with a paid Business or Enterprise subscription. So at the moment the best way to use the hosted MCP server for free is either with Claude or with Mistral.
+### Rijksmuseum MCP+
+
+**Recommended:** Afterwards, follow the same procedure to install rijksmuseum-iconclass-mcp's sibling resource, [rijksmuseum-mcp+](https://github.com/kintopp/rijksmuseum-mcp-plus), which has its own [plugin](https://github.com/kintopp/rijksmuseum-mcp-plus/tree/main/plugin). This allows you to explore over 830,000 artworks and metadata records from the Rijksmuseum with semantic search, provenance analysis, similarity comparisons, and spatial reasoning, and to pass the Iconclass notations you find here straight to its artwork search.
+
+### Local
 
 Alternatively, you can install the Iconclass MCP server _locally_ on your own computer; please consult the [technical guide](docs/technical-guide.md). A local install also gives you `icmcp`, a [command-line interface](docs/technical-guide.md#cli) that runs the same tools from the terminal, with JSONL output for piping into tools such as `jq`.
 
-**Recommended:** Next, follow the same procedure to install its sibling resource, [rijksmuseum-mcp+](https://github.com/kintopp/rijksmuseum-mcp-plus). This allows you to explore over 830,000 artworks and metadata records from the Rijksmuseum with semantic search, provenance analysis, similarity comparisons, and spatial reasoning. 
-
-## Plugin (connector and skill)
-
-The Rijksmuseum Iconclass plugin installs the hosted connector and the [research skill](#research-skill) together. It comes as two zip files, one for each platform: [plugin/rijksmuseum-iconclass-claude.zip](plugin/rijksmuseum-iconclass-claude.zip) for Claude and [plugin/rijksmuseum-iconclass-chatgpt.zip](plugin/rijksmuseum-iconclass-chatgpt.zip) for ChatGPT. Upload the one for your app as a plugin.
-
 ## Research skill
 
-The [`iconclass.zip`](skill/iconclass.zip) file (.zip archive) is a [research skill](https://support.claude.com/en/articles/12512176-what-are-skills) that gives the AI assistant detailed guidance on how best to use this resource effectively: which tool (see [How it works](#how-it-works)) to choose for a given question type, how to combine searches, important metadata distinctions (e.g. `subject` terms vs `iconclass` notations), and known limitations. Installing the skill is optional but will significantly improve the quality and efficiency of your AI assistant's responses. Skill files were originally developed by Anthropic for their Claude products but have since become an [open standard](https://agentskills.io/home). The [plugin](#plugin-connector-and-skill) installs it with the connector. To install it in Claude on its own, follow [these instructions](https://claude.com/resources/tutorials/teach-claude-your-way-of-working-using-skills). To give the AI assistant your own instructions, such as how to cite results, put them in a second skill or in your project's instructions rather than in this skill, so that an update of the skill doesn't overwrite them. 
+A skill gives an AI assistant detailed guidance in natural language on how to use a resource such as an MCP server effectively: which tool (see [How it works](#how-it-works)) to choose for a given question type, how to combine searches, important metadata distinctions (e.g. `subject` terms vs `iconclass` notations), and known limitations. Skills were [originally developed by Anthropic](https://claude.com/resources/tutorials/teach-claude-your-way-of-working-using-skills) for their Claude products but have since become a widely-supported [open standard](https://agentskills.io/home). 
 
-Currently (October, 2026) ChatGPT's free tier makes uploading skill files cumbersome. Instead, use [Mistral Vibe](https://mistral.ai/products/vibe/) and install the skill via the 'folder' option, first downloading and unpacking [`iconclass.zip`](https://github.com/kintopp/rijksmuseum-iconclass-mcp/releases/latest/download/iconclass.zip).
+The plugin (see [Installation](#installation) above) already includes the skill. You only need the Iconclass skill file if you add the server as a custom connector, install it locally, or use a client without plugin support. To access the skill file, download and unzip: [`iconclass.zip`](https://github.com/kintopp/rijksmuseum-iconclass-mcp/releases/latest/download/iconclass.zip). If you use [Mistral Vibe](https://mistral.ai/products/vibe/), install the skill via the 'folder' option. 
+
+To add your own instructions, such as how to cite results, don't edit the installed copy. Instead, put them in a separate skill or in your project's instructions, so that an update of the plugin doesn't overwrite them.
 
 ## How it works
 

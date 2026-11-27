@@ -18,7 +18,7 @@ The system is designed to let you search, explore and ask questions about the Ic
 
 ### Hosted
 
-The easiest way to start is to install the Rijksmuseum Iconclass plugin. It adds the hosted version of the server as a connector (shown as "Iconclass"), together with the [research skill](#research-skill) that tells the AI assistant how to use it. The server needs no account or sign-in information.
+The easiest way to start is to install the Rijksmuseum Iconclass plugin. It adds the hosted version of the server as a connector (shown as "Iconclass"), together with the [research skill](#research-skill) that tells the AI assistant how to use it. The server needs no account or sign-in information. Note: If you are on a free subscription plan, the use of any MCP server will consume your free usage quickly.
 
 **Claude** ([claude.ai](https://claude.ai), or the Claude [desktop app](https://claude.com/download)): *// recommended*
 
@@ -27,14 +27,14 @@ The easiest way to start is to install the Rijksmuseum Iconclass plugin. It adds
 3. Open the plugin, go to its _Connectors_ tab, and add the "Iconclass" connector.
 4. If you like, set the permissions for its tools in _Customize_ → _Connectors_, for example to "Always allow".
 
-**N.B.** A free Claude account allows only one custom connector. To make room for it, you will need to remove (not just disable) any existing custom connector in _Customize_ → _Connectors_ first. In addition, the use of any MCP server will consume your free usage quickly. Adding rijksmuseum-mcp+ as well (see below) requires a paid ('Pro') or higher [subscription](https://claude.com/pricing). Anthropic's [plugin instructions](https://claude.com/docs/plugins/overview#install-a-plugin) provide more details.
+**N.B.** A free Claude account allows only one custom connector. To make room for it, you will need to remove (not just disable) any existing custom connector in _Customize_ → _Connectors_ first. Anthropic's [plugin instructions](https://claude.com/docs/plugins/overview#install-a-plugin) provide more details.
 
 **ChatGPT** ([desktop app](https://chatgpt.com/download/) – not chatgpt.com):
 
 1. Download [`rijksmuseum-iconclass-chatgpt.zip`](https://github.com/kintopp/rijksmuseum-iconclass-mcp/raw/refs/heads/main/plugin/rijksmuseum-iconclass-chatgpt.zip).
 2. In the ChatGPT desktop app, go to _Settings_ → _Plugins_ → _Add_ and _Upload plugin archive_. Select and _Add_ the plugin.
 3. Next select _Install plugin_. After this the plugin is available.
-4. To use it, create a new chat, switch to 'Work' mode in ChatGPT or to Codex, and select the plugin via the + symbol. Else, type "@Rijksmuseum Iconclass" at the start of the prompt. Note: The use of any MCP server will consume your free usage quickly.
+4. To use it, create a new chat, switch to 'Work' mode in ChatGPT or to Codex, and select the plugin via the + symbol. Else, type "@Rijksmuseum Iconclass" at the start of the prompt. 
 
 **Other AI clients:** add the hosted server as a remote MCP server (often called a "custom connector") with this URL, and leave the authentication settings empty:
 
@@ -42,11 +42,11 @@ The easiest way to start is to install the Rijksmuseum Iconclass plugin. It adds
 https://rijksmuseum-iconclass-mcp-production.up.railway.app/mcp
 ```
 
-For example, the free version of [Mistral's Vibe](https://chat.mistral.ai) has excellent support for MCP servers, including components like interactive image viewers. The use of an MCP server will consume your free usage quickly. But it's certainly also possible to set-up an open source AI client with an open source model, such as [Kimi 3.1 Pro](https://huggingface.co/moonshotai/Kimi-K3.1-Pro) which may be available to you at no cost or on a per-token basis. **N.B.** A connector added this way (i.e. without the use of a plugin) has no skill file; install the skill file separately (see [below](#research-skill)).
+For example, the free version of [Mistral's Vibe](https://chat.mistral.ai) has excellent support for MCP servers, including components like interactive image viewers. The use of an MCP server will consume your free usage quickly. A connector added this way (i.e. without the use of a plugin) has no skill file; install the skill file separately (see [below](#research-skill)).
 
 ### Rijksmuseum MCP+
 
-**Recommended:** Afterwards, follow the same procedure to install rijksmuseum-iconclass-mcp's sibling resource, [rijksmuseum-mcp+](https://github.com/kintopp/rijksmuseum-mcp-plus), which has its own [plugin](https://github.com/kintopp/rijksmuseum-mcp-plus/tree/main/plugin). This allows you to explore over 830,000 artworks and metadata records from the Rijksmuseum with semantic search, provenance analysis, similarity comparisons, and spatial reasoning, and to pass the Iconclass notations you find here straight to its artwork search.
+**Recommended:** Afterwards, if your subscription plan allows it, follow the same procedure to install rijksmuseum-iconclass-mcp's sibling resource, [rijksmuseum-mcp+](https://github.com/kintopp/rijksmuseum-mcp-plus), which has its own [plugin](https://github.com/kintopp/rijksmuseum-mcp-plus/tree/main/plugin). This allows you to explore over 830,000 artworks and metadata records from the Rijksmuseum with semantic search, provenance analysis, similarity comparisons, and spatial reasoning, and to pass the Iconclass notations you find here straight to its artwork search.
 
 ### Local
 
